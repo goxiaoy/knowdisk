@@ -44,6 +44,7 @@ export function createAppContainer(deps?: {
   configService?: ConfigService;
   vectorCollectionPath?: string;
   userDataDir?: string;
+  vectorBaseDir?: string;
 }): AppContainer {
   const di = rootContainer.createChildContainer();
   registerDependencies(di, deps);
@@ -52,7 +53,12 @@ export function createAppContainer(deps?: {
 
 function registerDependencies(
   di: DependencyContainer,
-  deps?: { configService?: ConfigService; vectorCollectionPath?: string; userDataDir?: string },
+  deps?: {
+    configService?: ConfigService;
+    vectorCollectionPath?: string;
+    userDataDir?: string;
+    vectorBaseDir?: string;
+  },
 ) {
   let vectorRepo: VectorRepository | null = null;
   di.registerInstance<ConfigService>(TOKENS.ConfigService, deps?.configService ?? defaultConfigService);
@@ -79,7 +85,7 @@ function registerDependencies(
         collectionPath:
           deps?.vectorCollectionPath ??
           join(
-            deps?.userDataDir ?? "build",
+            deps?.vectorBaseDir ?? deps?.userDataDir ?? "build",
             "zvec",
             `provider-${cfg.embedding.provider}`,
             `dim-${embeddingDimension}`,

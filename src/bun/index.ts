@@ -22,9 +22,10 @@ async function getMainViewUrl(): Promise<string> {
   return "views://mainview/index.html";
 }
 
-const userDataDir = Utils.paths.userData;
+const userDataDir = join(Utils.paths.home, ".knowdisk");
+const vectorBaseDir = userDataDir;
 const configService = createConfigService({ userDataDir });
-const container = createAppContainer({ configService, userDataDir });
+const container = createAppContainer({ configService, userDataDir, vectorBaseDir });
 const startupConfig = container.configService.getConfig();
 console.log("App startup config:", JSON.stringify(startupConfig, null, 2));
 
