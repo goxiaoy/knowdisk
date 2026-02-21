@@ -1,4 +1,11 @@
 import type { AppConfig, ConfigService } from "../../core/config/config.types";
+import {
+  addSourceInBun,
+  getConfigFromBun,
+  removeSourceInBun,
+  setMcpEnabledInBun,
+  updateSourceInBun,
+} from "./bun.rpc";
 
 const STORAGE_KEY = "knowdisk-app-config";
 
@@ -41,6 +48,13 @@ function saveConfig(cfg: AppConfig) {
   globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(cfg));
 }
 
+export async function hydrateConfigFromBun() {
+  const config = await getConfigFromBun();
+  if (config) {
+    saveConfig(config);
+  }
+}
+
 export const defaultMainviewConfigService: ConfigService = {
   getConfig() {
     return loadConfig();
@@ -51,6 +65,7 @@ export const defaultMainviewConfigService: ConfigService = {
   setMcpEnabled(enabled: boolean) {
     const next = { ...loadConfig(), mcp: { enabled } };
     saveConfig(next);
+    void setMcpEnabledInBun(enabled);
     return next;
   },
   getSources() {
@@ -63,6 +78,7 @@ export const defaultMainviewConfigService: ConfigService = {
     }
     const sources = [...current.sources, { path, enabled: true }];
     saveConfig({ ...current, sources });
+    void addSourceInBun(path);
     return sources;
   },
   updateSource(path: string, enabled: boolean) {
@@ -71,12 +87,14 @@ export const defaultMainviewConfigService: ConfigService = {
       item.path === path ? { ...item, enabled } : item,
     );
     saveConfig({ ...current, sources });
+    void updateSourceInBun(path, enabled);
     return sources;
   },
   removeSource(path: string) {
     const current = loadConfig();
     const sources = current.sources.filter((item) => item.path !== path);
     saveConfig({ ...current, sources });
+    void removeSourceInBun(path);
     return sources;
   },
 };

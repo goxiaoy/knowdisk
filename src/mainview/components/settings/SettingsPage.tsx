@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ConfigService } from "../../../core/config/config.types";
 import {
   createHealthService,
@@ -6,6 +6,7 @@ import {
   type ComponentHealth,
 } from "../../../core/health/health.service";
 import { defaultMainviewConfigService } from "../../services/config.service";
+import { getHealthFromBun } from "../../services/bun.rpc";
 
 function healthClass(health: AppHealth) {
   if (health === "failed") return "health health-failed";
@@ -22,12 +23,27 @@ export function SettingsPage({
   const [mcpEnabled, setMcpEnabled] = useState(configService.getMcpEnabled());
   const [sources, setSources] = useState(configService.getSources());
   const [sourceInput, setSourceInput] = useState("");
+  const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
 
   const { health, components } = useMemo(() => {
     const svc = createHealthService();
     return {
       health: svc.getAppHealth(),
       components: svc.getComponentHealth(),
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHealth() {
+      const fromBun = await getHealthFromBun();
+      if (!cancelled && fromBun) {
+        setSubsystems(fromBun);
+      }
+    }
+    void loadHealth();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -52,7 +68,9 @@ export function SettingsPage({
     setSources(configService.removeSource(path));
   };
 
-  const subsystemList = Object.entries(components) as Array<[string, ComponentHealth]>;
+  const subsystemList = Object.entries(
+    Object.keys(subsystems).length > 0 ? subsystems : components,
+  ) as Array<[string, ComponentHealth]>;
 
   return (
     <section className="settings-page">
