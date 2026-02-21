@@ -17,9 +17,7 @@ function makeConfigService(enabled: boolean): ConfigService {
         ui: { mode: "safe" as const },
         indexing: { watch: { enabled: true } },
         embedding: {
-          mode: "local" as const,
           provider: "local" as const,
-          model: "BAAI/bge-small-en-v1.5",
           endpoint: "",
           apiKeys: {},
           dimension: 384,

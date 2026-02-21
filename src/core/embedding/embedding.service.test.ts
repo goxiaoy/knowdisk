@@ -3,9 +3,7 @@ import { makeEmbeddingProvider } from "./embedding.service";
 
 test("uses configured local provider", async () => {
   const provider = makeEmbeddingProvider({
-    mode: "local",
     provider: "local",
-    model: "BAAI/bge-small-en-v1.5",
     apiKeys: {},
     endpoint: "",
     dimension: 16,
@@ -15,21 +13,17 @@ test("uses configured local provider", async () => {
   expect(vec.length).toBe(16);
 });
 
-test("changes vector output for different model", async () => {
+test("changes vector output for different provider settings", async () => {
   const a = makeEmbeddingProvider({
-    mode: "local",
     provider: "local",
-    model: "BAAI/bge-small-en-v1.5",
     apiKeys: {},
     endpoint: "",
     dimension: 8,
   });
   const b = makeEmbeddingProvider({
-    mode: "local",
     provider: "local",
-    model: "BAAI/bge-base-en-v1.5",
     apiKeys: {},
-    endpoint: "",
+    endpoint: "https://example.local",
     dimension: 8,
   });
   const [va, vb] = await Promise.all([a.embed("hello"), b.embed("hello")]);
@@ -39,11 +33,9 @@ test("changes vector output for different model", async () => {
 test("uses openai dense embedding when cloud provider is configured", async () => {
   const provider = makeEmbeddingProvider(
     {
-      mode: "cloud",
       provider: "openai_dense",
-      model: "text-embedding-3-small",
       endpoint: "https://api.openai.com/v1/embeddings",
-      apiKeys: { "openai_dense:text-embedding-3-small": "sk-test" },
+      apiKeys: { openai_dense: "sk-test" },
       dimension: 3,
     },
     {
@@ -63,11 +55,9 @@ test("uses openai dense embedding when cloud provider is configured", async () =
 test("supports qwen sparse embedding response", async () => {
   const provider = makeEmbeddingProvider(
     {
-      mode: "cloud",
       provider: "qwen_sparse",
-      model: "text-embedding-v4",
       endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
-      apiKeys: { "qwen_sparse:text-embedding-v4": "sk-test" },
+      apiKeys: { qwen_sparse: "sk-test" },
       dimension: 4,
     },
     {

@@ -20,9 +20,7 @@ function getDefaultConfig(): AppConfig {
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
     embedding: {
-      mode: "local",
       provider: "local",
-      model: "BAAI/bge-small-en-v1.5",
       endpoint: "",
       apiKeys: {},
       dimension: 384,
@@ -37,8 +35,7 @@ function loadConfig(): AppConfig {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (!raw) return getDefaultConfig();
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
-    const legacyApiKey = (parsed.embedding as { apiKey?: string } | undefined)?.apiKey ?? "";
-    const legacyApiKeyMapKey = `${parsed.embedding?.provider ?? "local"}:${parsed.embedding?.model ?? "BAAI/bge-small-en-v1.5"}`;
+    const legacyApiKeys = normalizeEmbeddingApiKeys(parsed.embedding);
     const normalizedSources = Array.isArray(parsed.sources)
       ? parsed.sources.map((item) =>
           typeof item === "string"
@@ -57,7 +54,7 @@ function loadConfig(): AppConfig {
         ...(parsed.embedding ?? {}),
         apiKeys: {
           ...getDefaultConfig().embedding.apiKeys,
-          ...(legacyApiKey ? { [legacyApiKeyMapKey]: legacyApiKey } : {}),
+          ...legacyApiKeys,
           ...((parsed.embedding as Partial<AppConfig["embedding"]> | undefined)?.apiKeys ?? {}),
         },
       },
@@ -73,6 +70,31 @@ function loadConfig(): AppConfig {
   } catch {
     return getDefaultConfig();
   }
+}
+
+function normalizeEmbeddingApiKeys(embedding: unknown): Record<string, string> {
+  const current = embedding as
+    | {
+        provider?: string;
+        apiKey?: string;
+        apiKeys?: Record<string, string>;
+      }
+    | undefined;
+  const result: Record<string, string> = {};
+  if (!current) {
+    return result;
+  }
+  if (current.apiKeys) {
+    for (const [key, value] of Object.entries(current.apiKeys)) {
+      if (!value) continue;
+      const provider = key.includes(":") ? key.split(":")[0] : key;
+      result[provider] = value;
+    }
+  }
+  if (current.apiKey && current.provider) {
+    result[current.provider] = current.apiKey;
+  }
+  return result;
 }
 
 function saveConfig(cfg: AppConfig) {

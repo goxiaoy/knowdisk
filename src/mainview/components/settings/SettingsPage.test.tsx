@@ -7,9 +7,7 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
   let enabled = true;
   let sources: Array<{ path: string; enabled: boolean }> = [];
   let embedding = {
-    mode: "local" as const,
     provider: "local" as const,
-    model: "BAAI/bge-small-en-v1.5",
     endpoint: "",
     apiKeys: {} as Record<string, string>,
     dimension: 384,
@@ -139,9 +137,7 @@ describe("SettingsPage", () => {
               ui: { mode: "safe" as const },
               indexing: { watch: { enabled: true } },
               embedding: {
-                mode: "local" as const,
                 provider: "local" as const,
-                model: "BAAI/bge-small-en-v1.5",
                 endpoint: "",
                 apiKeys: {},
                 dimension: 384,
@@ -196,7 +192,6 @@ describe("SettingsPage", () => {
   });
 
   it("saves embedding and reranker settings", () => {
-    let embeddingModel = "BAAI/bge-small-en-v1.5";
     let embeddingProvider: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense" = "local";
     let embeddingApiKeyMap: Record<string, string> = {};
     let hfEndpoint = "https://hf-mirror.com";
@@ -206,7 +201,6 @@ describe("SettingsPage", () => {
         pickSourceDirectory={async () => null}
         configService={makeConfigService({
           updateEmbedding(input) {
-            embeddingModel = input.model ?? embeddingModel;
             embeddingProvider = (input.provider as typeof embeddingProvider) ?? embeddingProvider;
             embeddingApiKeyMap = { ...embeddingApiKeyMap, ...(input.apiKeys ?? {}) };
             return this.getConfig();
@@ -224,14 +218,10 @@ describe("SettingsPage", () => {
     );
     const root = renderer.root;
 
-    const embeddingInput = root.findByProps({ "data-testid": "embedding-model" });
     const providerSelect = root.findByProps({ "data-testid": "embedding-provider" });
     const apiKeyInput = root.findByProps({ "data-testid": "embedding-api-key" });
     act(() => {
       providerSelect.props.onChange({ target: { value: "openai_dense" } });
-    });
-    act(() => {
-      embeddingInput.props.onChange({ target: { value: "BAAI/bge-base-en-v1.5" } });
     });
     act(() => {
       apiKeyInput.props.onChange({ target: { value: "sk-live-1" } });
@@ -258,9 +248,8 @@ describe("SettingsPage", () => {
       saveReranker.props.onClick();
     });
 
-    expect(embeddingModel).toBe("BAAI/bge-base-en-v1.5");
     expect(embeddingProvider).toBe("openai_dense");
-    expect(embeddingApiKeyMap["openai_dense:BAAI/bge-base-en-v1.5"]).toBe("sk-live-1");
+    expect(embeddingApiKeyMap.openai_dense).toBe("sk-live-1");
     expect(hfEndpoint).toBe("https://hf.example.com");
     expect(rerankerMode).toBe("none");
   });

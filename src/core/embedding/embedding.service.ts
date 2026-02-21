@@ -1,4 +1,9 @@
-import type { EmbeddingConfig, EmbeddingProvider } from "./embedding.types";
+import {
+  getEmbeddingProviderModel,
+  isCloudEmbeddingProvider,
+  type EmbeddingConfig,
+  type EmbeddingProvider,
+} from "./embedding.types";
 
 type EmbeddingDeps = {
   fetchImpl?: typeof fetch;
@@ -8,11 +13,11 @@ export function makeEmbeddingProvider(cfg: EmbeddingConfig, deps?: EmbeddingDeps
   const fetchImpl = deps?.fetchImpl ?? fetch;
   return {
     async embed(text: string) {
-      if (cfg.mode === "cloud") {
+      if (isCloudEmbeddingProvider(cfg.provider)) {
         return embedCloud(cfg, text, fetchImpl);
       }
       const dims = Math.max(1, cfg.dimension);
-      const seed = hash(`${cfg.mode}:${cfg.model}:${cfg.endpoint ?? ""}:${text}`);
+      const seed = hash(`${cfg.provider}:${cfg.endpoint ?? ""}:${text}`);
       const vector = new Array<number>(dims);
       for (let i = 0; i < dims; i += 1) {
         const value = Math.sin(seed * (i + 1)) + Math.cos((seed + i) * 0.37);
@@ -24,10 +29,11 @@ export function makeEmbeddingProvider(cfg: EmbeddingConfig, deps?: EmbeddingDeps
 }
 
 async function embedCloud(cfg: EmbeddingConfig, text: string, fetchImpl: typeof fetch) {
-  const apiKey = cfg.apiKeys?.[`${cfg.provider}:${cfg.model}`] ?? "";
+  const apiKey = cfg.apiKeys?.[cfg.provider] ?? "";
   if (!cfg.endpoint || !apiKey) {
     throw new Error("cloud embedding requires endpoint and apiKeys entry");
   }
+  const model = getEmbeddingProviderModel(cfg.provider);
 
   const response = await fetchImpl(cfg.endpoint, {
     method: "POST",
@@ -39,7 +45,7 @@ async function embedCloud(cfg: EmbeddingConfig, text: string, fetchImpl: typeof 
         : {}),
     },
     body: JSON.stringify({
-      model: cfg.model,
+      model,
       input: text,
       text: text,
     }),

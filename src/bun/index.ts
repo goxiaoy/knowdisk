@@ -1,6 +1,7 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { createAppContainer } from "./app.container";
 import { downloadModelFromHub } from "../core/model/model-download.service";
+import { getEmbeddingProviderModel } from "../core/embedding/embedding.types";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -40,35 +41,30 @@ const rpc = BrowserView.defineRPC({
         return container.configService.setMcpEnabled(enabled);
       },
       set_embedding_config({
-        mode,
         provider,
-        model,
         endpoint,
         apiKeys,
         dimension,
       }: {
-        mode?: "local" | "cloud";
         provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
-        model?: string;
         endpoint?: string;
         apiKeys?: Record<string, string>;
         dimension?: number;
       }) {
         const updated = container.configService.updateEmbedding({
-          mode,
           provider,
-          model,
           endpoint,
           apiKeys,
           dimension,
         });
-        if (model) {
+        if ((provider ?? updated.embedding.provider) === "local") {
+          const localModel = getEmbeddingProviderModel("local");
           void downloadModelFromHub({
             hfEndpoint: updated.modelHub.hfEndpoint,
-            model,
+            model: localModel,
             targetRoot: "build/models",
           }).catch((error) => {
-            console.error(`Model download failed for ${model}:`, error);
+            console.error(`Model download failed for ${localModel}:`, error);
           });
         }
         return updated;

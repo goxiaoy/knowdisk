@@ -19,9 +19,7 @@ export interface AppConfig {
     };
   };
   embedding: {
-    mode: "local" | "cloud";
     provider: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
-    model: string;
     endpoint: string;
     apiKeys: Record<string, string>;
     dimension: number;

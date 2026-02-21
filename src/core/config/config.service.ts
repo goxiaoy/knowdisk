@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { AppConfig, ConfigService, SourceConfig } from "./config.types";
+import { isCloudEmbeddingProvider } from "../embedding/embedding.types";
 
 export function getDefaultConfig(): AppConfig {
   return {
@@ -12,9 +13,7 @@ export function getDefaultConfig(): AppConfig {
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
     embedding: {
-      mode: "local",
       provider: "local",
-      model: "BAAI/bge-small-en-v1.5",
       endpoint: "",
       apiKeys: {},
       dimension: 384,
@@ -31,12 +30,12 @@ export function getDefaultConfig(): AppConfig {
 }
 
 export function validateConfig(cfg: AppConfig): { ok: boolean; errors: string[] } {
-  if (cfg.embedding.mode === "cloud" && !cfg.embedding.endpoint) {
-    return { ok: false, errors: ["embedding.endpoint is required for cloud mode"] };
+  if (isCloudEmbeddingProvider(cfg.embedding.provider) && !cfg.embedding.endpoint) {
+    return { ok: false, errors: ["embedding.endpoint is required for cloud providers"] };
   }
-  const activeApiKey = cfg.embedding.apiKeys[`${cfg.embedding.provider}:${cfg.embedding.model}`] ?? "";
-  if (cfg.embedding.mode === "cloud" && !activeApiKey) {
-    return { ok: false, errors: ["embedding.apiKeys is missing active model key for cloud mode"] };
+  const activeApiKey = cfg.embedding.apiKeys[cfg.embedding.provider] ?? "";
+  if (isCloudEmbeddingProvider(cfg.embedding.provider) && !activeApiKey) {
+    return { ok: false, errors: ["embedding.apiKeys is missing active provider key"] };
   }
   if (cfg.embedding.dimension <= 0) {
     return { ok: false, errors: ["embedding.dimension must be > 0"] };
@@ -54,8 +53,7 @@ export function migrateConfig(input: unknown): AppConfig {
   const version = (input as { version?: number })?.version ?? 0;
   if (version === 1) {
     const next = input as Partial<AppConfig>;
-    const legacyApiKey = (next.embedding as { apiKey?: string } | undefined)?.apiKey ?? "";
-    const legacyApiKeyMapKey = `${next.embedding?.provider ?? "local"}:${next.embedding?.model ?? "BAAI/bge-small-en-v1.5"}`;
+    const legacyApiKeys = normalizeEmbeddingApiKeys(next.embedding);
     const migratedSources =
       Array.isArray(next.sources) && next.sources.length > 0
         ? normalizeSources(next.sources as unknown[])
@@ -72,7 +70,7 @@ export function migrateConfig(input: unknown): AppConfig {
         ...(next.embedding ?? {}),
         apiKeys: {
           ...getDefaultConfig().embedding.apiKeys,
-          ...(legacyApiKey ? { [legacyApiKeyMapKey]: legacyApiKey } : {}),
+          ...legacyApiKeys,
           ...((next.embedding as Partial<AppConfig["embedding"]> | undefined)?.apiKeys ?? {}),
         },
       },
@@ -93,6 +91,33 @@ export function migrateConfig(input: unknown): AppConfig {
     version: 1,
     sources: normalizeSources(Array.isArray(legacy.sources) ? legacy.sources : []),
   };
+}
+
+function normalizeEmbeddingApiKeys(embedding: unknown): Record<string, string> {
+  const current = embedding as
+    | {
+        provider?: string;
+        apiKey?: string;
+        apiKeys?: Record<string, string>;
+      }
+    | undefined;
+  const result: Record<string, string> = {};
+  if (!current) {
+    return result;
+  }
+  if (current.apiKeys) {
+    for (const [key, value] of Object.entries(current.apiKeys)) {
+      if (!value) {
+        continue;
+      }
+      const provider = key.includes(":") ? key.split(":")[0] : key;
+      result[provider] = value;
+    }
+  }
+  if (current.apiKey && current.provider) {
+    result[current.provider] = current.apiKey;
+  }
+  return result;
 }
 
 function normalizeSources(input: unknown[]): SourceConfig[] {

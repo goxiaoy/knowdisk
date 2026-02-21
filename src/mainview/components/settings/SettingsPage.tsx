@@ -27,13 +27,9 @@ export function SettingsPage({
   const [sources, setSources] = useState(config.sources);
   const [activity, setActivity] = useState("");
   const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
-  const [embeddingMode, setEmbeddingMode] = useState(config.embedding.mode);
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
-  const [embeddingModel, setEmbeddingModel] = useState(config.embedding.model);
   const [embeddingEndpoint, setEmbeddingEndpoint] = useState(config.embedding.endpoint);
-  const [embeddingApiKey, setEmbeddingApiKey] = useState(
-    config.embedding.apiKeys[`${config.embedding.provider}:${config.embedding.model}`] ?? "",
-  );
+  const [embeddingApiKey, setEmbeddingApiKey] = useState(config.embedding.apiKeys[config.embedding.provider] ?? "");
   const [embeddingDimension, setEmbeddingDimension] = useState(String(config.embedding.dimension));
   const [hfEndpoint, setHfEndpoint] = useState(config.modelHub.hfEndpoint);
   const [rerankerMode, setRerankerMode] = useState(config.reranker.mode);
@@ -63,9 +59,8 @@ export function SettingsPage({
   }, []);
 
   useEffect(() => {
-    const key = `${embeddingProvider}:${embeddingModel}`;
-    setEmbeddingApiKey(config.embedding.apiKeys[key] ?? "");
-  }, [config.embedding.apiKeys, embeddingProvider, embeddingModel]);
+    setEmbeddingApiKey(config.embedding.apiKeys[embeddingProvider] ?? "");
+  }, [config.embedding.apiKeys, embeddingProvider]);
 
   const toggleMcp = () => {
     const next = !mcpEnabled;
@@ -90,13 +85,10 @@ export function SettingsPage({
   };
 
   const saveEmbeddingConfig = () => {
-    const apiKeyMapKey = `${embeddingProvider}:${embeddingModel}`;
     const next = configService.updateEmbedding({
-      mode: embeddingMode,
       provider: embeddingProvider,
-      model: embeddingModel,
       endpoint: embeddingEndpoint,
-      apiKeys: embeddingApiKey.length > 0 ? { [apiKeyMapKey]: embeddingApiKey } : {},
+      apiKeys: embeddingApiKey.length > 0 ? { [embeddingProvider]: embeddingApiKey } : {},
       dimension: Math.max(1, Number.parseInt(embeddingDimension, 10) || 384),
     });
     setConfig(next);
@@ -170,20 +162,8 @@ export function SettingsPage({
       </ul>
       <h2>Embedding</h2>
       <p>
-        Current: {config.embedding.mode} / {config.embedding.provider} / {config.embedding.model} / dim{" "}
-        {config.embedding.dimension}
+        Current: {config.embedding.provider} / dim {config.embedding.dimension}
       </p>
-      <label>
-        Mode
-        <select
-          data-testid="embedding-mode"
-          value={embeddingMode}
-          onChange={(event) => setEmbeddingMode(event.target.value as "local" | "cloud")}
-        >
-          <option value="local">local</option>
-          <option value="cloud">cloud</option>
-        </select>
-      </label>
       <label>
         Provider
         <select
@@ -200,14 +180,6 @@ export function SettingsPage({
           <option value="qwen_sparse">Qwen Sparse</option>
           <option value="openai_dense">OpenAI Dense</option>
         </select>
-      </label>
-      <label>
-        Model
-        <input
-          data-testid="embedding-model"
-          value={embeddingModel}
-          onChange={(event) => setEmbeddingModel(event.target.value)}
-        />
       </label>
       <label>
         Endpoint

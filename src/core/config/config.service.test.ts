@@ -24,11 +24,9 @@ describe("getDefaultConfig", () => {
     const result = validateConfig({
       ...getDefaultConfig(),
       embedding: {
-        mode: "cloud",
         provider: "openai_dense",
-        model: "text-embedding-3-small",
         endpoint: "",
-        apiKeys: { "openai_dense:text-embedding-3-small": "sk-test" },
+        apiKeys: { openai_dense: "sk-test" },
         dimension: 1536,
       },
     });
@@ -39,9 +37,7 @@ describe("getDefaultConfig", () => {
     const result = validateConfig({
       ...getDefaultConfig(),
       embedding: {
-        mode: "cloud",
         provider: "qwen_dense",
-        model: "text-embedding-v4",
         endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
         apiKeys: {},
         dimension: 1024,
@@ -94,18 +90,18 @@ describe("getDefaultConfig", () => {
 
     service.updateEmbedding({
       provider: "openai_dense",
-      model: "BAAI/bge-base-en-v1.5",
-      apiKeys: { "openai_dense:BAAI/bge-base-en-v1.5": "sk-test" },
+      endpoint: "https://api.openai.com/v1/embeddings",
+      apiKeys: { openai_dense: "sk-test" },
       dimension: 768,
     });
     service.updateModelHub({ hfEndpoint: "https://custom-hf.example.com" });
     service.updateReranker({ mode: "none", topN: 3 });
 
     const reloaded = createConfigService({ configPath }).getConfig();
-    expect(reloaded.embedding.model).toBe("BAAI/bge-base-en-v1.5");
+    expect(reloaded.embedding.provider).toBe("openai_dense");
     expect(reloaded.embedding.dimension).toBe(768);
     expect(reloaded.modelHub.hfEndpoint).toBe("https://custom-hf.example.com");
-    expect(reloaded.embedding.apiKeys["openai_dense:BAAI/bge-base-en-v1.5"]).toBe("sk-test");
+    expect(reloaded.embedding.apiKeys.openai_dense).toBe("sk-test");
     expect(reloaded.reranker.mode).toBe("none");
     expect(reloaded.reranker.topN).toBe(3);
 

@@ -1,14 +1,22 @@
-export type EmbeddingMode = "local" | "cloud";
 export type EmbeddingProviderId =
   | "local"
   | "qwen_dense"
   | "qwen_sparse"
   | "openai_dense";
 
+export function isCloudEmbeddingProvider(provider: EmbeddingProviderId): boolean {
+  return provider !== "local";
+}
+
+export function getEmbeddingProviderModel(provider: EmbeddingProviderId): string {
+  if (provider === "openai_dense") return "text-embedding-3-small";
+  if (provider === "qwen_dense") return "text-embedding-v4";
+  if (provider === "qwen_sparse") return "text-embedding-v4";
+  return "BAAI/bge-small-en-v1.5";
+}
+
 export type EmbeddingConfig = {
-  mode: EmbeddingMode;
   provider: EmbeddingProviderId;
-  model: string;
   endpoint?: string;
   apiKeys?: Record<string, string>;
   dimension: number;
