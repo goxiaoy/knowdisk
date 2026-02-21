@@ -1,8 +1,4 @@
-export type EmbeddingProviderId =
-  | "local"
-  | "qwen_dense"
-  | "qwen_sparse"
-  | "openai_dense";
+import type { AppConfig, EmbeddingProviderId } from "../config/config.types";
 
 export function isCloudEmbeddingProvider(provider: EmbeddingProviderId): boolean {
   return provider !== "local";
@@ -17,10 +13,10 @@ export function getEmbeddingProviderModel(provider: EmbeddingProviderId): string
 
 export type EmbeddingConfig = {
   provider: EmbeddingProviderId;
-  endpoint?: string;
-  hfEndpoint?: string;
-  apiKeys?: Record<string, string>;
-  dimension: number;
+  local: AppConfig["embedding"]["local"];
+  qwen_dense: AppConfig["embedding"]["qwen_dense"];
+  qwen_sparse: AppConfig["embedding"]["qwen_sparse"];
+  openai_dense: AppConfig["embedding"]["openai_dense"];
 };
 
 export type EmbeddingProvider = {

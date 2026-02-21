@@ -61,10 +61,7 @@ function registerDependencies(
   di.register(TOKENS.EmbeddingProvider, {
     useFactory: (c) => {
       const appCfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
-      return makeEmbeddingProvider({
-        ...appCfg.embedding,
-        hfEndpoint: appCfg.modelHub.hfEndpoint,
-      });
+      return makeEmbeddingProvider(appCfg.embedding);
     },
   });
   di.register(TOKENS.VectorRepository, {
@@ -73,9 +70,13 @@ function registerDependencies(
         return vectorRepo;
       }
       const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
+      const embeddingDimension =
+        cfg.embedding.provider === "local"
+          ? cfg.embedding.local.dimension
+          : cfg.embedding[cfg.embedding.provider].dimension;
       vectorRepo = createVectorRepository({
         collectionPath: deps?.vectorCollectionPath ?? "build/zvec/knowdisk.zvec",
-        dimension: cfg.embedding.dimension,
+        dimension: embeddingDimension,
         indexType: "hnsw",
         metric: "cosine",
       });

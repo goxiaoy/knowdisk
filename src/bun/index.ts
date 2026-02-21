@@ -1,12 +1,11 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { createAppContainer } from "./app.container";
 import { downloadModelFromHub } from "../core/model/model-download.service";
-import { getEmbeddingProviderModel } from "../core/embedding/embedding.types";
+import type { AppConfig } from "../core/config/config.types";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
-// Check if Vite dev server is running for HMR
 async function getMainViewUrl(): Promise<string> {
   const channel = await Updater.localInfo.channel();
   if (channel === "dev") {
@@ -15,9 +14,7 @@ async function getMainViewUrl(): Promise<string> {
       console.log(`HMR enabled: Using Vite dev server at ${DEV_SERVER_URL}`);
       return DEV_SERVER_URL;
     } catch {
-      console.log(
-        "Vite dev server not running. Run 'bun run dev:hmr' for HMR support.",
-      );
+      console.log("Vite dev server not running. Run 'bun run dev:hmr' for HMR support.");
     }
   }
   return "views://mainview/index.html";
@@ -31,6 +28,32 @@ if (!container.mcpServer) {
   console.log("MCP server disabled in settings.");
 }
 
+function maybeDownloadEmbeddingModel(config: AppConfig) {
+  if (config.embedding.provider !== "local") {
+    return;
+  }
+  void downloadModelFromHub({
+    hfEndpoint: config.embedding.local.hfEndpoint,
+    model: config.embedding.local.model,
+    targetRoot: "build/models/embedding/local",
+  }).catch((error) => {
+    console.error(`Embedding model download failed for ${config.embedding.local.model}:`, error);
+  });
+}
+
+function maybeDownloadRerankerModel(config: AppConfig) {
+  if (!config.reranker.enabled || config.reranker.provider !== "local") {
+    return;
+  }
+  void downloadModelFromHub({
+    hfEndpoint: config.reranker.local.hfEndpoint,
+    model: config.reranker.local.model,
+    targetRoot: "build/models/reranker/local",
+  }).catch((error) => {
+    console.error(`Reranker model download failed for ${config.reranker.local.model}:`, error);
+  });
+}
+
 const rpc = BrowserView.defineRPC({
   handlers: {
     requests: {
@@ -40,57 +63,14 @@ const rpc = BrowserView.defineRPC({
       set_mcp_enabled({ enabled }: { enabled: boolean }) {
         return container.configService.setMcpEnabled(enabled);
       },
-      set_embedding_config({
-        provider,
-        endpoint,
-        apiKeys,
-        dimension,
-      }: {
-        provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
-        endpoint?: string;
-        apiKeys?: Record<string, string>;
-        dimension?: number;
-      }) {
-        const updated = container.configService.updateEmbedding({
-          provider,
-          endpoint,
-          apiKeys,
-          dimension,
-        });
-        if ((provider ?? updated.embedding.provider) === "local") {
-          const localModel = getEmbeddingProviderModel("local");
-          void downloadModelFromHub({
-            hfEndpoint: updated.modelHub.hfEndpoint,
-            model: localModel,
-            targetRoot: "build/models",
-          }).catch((error) => {
-            console.error(`Model download failed for ${localModel}:`, error);
-          });
-        }
+      set_embedding_config(input: Partial<AppConfig["embedding"]>) {
+        const updated = container.configService.updateEmbedding(input);
+        maybeDownloadEmbeddingModel(updated);
         return updated;
       },
-      set_model_hub_config({ hfEndpoint }: { hfEndpoint?: string }) {
-        return container.configService.updateModelHub({ hfEndpoint });
-      },
-      set_reranker_config({
-        mode,
-        model,
-        topN,
-      }: {
-        mode?: "none" | "local";
-        model?: string;
-        topN?: number;
-      }) {
-        const updated = container.configService.updateReranker({ mode, model, topN });
-        if (model) {
-          void downloadModelFromHub({
-            hfEndpoint: updated.modelHub.hfEndpoint,
-            model,
-            targetRoot: "build/models",
-          }).catch((error) => {
-            console.error(`Model download failed for ${model}:`, error);
-          });
-        }
+      set_reranker_config(input: Partial<AppConfig["reranker"]>) {
+        const updated = container.configService.updateReranker(input);
+        maybeDownloadRerankerModel(updated);
         return updated;
       },
       add_source({ path }: { path: string }) {
@@ -118,7 +98,6 @@ const rpc = BrowserView.defineRPC({
   },
 });
 
-// Create the main application window
 const url = await getMainViewUrl();
 
 const mainWindow = new BrowserWindow({
@@ -133,7 +112,6 @@ const mainWindow = new BrowserWindow({
   },
 });
 
-// Quit the app when the main window is closed
 mainWindow.on("close", () => {
   Utils.quit();
 });

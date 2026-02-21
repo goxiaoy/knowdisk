@@ -8,12 +8,28 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
   let sources: Array<{ path: string; enabled: boolean }> = [];
   let embedding = {
     provider: "local" as const,
-    endpoint: "",
-    apiKeys: {} as Record<string, string>,
-    dimension: 384,
+    local: {
+      hfEndpoint: "https://hf-mirror.com",
+      cacheDir: "build/cache/embedding/local",
+      model: "Xenova/all-MiniLM-L6-v2",
+      dimension: 384,
+    },
+    qwen_dense: { apiKey: "", model: "text-embedding-v4", dimension: 1024 },
+    qwen_sparse: { apiKey: "", model: "text-embedding-v4", dimension: 1024 },
+    openai_dense: { apiKey: "", model: "text-embedding-3-small", dimension: 1536 },
   };
-  let modelHub = { hfEndpoint: "https://hf-mirror.com" };
-  let reranker = { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 };
+  let reranker = {
+    enabled: true,
+    provider: "local" as const,
+    local: {
+      hfEndpoint: "https://hf-mirror.com",
+      cacheDir: "build/cache/reranker/local",
+      model: "BAAI/bge-reranker-base",
+      topN: 5,
+    },
+    qwen: { apiKey: "", model: "gte-rerank-v2", topN: 5 },
+    openai: { apiKey: "", model: "text-embedding-3-small", topN: 5 },
+  };
 
   const base: ConfigService = {
     getConfig() {
@@ -24,7 +40,6 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
         ui: { mode: "safe" as const },
         indexing: { watch: { enabled: true } },
         embedding,
-        modelHub,
         reranker,
       };
     },
@@ -56,16 +71,21 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
       embedding = {
         ...embedding,
         ...input,
-        apiKeys: { ...embedding.apiKeys, ...(input.apiKeys ?? {}) },
+        local: { ...embedding.local, ...(input.local ?? {}) },
+        qwen_dense: { ...embedding.qwen_dense, ...(input.qwen_dense ?? {}) },
+        qwen_sparse: { ...embedding.qwen_sparse, ...(input.qwen_sparse ?? {}) },
+        openai_dense: { ...embedding.openai_dense, ...(input.openai_dense ?? {}) },
       };
       return this.getConfig();
     },
-    updateModelHub(input) {
-      modelHub = { ...modelHub, ...input };
-      return this.getConfig();
-    },
     updateReranker(input) {
-      reranker = { ...reranker, ...input };
+      reranker = {
+        ...reranker,
+        ...input,
+        local: { ...reranker.local, ...(input.local ?? {}) },
+        qwen: { ...reranker.qwen, ...(input.qwen ?? {}) },
+        openai: { ...reranker.openai, ...(input.openai ?? {}) },
+      };
       return this.getConfig();
     },
   };
@@ -89,7 +109,7 @@ describe("SettingsPage", () => {
   });
 
   it("toggles mcp server setting", () => {
-    let enabled = true;    
+    let enabled = true;
     const renderer = create(
       <SettingsPage
         pickSourceDirectory={async () => null}
@@ -102,7 +122,7 @@ describe("SettingsPage", () => {
             return this.getConfig();
           },
         })}
-      />,
+      />, 
     );
     const root = renderer.root;
     const hasText = (text: string) =>
@@ -131,19 +151,8 @@ describe("SettingsPage", () => {
         configService={makeConfigService({
           getConfig() {
             return {
-              version: 1,
+              ...makeConfigService().getConfig(),
               sources,
-              mcp: { enabled: true },
-              ui: { mode: "safe" as const },
-              indexing: { watch: { enabled: true } },
-              embedding: {
-                provider: "local" as const,
-                endpoint: "",
-                apiKeys: {},
-                dimension: 384,
-              },
-              modelHub: { hfEndpoint: "https://hf-mirror.com" },
-              reranker: { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 },
             };
           },
           getSources() {
@@ -193,55 +202,56 @@ describe("SettingsPage", () => {
 
   it("saves embedding and reranker settings", () => {
     let embeddingProvider: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense" = "local";
-    let embeddingApiKeyMap: Record<string, string> = {};
-    let hfEndpoint = "https://hf-mirror.com";
-    let rerankerMode: "none" | "local" = "local";
+    let embeddingApiKey = "";
+    let rerankerProvider: "local" | "qwen" | "openai" = "local";
+    let rerankerApiKey = "";
     const renderer = create(
       <SettingsPage
         pickSourceDirectory={async () => null}
         configService={makeConfigService({
           updateEmbedding(input) {
             embeddingProvider = (input.provider as typeof embeddingProvider) ?? embeddingProvider;
-            embeddingApiKeyMap = { ...embeddingApiKeyMap, ...(input.apiKeys ?? {}) };
-            return this.getConfig();
-          },
-          updateModelHub(input) {
-            hfEndpoint = input.hfEndpoint ?? hfEndpoint;
+            if (input.openai_dense?.apiKey) {
+              embeddingApiKey = input.openai_dense.apiKey;
+            }
             return this.getConfig();
           },
           updateReranker(input) {
-            rerankerMode = (input.mode as "none" | "local") ?? rerankerMode;
+            rerankerProvider = (input.provider as typeof rerankerProvider) ?? rerankerProvider;
+            if (input.openai?.apiKey) {
+              rerankerApiKey = input.openai.apiKey;
+            }
             return this.getConfig();
           },
         })}
-      />,
+      />, 
     );
     const root = renderer.root;
 
-    const providerSelect = root.findByProps({ "data-testid": "embedding-provider" });
-    const apiKeyInput = root.findByProps({ "data-testid": "embedding-api-key" });
+    const embProvider = root.findByProps({ "data-testid": "embedding-provider" });
     act(() => {
-      providerSelect.props.onChange({ target: { value: "openai_dense" } });
+      embProvider.props.onChange({ target: { value: "openai_dense" } });
     });
+    const embApi = root.findByProps({ "data-testid": "embedding-cloud-api-key" });
     act(() => {
-      apiKeyInput.props.onChange({ target: { value: "sk-live-1" } });
+      embApi.props.onChange({ target: { value: "sk-live-1" } });
+    });
+    const embModel = root.findByProps({ "data-testid": "embedding-cloud-model" });
+    act(() => {
+      embModel.props.onChange({ target: { value: "text-embedding-3-small" } });
     });
     const saveEmbedding = root.findByProps({ "data-testid": "save-embedding" });
     act(() => {
       saveEmbedding.props.onClick();
     });
-    const hfInput = root.findByProps({ "data-testid": "hf-endpoint" });
-    act(() => {
-      hfInput.props.onChange({ target: { value: "https://hf.example.com" } });
-    });
-    const saveModelHub = root.findByProps({ "data-testid": "save-model-hub" });
-    act(() => {
-      saveModelHub.props.onClick();
-    });
 
-    const rerankerModeSelect = root.findByProps({ "data-testid": "reranker-mode" });
+    const rrProvider = root.findByProps({ "data-testid": "reranker-provider" });
     act(() => {
-      rerankerModeSelect.props.onChange({ target: { value: "none" } });
+      rrProvider.props.onChange({ target: { value: "openai" } });
+    });
+    const rrApi = root.findByProps({ "data-testid": "reranker-cloud-api-key" });
+    act(() => {
+      rrApi.props.onChange({ target: { value: "rk-live-1" } });
     });
     const saveReranker = root.findByProps({ "data-testid": "save-reranker" });
     act(() => {
@@ -249,8 +259,8 @@ describe("SettingsPage", () => {
     });
 
     expect(embeddingProvider).toBe("openai_dense");
-    expect(embeddingApiKeyMap.openai_dense).toBe("sk-live-1");
-    expect(hfEndpoint).toBe("https://hf.example.com");
-    expect(rerankerMode).toBe("none");
+    expect(embeddingApiKey).toBe("sk-live-1");
+    expect(rerankerProvider).toBe("openai");
+    expect(rerankerApiKey).toBe("rk-live-1");
   });
 });

@@ -1,3 +1,5 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { AppConfig } from "../config/config.types";
 
 type RetrievalRow = {
@@ -11,9 +13,13 @@ type RetrievalRow = {
 };
 
 export function createReranker(config: AppConfig["reranker"]) {
-  if (config.mode === "none") {
+  if (!config.enabled) {
     return null;
   }
+
+  const topN = getTopN(config);
+  const providerDir = getProviderDir(config);
+  mkdirSync(providerDir, { recursive: true });
 
   return {
     async rerank(query: string, rows: RetrievalRow[], opts: { topK: number }) {
@@ -25,9 +31,22 @@ export function createReranker(config: AppConfig["reranker"]) {
       });
 
       rescored.sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId));
-      return rescored.slice(0, Math.min(opts.topK, config.topN));
+      return rescored.slice(0, Math.min(opts.topK, topN));
     },
   };
+}
+
+function getTopN(config: AppConfig["reranker"]) {
+  if (config.provider === "local") return config.local.topN;
+  if (config.provider === "qwen") return config.qwen.topN;
+  return config.openai.topN;
+}
+
+function getProviderDir(config: AppConfig["reranker"]) {
+  if (config.provider === "local") {
+    return join(config.local.cacheDir, "provider-local");
+  }
+  return join("build", "cache", "reranker", config.provider);
 }
 
 function tokenize(input: string): string[] {

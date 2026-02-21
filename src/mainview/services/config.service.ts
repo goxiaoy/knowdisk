@@ -4,7 +4,6 @@ import {
   getConfigFromBun,
   removeSourceInBun,
   setEmbeddingConfigInBun,
-  setModelHubConfigInBun,
   setMcpEnabledInBun,
   setRerankerConfigInBun,
   updateSourceInBun,
@@ -21,12 +20,48 @@ function getDefaultConfig(): AppConfig {
     indexing: { watch: { enabled: true } },
     embedding: {
       provider: "local",
-      endpoint: "",
-      apiKeys: {},
-      dimension: 384,
+      local: {
+        hfEndpoint: "https://hf-mirror.com",
+        cacheDir: "build/cache/embedding/local",
+        model: "Xenova/all-MiniLM-L6-v2",
+        dimension: 384,
+      },
+      qwen_dense: {
+        apiKey: "",
+        model: "text-embedding-v4",
+        dimension: 1024,
+      },
+      qwen_sparse: {
+        apiKey: "",
+        model: "text-embedding-v4",
+        dimension: 1024,
+      },
+      openai_dense: {
+        apiKey: "",
+        model: "text-embedding-3-small",
+        dimension: 1536,
+      },
     },
-    modelHub: { hfEndpoint: "https://hf-mirror.com" },
-    reranker: { mode: "local", model: "BAAI/bge-reranker-base", topN: 5 },
+    reranker: {
+      enabled: true,
+      provider: "local",
+      local: {
+        hfEndpoint: "https://hf-mirror.com",
+        cacheDir: "build/cache/reranker/local",
+        model: "BAAI/bge-reranker-base",
+        topN: 5,
+      },
+      qwen: {
+        apiKey: "",
+        model: "gte-rerank-v2",
+        topN: 5,
+      },
+      openai: {
+        apiKey: "",
+        model: "text-embedding-3-small",
+        topN: 5,
+      },
+    },
   };
 }
 
@@ -35,7 +70,6 @@ function loadConfig(): AppConfig {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (!raw) return getDefaultConfig();
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
-    const legacyApiKeys = normalizeEmbeddingApiKeys(parsed.embedding);
     const normalizedSources = Array.isArray(parsed.sources)
       ? parsed.sources.map((item) =>
           typeof item === "string"
@@ -44,57 +78,52 @@ function loadConfig(): AppConfig {
         )
       : [];
 
+    const defaults = getDefaultConfig();
     return {
-      ...getDefaultConfig(),
+      ...defaults,
       ...parsed,
       sources: normalizedSources.filter((item) => item.path.length > 0),
       mcp: { enabled: parsed.mcp?.enabled ?? true },
       embedding: {
-        ...getDefaultConfig().embedding,
+        ...defaults.embedding,
         ...(parsed.embedding ?? {}),
-        apiKeys: {
-          ...getDefaultConfig().embedding.apiKeys,
-          ...legacyApiKeys,
-          ...((parsed.embedding as Partial<AppConfig["embedding"]> | undefined)?.apiKeys ?? {}),
+        local: {
+          ...defaults.embedding.local,
+          ...(parsed.embedding?.local ?? {}),
+        },
+        qwen_dense: {
+          ...defaults.embedding.qwen_dense,
+          ...(parsed.embedding?.qwen_dense ?? {}),
+        },
+        qwen_sparse: {
+          ...defaults.embedding.qwen_sparse,
+          ...(parsed.embedding?.qwen_sparse ?? {}),
+        },
+        openai_dense: {
+          ...defaults.embedding.openai_dense,
+          ...(parsed.embedding?.openai_dense ?? {}),
         },
       },
-      modelHub: {
-        ...getDefaultConfig().modelHub,
-        ...(parsed.modelHub ?? {}),
-      },
       reranker: {
-        ...getDefaultConfig().reranker,
+        ...defaults.reranker,
         ...(parsed.reranker ?? {}),
+        local: {
+          ...defaults.reranker.local,
+          ...(parsed.reranker?.local ?? {}),
+        },
+        qwen: {
+          ...defaults.reranker.qwen,
+          ...(parsed.reranker?.qwen ?? {}),
+        },
+        openai: {
+          ...defaults.reranker.openai,
+          ...(parsed.reranker?.openai ?? {}),
+        },
       },
     };
   } catch {
     return getDefaultConfig();
   }
-}
-
-function normalizeEmbeddingApiKeys(embedding: unknown): Record<string, string> {
-  const current = embedding as
-    | {
-        provider?: string;
-        apiKey?: string;
-        apiKeys?: Record<string, string>;
-      }
-    | undefined;
-  const result: Record<string, string> = {};
-  if (!current) {
-    return result;
-  }
-  if (current.apiKeys) {
-    for (const [key, value] of Object.entries(current.apiKeys)) {
-      if (!value) continue;
-      const provider = key.includes(":") ? key.split(":")[0] : key;
-      result[provider] = value;
-    }
-  }
-  if (current.apiKey && current.provider) {
-    result[current.provider] = current.apiKey;
-  }
-  return result;
 }
 
 function saveConfig(cfg: AppConfig) {
@@ -157,9 +186,21 @@ export const defaultMainviewConfigService: ConfigService = {
       embedding: {
         ...current.embedding,
         ...input,
-        apiKeys: {
-          ...current.embedding.apiKeys,
-          ...(input.apiKeys ?? {}),
+        local: {
+          ...current.embedding.local,
+          ...(input.local ?? {}),
+        },
+        qwen_dense: {
+          ...current.embedding.qwen_dense,
+          ...(input.qwen_dense ?? {}),
+        },
+        qwen_sparse: {
+          ...current.embedding.qwen_sparse,
+          ...(input.qwen_sparse ?? {}),
+        },
+        openai_dense: {
+          ...current.embedding.openai_dense,
+          ...(input.openai_dense ?? {}),
         },
       },
     };
@@ -167,16 +208,27 @@ export const defaultMainviewConfigService: ConfigService = {
     void setEmbeddingConfigInBun(input);
     return next;
   },
-  updateModelHub(input) {
-    const current = loadConfig();
-    const next = { ...current, modelHub: { ...current.modelHub, ...input } };
-    saveConfig(next);
-    void setModelHubConfigInBun(input);
-    return next;
-  },
   updateReranker(input) {
     const current = loadConfig();
-    const next = { ...current, reranker: { ...current.reranker, ...input } };
+    const next = {
+      ...current,
+      reranker: {
+        ...current.reranker,
+        ...input,
+        local: {
+          ...current.reranker.local,
+          ...(input.local ?? {}),
+        },
+        qwen: {
+          ...current.reranker.qwen,
+          ...(input.qwen ?? {}),
+        },
+        openai: {
+          ...current.reranker.openai,
+          ...(input.openai ?? {}),
+        },
+      },
+    };
     saveConfig(next);
     void setRerankerConfigInBun(input);
     return next;

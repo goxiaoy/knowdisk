@@ -1,5 +1,6 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import {
-  getEmbeddingProviderModel,
   isCloudEmbeddingProvider,
   type EmbeddingConfig,
   type EmbeddingProvider,
@@ -9,13 +10,20 @@ type EmbeddingDeps = {
   fetchImpl?: typeof fetch;
   createExtractor?: (
     model: string,
-    opts: { hfEndpoint?: string },
+    opts: { hfEndpoint: string; cacheDir: string },
   ) => Promise<(text: string, opts: { pooling: "mean"; normalize: true }) => Promise<unknown>>;
 };
+
+const EMBEDDING_ENDPOINTS = {
+  openai_dense: "https://api.openai.com/v1/embeddings",
+  qwen_dense: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
+  qwen_sparse: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
+} as const;
 
 export function makeEmbeddingProvider(cfg: EmbeddingConfig, deps?: EmbeddingDeps): EmbeddingProvider {
   const fetchImpl = deps?.fetchImpl ?? fetch;
   const createExtractor = deps?.createExtractor ?? createDefaultExtractor;
+
   return {
     async embed(text: string) {
       if (isCloudEmbeddingProvider(cfg.provider)) {
@@ -35,13 +43,19 @@ export function makeEmbeddingProvider(cfg: EmbeddingConfig, deps?: EmbeddingDeps
 }
 
 async function embedCloud(cfg: EmbeddingConfig, text: string, fetchImpl: typeof fetch) {
-  const apiKey = cfg.apiKeys?.[cfg.provider] ?? "";
-  if (!cfg.endpoint || !apiKey) {
-    throw new Error("cloud embedding requires endpoint and apiKeys entry");
+  if (!isCloudEmbeddingProvider(cfg.provider)) {
+    throw new Error("embedCloud called with local provider");
   }
-  const model = getEmbeddingProviderModel(cfg.provider);
+  const providerCfg = cfg[cfg.provider];
+  const apiKey = providerCfg.apiKey;
+  if (!apiKey) {
+    throw new Error(`cloud embedding requires apiKey for provider ${cfg.provider}`);
+  }
 
-  const response = await fetchImpl(cfg.endpoint, {
+  const providerDir = join("build", "cache", "embedding", cfg.provider);
+  mkdirSync(providerDir, { recursive: true });
+
+  const response = await fetchImpl(EMBEDDING_ENDPOINTS[cfg.provider], {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -51,9 +65,9 @@ async function embedCloud(cfg: EmbeddingConfig, text: string, fetchImpl: typeof 
         : {}),
     },
     body: JSON.stringify({
-      model,
+      model: providerCfg.model,
       input: text,
-      text: text,
+      text,
     }),
   });
 
@@ -62,7 +76,7 @@ async function embedCloud(cfg: EmbeddingConfig, text: string, fetchImpl: typeof 
   }
 
   const payload = (await response.json()) as Record<string, unknown>;
-  const vector = extractDenseVector(payload, cfg.dimension);
+  const vector = extractDenseVector(payload, providerCfg.dimension);
   if (!vector) {
     throw new Error("embedding response missing vector");
   }
@@ -103,33 +117,44 @@ async function getLocalExtractor(
   cfg: EmbeddingConfig,
   createExtractor: (
     model: string,
-    opts: { hfEndpoint?: string },
+    opts: { hfEndpoint: string; cacheDir: string },
   ) => Promise<(text: string, opts: { pooling: "mean"; normalize: true }) => Promise<unknown>>,
 ) {
-  const model = getEmbeddingProviderModel("local");
-  const key = `${model}|${cfg.hfEndpoint ?? ""}`;
+  const providerDir = join(cfg.local.cacheDir, "provider-local");
+  mkdirSync(providerDir, { recursive: true });
+  const key = `${cfg.local.model}|${cfg.local.hfEndpoint}|${providerDir}`;
   let extractor = localExtractorCache.get(key);
   if (!extractor) {
-    extractor = createExtractor(model, { hfEndpoint: cfg.hfEndpoint });
+    extractor = createExtractor(cfg.local.model, {
+      hfEndpoint: cfg.local.hfEndpoint,
+      cacheDir: providerDir,
+    });
     localExtractorCache.set(key, extractor);
   }
   return extractor;
 }
 
-async function createDefaultExtractor(model: string, opts: { hfEndpoint?: string }) {
+async function createDefaultExtractor(
+  model: string,
+  opts: { hfEndpoint: string; cacheDir: string },
+) {
   const transformers = await import("@huggingface/transformers");
   const env = (
     transformers as unknown as {
-      env?: { allowRemoteModels?: boolean; remoteHost?: string; remotePathTemplate?: string };
+      env?: {
+        allowRemoteModels?: boolean;
+        remoteHost?: string;
+        remotePathTemplate?: string;
+        cacheDir?: string;
+      };
     }
   ).env;
 
   if (env) {
     env.allowRemoteModels = true;
-    if (opts.hfEndpoint) {
-      env.remoteHost = opts.hfEndpoint.replace(/\/+$/, "") + "/";
-      env.remotePathTemplate = "{model}/resolve/{revision}/{file}";
-    }
+    env.remoteHost = opts.hfEndpoint.replace(/\/+$/, "") + "/";
+    env.remotePathTemplate = "{model}/resolve/{revision}/{file}";
+    env.cacheDir = opts.cacheDir;
   }
 
   const extractor = await (transformers as unknown as {
@@ -138,5 +163,6 @@ async function createDefaultExtractor(model: string, opts: { hfEndpoint?: string
       model: string,
     ) => Promise<(text: string, opts: { pooling: "mean"; normalize: true }) => Promise<unknown>>;
   }).pipeline("feature-extraction", model);
+
   return extractor;
 }

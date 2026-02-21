@@ -15,32 +15,21 @@ describe("getDefaultConfig", () => {
     expect(cfg.ui.mode).toBe("safe");
     expect(cfg.indexing.watch.enabled).toBe(true);
     expect(cfg.mcp.enabled).toBe(true);
-    expect(cfg.embedding.dimension).toBe(384);
-    expect(cfg.modelHub.hfEndpoint).toBe("https://hf-mirror.com");
-    expect(cfg.reranker.mode).toBe("local");
-  });
-
-  test("rejects cloud provider without endpoint", () => {
-    const result = validateConfig({
-      ...getDefaultConfig(),
-      embedding: {
-        provider: "openai_dense",
-        endpoint: "",
-        apiKeys: { openai_dense: "sk-test" },
-        dimension: 1536,
-      },
-    });
-    expect(result.ok).toBe(false);
+    expect(cfg.embedding.local.dimension).toBe(384);
+    expect(cfg.embedding.local.hfEndpoint).toBe("https://hf-mirror.com");
+    expect(cfg.reranker.local.topN).toBe(5);
   });
 
   test("rejects cloud provider without api key", () => {
     const result = validateConfig({
       ...getDefaultConfig(),
       embedding: {
+        ...getDefaultConfig().embedding,
         provider: "qwen_dense",
-        endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
-        apiKeys: {},
-        dimension: 1024,
+        qwen_dense: {
+          ...getDefaultConfig().embedding.qwen_dense,
+          apiKey: "",
+        },
       },
     });
     expect(result.ok).toBe(false);
@@ -90,20 +79,29 @@ describe("getDefaultConfig", () => {
 
     service.updateEmbedding({
       provider: "openai_dense",
-      endpoint: "https://api.openai.com/v1/embeddings",
-      apiKeys: { openai_dense: "sk-test" },
-      dimension: 768,
+      openai_dense: {
+        apiKey: "sk-test",
+        model: "text-embedding-3-large",
+        dimension: 3072,
+      },
     });
-    service.updateModelHub({ hfEndpoint: "https://custom-hf.example.com" });
-    service.updateReranker({ mode: "none", topN: 3 });
+    service.updateReranker({
+      enabled: true,
+      provider: "qwen",
+      qwen: {
+        apiKey: "rk-test",
+        model: "gte-rerank-v2",
+        topN: 8,
+      },
+    });
 
     const reloaded = createConfigService({ configPath }).getConfig();
     expect(reloaded.embedding.provider).toBe("openai_dense");
-    expect(reloaded.embedding.dimension).toBe(768);
-    expect(reloaded.modelHub.hfEndpoint).toBe("https://custom-hf.example.com");
-    expect(reloaded.embedding.apiKeys.openai_dense).toBe("sk-test");
-    expect(reloaded.reranker.mode).toBe("none");
-    expect(reloaded.reranker.topN).toBe(3);
+    expect(reloaded.embedding.openai_dense.dimension).toBe(3072);
+    expect(reloaded.embedding.openai_dense.apiKey).toBe("sk-test");
+    expect(reloaded.reranker.provider).toBe("qwen");
+    expect(reloaded.reranker.qwen.topN).toBe(8);
+    expect(reloaded.reranker.qwen.apiKey).toBe("rk-test");
 
     rmSync(dir, { recursive: true, force: true });
   });

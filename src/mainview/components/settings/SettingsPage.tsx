@@ -27,14 +27,25 @@ export function SettingsPage({
   const [sources, setSources] = useState(config.sources);
   const [activity, setActivity] = useState("");
   const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
+
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
-  const [embeddingEndpoint, setEmbeddingEndpoint] = useState(config.embedding.endpoint);
-  const [embeddingApiKey, setEmbeddingApiKey] = useState(config.embedding.apiKeys[config.embedding.provider] ?? "");
-  const [embeddingDimension, setEmbeddingDimension] = useState(String(config.embedding.dimension));
-  const [hfEndpoint, setHfEndpoint] = useState(config.modelHub.hfEndpoint);
-  const [rerankerMode, setRerankerMode] = useState(config.reranker.mode);
-  const [rerankerModel, setRerankerModel] = useState(config.reranker.model);
-  const [rerankerTopN, setRerankerTopN] = useState(String(config.reranker.topN));
+  const [embeddingLocalHfEndpoint, setEmbeddingLocalHfEndpoint] = useState(config.embedding.local.hfEndpoint);
+  const [embeddingLocalCacheDir, setEmbeddingLocalCacheDir] = useState(config.embedding.local.cacheDir);
+  const [embeddingLocalModel, setEmbeddingLocalModel] = useState(config.embedding.local.model);
+  const [embeddingLocalDimension, setEmbeddingLocalDimension] = useState(String(config.embedding.local.dimension));
+  const [embeddingCloudApiKey, setEmbeddingCloudApiKey] = useState("");
+  const [embeddingCloudModel, setEmbeddingCloudModel] = useState("");
+  const [embeddingCloudDimension, setEmbeddingCloudDimension] = useState("1024");
+
+  const [rerankerEnabled, setRerankerEnabled] = useState(config.reranker.enabled);
+  const [rerankerProvider, setRerankerProvider] = useState(config.reranker.provider);
+  const [rerankerLocalHfEndpoint, setRerankerLocalHfEndpoint] = useState(config.reranker.local.hfEndpoint);
+  const [rerankerLocalCacheDir, setRerankerLocalCacheDir] = useState(config.reranker.local.cacheDir);
+  const [rerankerLocalModel, setRerankerLocalModel] = useState(config.reranker.local.model);
+  const [rerankerLocalTopN, setRerankerLocalTopN] = useState(String(config.reranker.local.topN));
+  const [rerankerCloudApiKey, setRerankerCloudApiKey] = useState("");
+  const [rerankerCloudModel, setRerankerCloudModel] = useState("");
+  const [rerankerCloudTopN, setRerankerCloudTopN] = useState("5");
 
   const { health, components } = useMemo(() => {
     const svc = createHealthService();
@@ -59,8 +70,22 @@ export function SettingsPage({
   }, []);
 
   useEffect(() => {
-    setEmbeddingApiKey(config.embedding.apiKeys[embeddingProvider] ?? "");
-  }, [config.embedding.apiKeys, embeddingProvider]);
+    const next = config.embedding[embeddingProvider];
+    if (embeddingProvider !== "local") {
+      setEmbeddingCloudApiKey(next.apiKey);
+      setEmbeddingCloudModel(next.model);
+      setEmbeddingCloudDimension(String(next.dimension));
+    }
+  }, [config.embedding, embeddingProvider]);
+
+  useEffect(() => {
+    const next = config.reranker[rerankerProvider];
+    if (rerankerProvider !== "local") {
+      setRerankerCloudApiKey(next.apiKey);
+      setRerankerCloudModel(next.model);
+      setRerankerCloudTopN(String(next.topN));
+    }
+  }, [config.reranker, rerankerProvider]);
 
   const toggleMcp = () => {
     const next = !mcpEnabled;
@@ -85,30 +110,51 @@ export function SettingsPage({
   };
 
   const saveEmbeddingConfig = () => {
-    const next = configService.updateEmbedding({
-      provider: embeddingProvider,
-      endpoint: embeddingEndpoint,
-      apiKeys: embeddingApiKey.length > 0 ? { [embeddingProvider]: embeddingApiKey } : {},
-      dimension: Math.max(1, Number.parseInt(embeddingDimension, 10) || 384),
-    });
+    const next =
+      embeddingProvider === "local"
+        ? configService.updateEmbedding({
+            provider: "local",
+            local: {
+              hfEndpoint: embeddingLocalHfEndpoint.trim() || "https://hf-mirror.com",
+              cacheDir: embeddingLocalCacheDir.trim() || "build/cache/embedding/local",
+              model: embeddingLocalModel.trim() || "Xenova/all-MiniLM-L6-v2",
+              dimension: Math.max(1, Number.parseInt(embeddingLocalDimension, 10) || 384),
+            },
+          })
+        : configService.updateEmbedding({
+            provider: embeddingProvider,
+            [embeddingProvider]: {
+              apiKey: embeddingCloudApiKey,
+              model: embeddingCloudModel,
+              dimension: Math.max(1, Number.parseInt(embeddingCloudDimension, 10) || 1024),
+            },
+          });
     setConfig(next);
     setActivity("Embedding settings saved.");
   };
 
-  const saveModelHubConfig = () => {
-    const next = configService.updateModelHub({
-      hfEndpoint: hfEndpoint.trim() || "https://hf-mirror.com",
-    });
-    setConfig(next);
-    setActivity("Model hub settings saved.");
-  };
-
   const saveRerankerConfig = () => {
-    const next = configService.updateReranker({
-      mode: rerankerMode,
-      model: rerankerModel,
-      topN: Math.max(1, Number.parseInt(rerankerTopN, 10) || 5),
-    });
+    const next =
+      rerankerProvider === "local"
+        ? configService.updateReranker({
+            enabled: rerankerEnabled,
+            provider: "local",
+            local: {
+              hfEndpoint: rerankerLocalHfEndpoint.trim() || "https://hf-mirror.com",
+              cacheDir: rerankerLocalCacheDir.trim() || "build/cache/reranker/local",
+              model: rerankerLocalModel.trim() || "BAAI/bge-reranker-base",
+              topN: Math.max(1, Number.parseInt(rerankerLocalTopN, 10) || 5),
+            },
+          })
+        : configService.updateReranker({
+            enabled: rerankerEnabled,
+            provider: rerankerProvider,
+            [rerankerProvider]: {
+              apiKey: rerankerCloudApiKey,
+              model: rerankerCloudModel,
+              topN: Math.max(1, Number.parseInt(rerankerCloudTopN, 10) || 5),
+            },
+          });
     setConfig(next);
     setActivity("Reranker settings saved.");
   };
@@ -160,10 +206,9 @@ export function SettingsPage({
           </li>
         ))}
       </ul>
+
       <h2>Embedding</h2>
-      <p>
-        Current: {config.embedding.provider} / dim {config.embedding.dimension}
-      </p>
+      <p>Current provider: {config.embedding.provider}</p>
       <label>
         Provider
         <select
@@ -181,80 +226,167 @@ export function SettingsPage({
           <option value="openai_dense">OpenAI Dense</option>
         </select>
       </label>
-      <label>
-        Endpoint
-        <input
-          data-testid="embedding-endpoint"
-          value={embeddingEndpoint}
-          onChange={(event) => setEmbeddingEndpoint(event.target.value)}
-        />
-      </label>
-      <label>
-        API Key
-        <input
-          data-testid="embedding-api-key"
-          value={embeddingApiKey}
-          onChange={(event) => setEmbeddingApiKey(event.target.value)}
-        />
-      </label>
-      <label>
-        Dimension
-        <input
-          data-testid="embedding-dimension"
-          value={embeddingDimension}
-          onChange={(event) => setEmbeddingDimension(event.target.value)}
-        />
-      </label>
+
+      {embeddingProvider === "local" ? (
+        <>
+          <label>
+            HF Endpoint
+            <input
+              data-testid="embedding-local-hf-endpoint"
+              value={embeddingLocalHfEndpoint}
+              onChange={(event) => setEmbeddingLocalHfEndpoint(event.target.value)}
+            />
+          </label>
+          <label>
+            Cache Dir
+            <input
+              data-testid="embedding-local-cache-dir"
+              value={embeddingLocalCacheDir}
+              onChange={(event) => setEmbeddingLocalCacheDir(event.target.value)}
+            />
+          </label>
+          <label>
+            Model
+            <input
+              data-testid="embedding-local-model"
+              value={embeddingLocalModel}
+              onChange={(event) => setEmbeddingLocalModel(event.target.value)}
+            />
+          </label>
+          <label>
+            Dimension
+            <input
+              data-testid="embedding-local-dimension"
+              value={embeddingLocalDimension}
+              onChange={(event) => setEmbeddingLocalDimension(event.target.value)}
+            />
+          </label>
+        </>
+      ) : (
+        <>
+          <label>
+            API Key
+            <input
+              data-testid="embedding-cloud-api-key"
+              value={embeddingCloudApiKey}
+              onChange={(event) => setEmbeddingCloudApiKey(event.target.value)}
+            />
+          </label>
+          <label>
+            Model
+            <input
+              data-testid="embedding-cloud-model"
+              value={embeddingCloudModel}
+              onChange={(event) => setEmbeddingCloudModel(event.target.value)}
+            />
+          </label>
+          <label>
+            Dimension
+            <input
+              data-testid="embedding-cloud-dimension"
+              value={embeddingCloudDimension}
+              onChange={(event) => setEmbeddingCloudDimension(event.target.value)}
+            />
+          </label>
+        </>
+      )}
+
       <button data-testid="save-embedding" type="button" onClick={saveEmbeddingConfig}>
         Save Embedding
       </button>
-      <h2>Model Hub</h2>
-      <p>Current HF_ENDPOINT: {config.modelHub.hfEndpoint}</p>
+
+      <h2>Reranker</h2>
+      <p>Current provider: {config.reranker.provider}</p>
       <label>
-        HF_ENDPOINT
+        Enabled
         <input
-          data-testid="hf-endpoint"
-          value={hfEndpoint}
-          onChange={(event) => setHfEndpoint(event.target.value)}
+          data-testid="reranker-enabled"
+          type="checkbox"
+          checked={rerankerEnabled}
+          onChange={(event) => setRerankerEnabled(event.target.checked)}
         />
       </label>
-      <button data-testid="save-model-hub" type="button" onClick={saveModelHubConfig}>
-        Save Model Hub
-      </button>
-      <h2>Reranker</h2>
-      <p>
-        Current: {config.reranker.mode} / {config.reranker.model} / topN {config.reranker.topN}
-      </p>
       <label>
-        Mode
+        Provider
         <select
-          data-testid="reranker-mode"
-          value={rerankerMode}
-          onChange={(event) => setRerankerMode(event.target.value as "none" | "local")}
+          data-testid="reranker-provider"
+          value={rerankerProvider}
+          onChange={(event) => setRerankerProvider(event.target.value as "local" | "qwen" | "openai")}
         >
           <option value="local">local</option>
-          <option value="none">none</option>
+          <option value="qwen">qwen</option>
+          <option value="openai">openai</option>
         </select>
       </label>
-      <label>
-        Model
-        <input
-          data-testid="reranker-model"
-          value={rerankerModel}
-          onChange={(event) => setRerankerModel(event.target.value)}
-        />
-      </label>
-      <label>
-        TopN
-        <input
-          data-testid="reranker-topn"
-          value={rerankerTopN}
-          onChange={(event) => setRerankerTopN(event.target.value)}
-        />
-      </label>
+
+      {rerankerProvider === "local" ? (
+        <>
+          <label>
+            HF Endpoint
+            <input
+              data-testid="reranker-local-hf-endpoint"
+              value={rerankerLocalHfEndpoint}
+              onChange={(event) => setRerankerLocalHfEndpoint(event.target.value)}
+            />
+          </label>
+          <label>
+            Cache Dir
+            <input
+              data-testid="reranker-local-cache-dir"
+              value={rerankerLocalCacheDir}
+              onChange={(event) => setRerankerLocalCacheDir(event.target.value)}
+            />
+          </label>
+          <label>
+            Model
+            <input
+              data-testid="reranker-local-model"
+              value={rerankerLocalModel}
+              onChange={(event) => setRerankerLocalModel(event.target.value)}
+            />
+          </label>
+          <label>
+            TopN
+            <input
+              data-testid="reranker-local-topn"
+              value={rerankerLocalTopN}
+              onChange={(event) => setRerankerLocalTopN(event.target.value)}
+            />
+          </label>
+        </>
+      ) : (
+        <>
+          <label>
+            API Key
+            <input
+              data-testid="reranker-cloud-api-key"
+              value={rerankerCloudApiKey}
+              onChange={(event) => setRerankerCloudApiKey(event.target.value)}
+            />
+          </label>
+          <label>
+            Model
+            <input
+              data-testid="reranker-cloud-model"
+              value={rerankerCloudModel}
+              onChange={(event) => setRerankerCloudModel(event.target.value)}
+            />
+          </label>
+          <label>
+            TopN
+            <input
+              data-testid="reranker-cloud-topn"
+              value={rerankerCloudTopN}
+              onChange={(event) => setRerankerCloudTopN(event.target.value)}
+            />
+          </label>
+        </>
+      )}
+
       <button data-testid="save-reranker" type="button" onClick={saveRerankerConfig}>
         Save Reranker
       </button>
+
       <button type="button" onClick={() => setShowAdvanced((v) => !v)}>
         {showAdvanced ? "Hide Advanced" : "Show Advanced"}
       </button>

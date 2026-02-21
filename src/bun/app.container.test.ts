@@ -8,6 +8,31 @@ import type { ConfigService } from "../core/config/config.types";
 function makeConfigService(enabled: boolean): ConfigService {
   let mcpEnabled = enabled;
   let sources: Array<{ path: string; enabled: boolean }> = [];
+  let embedding = {
+    provider: "local" as const,
+    local: {
+      hfEndpoint: "https://hf-mirror.com",
+      cacheDir: "build/cache/embedding/local",
+      model: "Xenova/all-MiniLM-L6-v2",
+      dimension: 384,
+    },
+    qwen_dense: { apiKey: "", model: "text-embedding-v4", dimension: 1024 },
+    qwen_sparse: { apiKey: "", model: "text-embedding-v4", dimension: 1024 },
+    openai_dense: { apiKey: "", model: "text-embedding-3-small", dimension: 1536 },
+  };
+  let reranker = {
+    enabled: true,
+    provider: "local" as const,
+    local: {
+      hfEndpoint: "https://hf-mirror.com",
+      cacheDir: "build/cache/reranker/local",
+      model: "BAAI/bge-reranker-base",
+      topN: 5,
+    },
+    qwen: { apiKey: "", model: "gte-rerank-v2", topN: 5 },
+    openai: { apiKey: "", model: "text-embedding-3-small", topN: 5 },
+  };
+
   return {
     getConfig() {
       return {
@@ -16,14 +41,8 @@ function makeConfigService(enabled: boolean): ConfigService {
         mcp: { enabled: mcpEnabled },
         ui: { mode: "safe" as const },
         indexing: { watch: { enabled: true } },
-        embedding: {
-          provider: "local" as const,
-          endpoint: "",
-          apiKeys: {},
-          dimension: 384,
-        },
-        modelHub: { hfEndpoint: "https://hf-mirror.com" },
-        reranker: { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 },
+        embedding,
+        reranker,
       };
     },
     getMcpEnabled() {
@@ -53,23 +72,25 @@ function makeConfigService(enabled: boolean): ConfigService {
       return sources;
     },
     updateEmbedding(input) {
-      const current = this.getConfig();
-      return {
-        ...current,
-        embedding: {
-          ...current.embedding,
-          ...input,
-          apiKeys: { ...current.embedding.apiKeys, ...(input.apiKeys ?? {}) },
-        },
+      embedding = {
+        ...embedding,
+        ...input,
+        local: { ...embedding.local, ...(input.local ?? {}) },
+        qwen_dense: { ...embedding.qwen_dense, ...(input.qwen_dense ?? {}) },
+        qwen_sparse: { ...embedding.qwen_sparse, ...(input.qwen_sparse ?? {}) },
+        openai_dense: { ...embedding.openai_dense, ...(input.openai_dense ?? {}) },
       };
-    },
-    updateModelHub(input) {
-      const current = this.getConfig();
-      return { ...current, modelHub: { ...current.modelHub, ...input } };
+      return this.getConfig();
     },
     updateReranker(input) {
-      const current = this.getConfig();
-      return { ...current, reranker: { ...current.reranker, ...input } };
+      reranker = {
+        ...reranker,
+        ...input,
+        local: { ...reranker.local, ...(input.local ?? {}) },
+        qwen: { ...reranker.qwen, ...(input.qwen ?? {}) },
+        openai: { ...reranker.openai, ...(input.openai ?? {}) },
+      };
+      return this.getConfig();
     },
   };
 }

@@ -7,20 +7,11 @@ type AppBridgeSchema = {
       get_config: { params: void; response: AppConfig };
       set_mcp_enabled: { params: { enabled: boolean }; response: AppConfig };
       set_embedding_config: {
-        params: {
-          provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
-          endpoint?: string;
-          apiKeys?: Record<string, string>;
-          dimension?: number;
-        };
-        response: AppConfig;
-      };
-      set_model_hub_config: {
-        params: { hfEndpoint?: string };
+        params: Partial<AppConfig["embedding"]>;
         response: AppConfig;
       };
       set_reranker_config: {
-        params: { mode?: "none" | "local"; model?: string; topN?: number };
+        params: Partial<AppConfig["reranker"]>;
         response: AppConfig;
       };
       add_source: { params: { path: string }; response: SourceConfig[] };
@@ -41,18 +32,8 @@ type BridgeRpc = {
   request: {
     get_config: () => Promise<AppConfig>;
     set_mcp_enabled: (params: { enabled: boolean }) => Promise<AppConfig>;
-    set_embedding_config: (params: {
-      provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
-      endpoint?: string;
-      apiKeys?: Record<string, string>;
-      dimension?: number;
-    }) => Promise<AppConfig>;
-    set_model_hub_config: (params: { hfEndpoint?: string }) => Promise<AppConfig>;
-    set_reranker_config: (params: {
-      mode?: "none" | "local";
-      model?: string;
-      topN?: number;
-    }) => Promise<AppConfig>;
+    set_embedding_config: (params: Partial<AppConfig["embedding"]>) => Promise<AppConfig>;
+    set_reranker_config: (params: Partial<AppConfig["reranker"]>) => Promise<AppConfig>;
     add_source: (params: { path: string }) => Promise<SourceConfig[]>;
     update_source: (params: { path: string; enabled: boolean }) => Promise<SourceConfig[]>;
     remove_source: (params: { path: string }) => Promise<SourceConfig[]>;
@@ -106,12 +87,7 @@ export async function addSourceInBun(path: string): Promise<void> {
   }
 }
 
-export async function setEmbeddingConfigInBun(input: {
-  provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
-  endpoint?: string;
-  apiKeys?: Record<string, string>;
-  dimension?: number;
-}): Promise<void> {
+export async function setEmbeddingConfigInBun(input: Partial<AppConfig["embedding"]>): Promise<void> {
   const channel = await getRpc();
   if (!channel) return;
   try {
@@ -121,21 +97,7 @@ export async function setEmbeddingConfigInBun(input: {
   }
 }
 
-export async function setModelHubConfigInBun(input: { hfEndpoint?: string }): Promise<void> {
-  const channel = await getRpc();
-  if (!channel) return;
-  try {
-    await channel.request.set_model_hub_config(input);
-  } catch {
-    return;
-  }
-}
-
-export async function setRerankerConfigInBun(input: {
-  mode?: "none" | "local";
-  model?: string;
-  topN?: number;
-}): Promise<void> {
+export async function setRerankerConfigInBun(input: Partial<AppConfig["reranker"]>): Promise<void> {
   const channel = await getRpc();
   if (!channel) return;
   try {

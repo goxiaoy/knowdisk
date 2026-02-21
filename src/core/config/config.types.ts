@@ -4,6 +4,35 @@ export type SourceConfig = {
   enabled: boolean;
 };
 
+export type EmbeddingProviderId = "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
+export type RerankerProviderId = "local" | "qwen" | "openai";
+
+export type LocalEmbeddingConfig = {
+  hfEndpoint: string;
+  cacheDir: string;
+  model: string;
+  dimension: number;
+};
+
+export type CloudEmbeddingConfig = {
+  apiKey: string;
+  model: string;
+  dimension: number;
+};
+
+export type LocalRerankerConfig = {
+  hfEndpoint: string;
+  cacheDir: string;
+  model: string;
+  topN: number;
+};
+
+export type CloudRerankerConfig = {
+  apiKey: string;
+  model: string;
+  topN: number;
+};
+
 export interface AppConfig {
   version: 1;
   sources: SourceConfig[];
@@ -19,18 +48,18 @@ export interface AppConfig {
     };
   };
   embedding: {
-    provider: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
-    endpoint: string;
-    apiKeys: Record<string, string>;
-    dimension: number;
-  };
-  modelHub: {
-    hfEndpoint: string;
+    provider: EmbeddingProviderId;
+    local: LocalEmbeddingConfig;
+    qwen_dense: CloudEmbeddingConfig;
+    qwen_sparse: CloudEmbeddingConfig;
+    openai_dense: CloudEmbeddingConfig;
   };
   reranker: {
-    mode: "none" | "local";
-    model: string;
-    topN: number;
+    enabled: boolean;
+    provider: RerankerProviderId;
+    local: LocalRerankerConfig;
+    qwen: CloudRerankerConfig;
+    openai: CloudRerankerConfig;
   };
 }
 
@@ -43,6 +72,5 @@ export type ConfigService = {
   updateSource: (path: string, enabled: boolean) => SourceConfig[];
   removeSource: (path: string) => SourceConfig[];
   updateEmbedding: (input: Partial<AppConfig["embedding"]>) => AppConfig;
-  updateModelHub: (input: Partial<AppConfig["modelHub"]>) => AppConfig;
   updateReranker: (input: Partial<AppConfig["reranker"]>) => AppConfig;
 };
