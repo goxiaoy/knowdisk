@@ -59,3 +59,19 @@ When you run `bun run dev` (without HMR):
 - **Vite settings**: Edit `vite.config.ts`
 - **Window settings**: Edit `src/bun/index.ts`
 - **App metadata**: Edit `electrobun.config.ts`
+
+## Verification Gate
+
+Before claiming feature-complete for local RAG + MCP behavior, run:
+
+```bash
+bun test
+bun run build
+bun run dev
+```
+
+Record outcomes in `docs/plans/verification-checklist-local-rag-mcp.md` including:
+
+- command summaries,
+- execution date/time,
+- known gaps that still require manual validation.
