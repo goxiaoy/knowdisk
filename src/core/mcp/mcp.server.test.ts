@@ -24,3 +24,18 @@ test("search_local_knowledge returns retrieval payload", async () => {
   expect(res.results).toHaveLength(3);
   expect(res.results[0]).toHaveProperty("sourcePath");
 });
+
+test("search_local_knowledge fails when mcp is disabled", async () => {
+  const server = createMcpServer({
+    retrieval: {
+      async search() {
+        return [];
+      },
+    },
+    isEnabled: () => false,
+  });
+
+  await expect(server.callTool("search_local_knowledge", { query: "setup" })).rejects.toThrow(
+    "MCP_DISABLED",
+  );
+});

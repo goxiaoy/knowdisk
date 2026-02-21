@@ -3,6 +3,9 @@ export type UiMode = "safe" | "advanced";
 export interface AppConfig {
   version: 1;
   sources: string[];
+  mcp: {
+    enabled: boolean;
+  };
   ui: {
     mode: UiMode;
   };
@@ -17,3 +20,9 @@ export interface AppConfig {
     endpoint: string;
   };
 }
+
+export type ConfigService = {
+  getConfig: () => AppConfig;
+  getMcpEnabled: () => boolean;
+  setMcpEnabled: (enabled: boolean) => AppConfig;
+};

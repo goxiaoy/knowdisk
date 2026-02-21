@@ -1,4 +1,5 @@
 import { BrowserWindow, Updater, Utils } from "electrobun/bun";
+import { defaultConfigService } from "../core/config/config.service";
 import { createMcpServer } from "../core/mcp/mcp.server";
 
 const DEV_SERVER_PORT = 5173;
@@ -22,12 +23,18 @@ async function getMainViewUrl(): Promise<string> {
 }
 
 function bootstrapMcp() {
+  if (!defaultConfigService.getMcpEnabled()) {
+    console.log("MCP server disabled in settings.");
+    return null;
+  }
+
   return createMcpServer({
     retrieval: {
       async search() {
         return [];
       },
     },
+    isEnabled: () => defaultConfigService.getMcpEnabled(),
   });
 }
 
