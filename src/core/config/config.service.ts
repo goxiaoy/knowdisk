@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { AppConfig, ConfigService } from "./config.types";
+import type { AppConfig, ConfigService, SourceConfig } from "./config.types";
 
 export function getDefaultConfig(): AppConfig {
   return {
@@ -30,16 +30,41 @@ export function migrateConfig(input: unknown): AppConfig {
   const version = (input as { version?: number })?.version ?? 0;
   if (version === 1) {
     const next = input as Partial<AppConfig>;
+    const migratedSources =
+      Array.isArray(next.sources) && next.sources.length > 0
+        ? normalizeSources(next.sources as unknown[])
+        : [];
     return {
       ...getDefaultConfig(),
       ...next,
+      sources: migratedSources,
       mcp: {
         enabled: next.mcp?.enabled ?? true,
       },
     };
   }
 
-  return { ...getDefaultConfig(), version: 1 };
+  const legacy = input as { sources?: unknown };
+  return {
+    ...getDefaultConfig(),
+    version: 1,
+    sources: normalizeSources(Array.isArray(legacy.sources) ? legacy.sources : []),
+  };
+}
+
+function normalizeSources(input: unknown[]): SourceConfig[] {
+  return input
+    .map((item) => {
+      if (typeof item === "string") {
+        return { path: item, enabled: true };
+      }
+      const source = item as Partial<SourceConfig>;
+      if (typeof source.path === "string") {
+        return { path: source.path, enabled: source.enabled ?? true };
+      }
+      return null;
+    })
+    .filter((item): item is SourceConfig => item !== null);
 }
 
 export function createConfigService(opts?: { configPath?: string }): ConfigService {
@@ -85,6 +110,38 @@ export function createConfigService(opts?: { configPath?: string }): ConfigServi
       cache = next;
       persist(next);
       return next;
+    },
+    getSources() {
+      return this.getConfig().sources;
+    },
+    addSource(path: string) {
+      const current = this.getConfig();
+      if (current.sources.some((item) => item.path === path)) {
+        return current.sources;
+      }
+      const sources = [...current.sources, { path, enabled: true }];
+      const next = { ...current, sources };
+      cache = next;
+      persist(next);
+      return sources;
+    },
+    updateSource(path: string, enabled: boolean) {
+      const current = this.getConfig();
+      const sources = current.sources.map((item) =>
+        item.path === path ? { ...item, enabled } : item,
+      );
+      const next = { ...current, sources };
+      cache = next;
+      persist(next);
+      return sources;
+    },
+    removeSource(path: string) {
+      const current = this.getConfig();
+      const sources = current.sources.filter((item) => item.path !== path);
+      const next = { ...current, sources };
+      cache = next;
+      persist(next);
+      return sources;
     },
   };
 }

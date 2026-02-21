@@ -26,5 +26,8 @@ export function createHealthService() {
       }
       return "healthy";
     },
+    getComponentHealth() {
+      return { ...states };
+    },
   };
 }

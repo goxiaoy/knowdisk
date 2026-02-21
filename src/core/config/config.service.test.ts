@@ -26,9 +26,10 @@ describe("getDefaultConfig", () => {
   });
 
   test("migrates v0 config to v1", () => {
-    const migrated = migrateConfig({ version: 0, sources: [] });
+    const migrated = migrateConfig({ version: 0, sources: ["docs"] });
     expect(migrated.version).toBe(1);
     expect(migrated.mcp.enabled).toBe(true);
+    expect(migrated.sources).toEqual([{ path: "docs", enabled: true }]);
   });
 
   test("persists mcp enabled flag across service instances", () => {
@@ -41,6 +42,22 @@ describe("getDefaultConfig", () => {
 
     const second = createConfigService({ configPath });
     expect(second.getMcpEnabled()).toBe(false);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("supports source CRUD and persists across service instances", () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-config-"));
+    const configPath = join(dir, "app-config.json");
+
+    const first = createConfigService({ configPath });
+    first.addSource("/Users/a/docs");
+    first.addSource("/Users/a/wiki");
+    first.updateSource("/Users/a/wiki", false);
+    first.removeSource("/Users/a/docs");
+
+    const second = createConfigService({ configPath });
+    expect(second.getSources()).toEqual([{ path: "/Users/a/wiki", enabled: false }]);
 
     rmSync(dir, { recursive: true, force: true });
   });
