@@ -18,8 +18,10 @@ function makeConfigService(enabled: boolean): ConfigService {
         indexing: { watch: { enabled: true } },
         embedding: {
           mode: "local" as const,
+          provider: "local" as const,
           model: "BAAI/bge-small-en-v1.5",
           endpoint: "",
+          apiKey: "",
           dimension: 384,
         },
         reranker: { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 },

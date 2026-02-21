@@ -22,7 +22,29 @@ describe("getDefaultConfig", () => {
   test("rejects cloud provider without endpoint", () => {
     const result = validateConfig({
       ...getDefaultConfig(),
-      embedding: { mode: "cloud", model: "text-embed-3", endpoint: "", dimension: 1536 },
+      embedding: {
+        mode: "cloud",
+        provider: "openai_dense",
+        model: "text-embedding-3-small",
+        endpoint: "",
+        apiKey: "sk-test",
+        dimension: 1536,
+      },
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  test("rejects cloud provider without api key", () => {
+    const result = validateConfig({
+      ...getDefaultConfig(),
+      embedding: {
+        mode: "cloud",
+        provider: "qwen_dense",
+        model: "text-embedding-v4",
+        endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
+        apiKey: "",
+        dimension: 1024,
+      },
     });
     expect(result.ok).toBe(false);
   });

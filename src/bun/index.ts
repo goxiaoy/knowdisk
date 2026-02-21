@@ -37,16 +37,27 @@ const rpc = BrowserView.defineRPC({
       },
       set_embedding_config({
         mode,
+        provider,
         model,
         endpoint,
+        apiKey,
         dimension,
       }: {
         mode?: "local" | "cloud";
+        provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
         model?: string;
         endpoint?: string;
+        apiKey?: string;
         dimension?: number;
       }) {
-        return container.configService.updateEmbedding({ mode, model, endpoint, dimension });
+        return container.configService.updateEmbedding({
+          mode,
+          provider,
+          model,
+          endpoint,
+          apiKey,
+          dimension,
+        });
       },
       set_reranker_config({
         mode,

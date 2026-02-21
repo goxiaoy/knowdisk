@@ -28,7 +28,10 @@ export function SettingsPage({
   const [activity, setActivity] = useState("");
   const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
   const [embeddingMode, setEmbeddingMode] = useState(config.embedding.mode);
+  const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
   const [embeddingModel, setEmbeddingModel] = useState(config.embedding.model);
+  const [embeddingEndpoint, setEmbeddingEndpoint] = useState(config.embedding.endpoint);
+  const [embeddingApiKey, setEmbeddingApiKey] = useState(config.embedding.apiKey);
   const [embeddingDimension, setEmbeddingDimension] = useState(String(config.embedding.dimension));
   const [rerankerMode, setRerankerMode] = useState(config.reranker.mode);
   const [rerankerModel, setRerankerModel] = useState(config.reranker.model);
@@ -81,7 +84,10 @@ export function SettingsPage({
   const saveEmbeddingConfig = () => {
     const next = configService.updateEmbedding({
       mode: embeddingMode,
+      provider: embeddingProvider,
       model: embeddingModel,
+      endpoint: embeddingEndpoint,
+      apiKey: embeddingApiKey,
       dimension: Math.max(1, Number.parseInt(embeddingDimension, 10) || 384),
     });
     setConfig(next);
@@ -147,7 +153,8 @@ export function SettingsPage({
       </ul>
       <h2>Embedding</h2>
       <p>
-        Current: {config.embedding.mode} / {config.embedding.model} / dim {config.embedding.dimension}
+        Current: {config.embedding.mode} / {config.embedding.provider} / {config.embedding.model} / dim{" "}
+        {config.embedding.dimension}
       </p>
       <label>
         Mode
@@ -161,11 +168,44 @@ export function SettingsPage({
         </select>
       </label>
       <label>
+        Provider
+        <select
+          data-testid="embedding-provider"
+          value={embeddingProvider}
+          onChange={(event) =>
+            setEmbeddingProvider(
+              event.target.value as "local" | "qwen_dense" | "qwen_sparse" | "openai_dense",
+            )
+          }
+        >
+          <option value="local">local</option>
+          <option value="qwen_dense">Qwen Dense</option>
+          <option value="qwen_sparse">Qwen Sparse</option>
+          <option value="openai_dense">OpenAI Dense</option>
+        </select>
+      </label>
+      <label>
         Model
         <input
           data-testid="embedding-model"
           value={embeddingModel}
           onChange={(event) => setEmbeddingModel(event.target.value)}
+        />
+      </label>
+      <label>
+        Endpoint
+        <input
+          data-testid="embedding-endpoint"
+          value={embeddingEndpoint}
+          onChange={(event) => setEmbeddingEndpoint(event.target.value)}
+        />
+      </label>
+      <label>
+        API Key
+        <input
+          data-testid="embedding-api-key"
+          value={embeddingApiKey}
+          onChange={(event) => setEmbeddingApiKey(event.target.value)}
         />
       </label>
       <label>

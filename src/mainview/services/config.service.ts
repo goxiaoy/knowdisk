@@ -18,7 +18,14 @@ function getDefaultConfig(): AppConfig {
     mcp: { enabled: true },
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
-    embedding: { mode: "local", model: "BAAI/bge-small-en-v1.5", endpoint: "", dimension: 384 },
+    embedding: {
+      mode: "local",
+      provider: "local",
+      model: "BAAI/bge-small-en-v1.5",
+      endpoint: "",
+      apiKey: "",
+      dimension: 384,
+    },
     reranker: { mode: "local", model: "BAAI/bge-reranker-base", topN: 5 },
   };
 }

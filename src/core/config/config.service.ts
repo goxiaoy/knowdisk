@@ -13,8 +13,10 @@ export function getDefaultConfig(): AppConfig {
     indexing: { watch: { enabled: true } },
     embedding: {
       mode: "local",
+      provider: "local",
       model: "BAAI/bge-small-en-v1.5",
       endpoint: "",
+      apiKey: "",
       dimension: 384,
     },
     reranker: {
@@ -28,6 +30,9 @@ export function getDefaultConfig(): AppConfig {
 export function validateConfig(cfg: AppConfig): { ok: boolean; errors: string[] } {
   if (cfg.embedding.mode === "cloud" && !cfg.embedding.endpoint) {
     return { ok: false, errors: ["embedding.endpoint is required for cloud mode"] };
+  }
+  if (cfg.embedding.mode === "cloud" && !cfg.embedding.apiKey) {
+    return { ok: false, errors: ["embedding.apiKey is required for cloud mode"] };
   }
   if (cfg.embedding.dimension <= 0) {
     return { ok: false, errors: ["embedding.dimension must be > 0"] };

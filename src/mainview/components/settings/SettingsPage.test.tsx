@@ -6,7 +6,14 @@ import type { ConfigService } from "../../../core/config/config.types";
 function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
   let enabled = true;
   let sources: Array<{ path: string; enabled: boolean }> = [];
-  let embedding = { mode: "local" as const, model: "BAAI/bge-small-en-v1.5", endpoint: "", dimension: 384 };
+  let embedding = {
+    mode: "local" as const,
+    provider: "local" as const,
+    model: "BAAI/bge-small-en-v1.5",
+    endpoint: "",
+    apiKey: "",
+    dimension: 384,
+  };
   let reranker = { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 };
 
   const base: ConfigService = {
@@ -123,8 +130,10 @@ describe("SettingsPage", () => {
               indexing: { watch: { enabled: true } },
               embedding: {
                 mode: "local" as const,
+                provider: "local" as const,
                 model: "BAAI/bge-small-en-v1.5",
                 endpoint: "",
+                apiKey: "",
                 dimension: 384,
               },
               reranker: { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 },
@@ -177,6 +186,8 @@ describe("SettingsPage", () => {
 
   it("saves embedding and reranker settings", () => {
     let embeddingModel = "BAAI/bge-small-en-v1.5";
+    let embeddingProvider: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense" = "local";
+    let embeddingApiKey = "";
     let rerankerMode: "none" | "local" = "local";
     const renderer = create(
       <SettingsPage
@@ -184,6 +195,8 @@ describe("SettingsPage", () => {
         configService={makeConfigService({
           updateEmbedding(input) {
             embeddingModel = input.model ?? embeddingModel;
+            embeddingProvider = (input.provider as typeof embeddingProvider) ?? embeddingProvider;
+            embeddingApiKey = input.apiKey ?? embeddingApiKey;
             return this.getConfig();
           },
           updateReranker(input) {
@@ -196,8 +209,16 @@ describe("SettingsPage", () => {
     const root = renderer.root;
 
     const embeddingInput = root.findByProps({ "data-testid": "embedding-model" });
+    const providerSelect = root.findByProps({ "data-testid": "embedding-provider" });
+    const apiKeyInput = root.findByProps({ "data-testid": "embedding-api-key" });
+    act(() => {
+      providerSelect.props.onChange({ target: { value: "openai_dense" } });
+    });
     act(() => {
       embeddingInput.props.onChange({ target: { value: "BAAI/bge-base-en-v1.5" } });
+    });
+    act(() => {
+      apiKeyInput.props.onChange({ target: { value: "sk-live-1" } });
     });
     const saveEmbedding = root.findByProps({ "data-testid": "save-embedding" });
     act(() => {
@@ -214,6 +235,8 @@ describe("SettingsPage", () => {
     });
 
     expect(embeddingModel).toBe("BAAI/bge-base-en-v1.5");
+    expect(embeddingProvider).toBe("openai_dense");
+    expect(embeddingApiKey).toBe("sk-live-1");
     expect(rerankerMode).toBe("none");
   });
 });

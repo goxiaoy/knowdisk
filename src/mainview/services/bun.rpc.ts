@@ -7,7 +7,14 @@ type AppBridgeSchema = {
       get_config: { params: void; response: AppConfig };
       set_mcp_enabled: { params: { enabled: boolean }; response: AppConfig };
       set_embedding_config: {
-        params: { mode?: "local" | "cloud"; model?: string; endpoint?: string; dimension?: number };
+        params: {
+          mode?: "local" | "cloud";
+          provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
+          model?: string;
+          endpoint?: string;
+          apiKey?: string;
+          dimension?: number;
+        };
         response: AppConfig;
       };
       set_reranker_config: {
@@ -34,8 +41,10 @@ type BridgeRpc = {
     set_mcp_enabled: (params: { enabled: boolean }) => Promise<AppConfig>;
     set_embedding_config: (params: {
       mode?: "local" | "cloud";
+      provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
       model?: string;
       endpoint?: string;
+      apiKey?: string;
       dimension?: number;
     }) => Promise<AppConfig>;
     set_reranker_config: (params: {
@@ -98,8 +107,10 @@ export async function addSourceInBun(path: string): Promise<void> {
 
 export async function setEmbeddingConfigInBun(input: {
   mode?: "local" | "cloud";
+  provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
   model?: string;
   endpoint?: string;
+  apiKey?: string;
   dimension?: number;
 }): Promise<void> {
   const channel = await getRpc();
