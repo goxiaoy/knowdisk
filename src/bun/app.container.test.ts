@@ -45,52 +45,13 @@ function makeConfigService(enabled: boolean): ConfigService {
         reranker,
       };
     },
-    getMcpEnabled() {
-      return mcpEnabled;
-    },
-    setMcpEnabled(enabledNext: boolean) {
-      mcpEnabled = enabledNext;
-      return this.getConfig();
-    },
-    getSources() {
-      return sources;
-    },
-    addSource(path: string) {
-      if (!sources.some((item) => item.path === path)) {
-        sources = [...sources, { path, enabled: true }];
-      }
-      return sources;
-    },
-    updateSource(path: string, enabledNext: boolean) {
-      sources = sources.map((item) =>
-        item.path === path ? { ...item, enabled: enabledNext } : item,
-      );
-      return sources;
-    },
-    removeSource(path: string) {
-      sources = sources.filter((item) => item.path !== path);
-      return sources;
-    },
-    updateEmbedding(input) {
-      embedding = {
-        ...embedding,
-        ...input,
-        local: { ...embedding.local, ...(input.local ?? {}) },
-        qwen_dense: { ...embedding.qwen_dense, ...(input.qwen_dense ?? {}) },
-        qwen_sparse: { ...embedding.qwen_sparse, ...(input.qwen_sparse ?? {}) },
-        openai_dense: { ...embedding.openai_dense, ...(input.openai_dense ?? {}) },
-      };
-      return this.getConfig();
-    },
-    updateReranker(input) {
-      reranker = {
-        ...reranker,
-        ...input,
-        local: { ...reranker.local, ...(input.local ?? {}) },
-        qwen: { ...reranker.qwen, ...(input.qwen ?? {}) },
-        openai: { ...reranker.openai, ...(input.openai ?? {}) },
-      };
-      return this.getConfig();
+    updateConfig(updater) {
+      const next = updater(this.getConfig());
+      mcpEnabled = next.mcp.enabled;
+      sources = next.sources;
+      embedding = next.embedding;
+      reranker = next.reranker;
+      return next;
     },
   };
 }

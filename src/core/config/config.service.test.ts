@@ -47,11 +47,11 @@ describe("getDefaultConfig", () => {
     const configPath = join(dir, "app-config.json");
 
     const first = createConfigService({ configPath });
-    expect(first.getMcpEnabled()).toBe(true);
-    first.setMcpEnabled(false);
+    expect(first.getConfig().mcp.enabled).toBe(true);
+    first.updateConfig((source) => ({ ...source, mcp: { enabled: false } }));
 
     const second = createConfigService({ configPath });
-    expect(second.getMcpEnabled()).toBe(false);
+    expect(second.getConfig().mcp.enabled).toBe(false);
 
     rmSync(dir, { recursive: true, force: true });
   });
@@ -61,13 +61,13 @@ describe("getDefaultConfig", () => {
     const configPath = join(dir, "app-config.json");
 
     const first = createConfigService({ configPath });
-    first.addSource("/Users/a/docs");
-    first.addSource("/Users/a/wiki");
-    first.updateSource("/Users/a/wiki", false);
-    first.removeSource("/Users/a/docs");
+    first.updateConfig((source) => ({
+      ...source,
+      sources: [{ path: "/Users/a/wiki", enabled: false }],
+    }));
 
     const second = createConfigService({ configPath });
-    expect(second.getSources()).toEqual([{ path: "/Users/a/wiki", enabled: false }]);
+    expect(second.getConfig().sources).toEqual([{ path: "/Users/a/wiki", enabled: false }]);
 
     rmSync(dir, { recursive: true, force: true });
   });
@@ -77,23 +77,28 @@ describe("getDefaultConfig", () => {
     const configPath = join(dir, "app-config.json");
     const service = createConfigService({ configPath });
 
-    service.updateEmbedding({
-      provider: "openai_dense",
-      openai_dense: {
-        apiKey: "sk-test",
-        model: "text-embedding-3-large",
-        dimension: 3072,
+    service.updateConfig((source) => ({
+      ...source,
+      embedding: {
+        ...source.embedding,
+        provider: "openai_dense",
+        openai_dense: {
+          apiKey: "sk-test",
+          model: "text-embedding-3-large",
+          dimension: 3072,
+        },
       },
-    });
-    service.updateReranker({
-      enabled: true,
-      provider: "qwen",
-      qwen: {
-        apiKey: "rk-test",
-        model: "gte-rerank-v2",
-        topN: 8,
+      reranker: {
+        ...source.reranker,
+        enabled: true,
+        provider: "qwen",
+        qwen: {
+          apiKey: "rk-test",
+          model: "gte-rerank-v2",
+          topN: 8,
+        },
       },
-    });
+    }));
 
     const reloaded = createConfigService({ configPath }).getConfig();
     expect(reloaded.embedding.provider).toBe("openai_dense");

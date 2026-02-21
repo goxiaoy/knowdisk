@@ -60,16 +60,62 @@ const rpc = BrowserView.defineRPC({
       get_config() {
         return container.configService.getConfig();
       },
+      update_config({ config }: { config: AppConfig }) {
+        return container.configService.updateConfig(() => config);
+      },
       set_mcp_enabled({ enabled }: { enabled: boolean }) {
-        return container.configService.setMcpEnabled(enabled);
+        return container.configService.updateConfig((source) => ({
+          ...source,
+          mcp: { enabled },
+        }));
       },
       set_embedding_config(input: Partial<AppConfig["embedding"]>) {
-        const updated = container.configService.updateEmbedding(input);
+        const updated = container.configService.updateConfig((source) => ({
+          ...source,
+          embedding: {
+            ...source.embedding,
+            ...input,
+            local: {
+              ...source.embedding.local,
+              ...(input.local ?? {}),
+            },
+            qwen_dense: {
+              ...source.embedding.qwen_dense,
+              ...(input.qwen_dense ?? {}),
+            },
+            qwen_sparse: {
+              ...source.embedding.qwen_sparse,
+              ...(input.qwen_sparse ?? {}),
+            },
+            openai_dense: {
+              ...source.embedding.openai_dense,
+              ...(input.openai_dense ?? {}),
+            },
+          },
+        }));
         maybeDownloadEmbeddingModel(updated);
         return updated;
       },
       set_reranker_config(input: Partial<AppConfig["reranker"]>) {
-        const updated = container.configService.updateReranker(input);
+        const updated = container.configService.updateConfig((source) => ({
+          ...source,
+          reranker: {
+            ...source.reranker,
+            ...input,
+            local: {
+              ...source.reranker.local,
+              ...(input.local ?? {}),
+            },
+            qwen: {
+              ...source.reranker.qwen,
+              ...(input.qwen ?? {}),
+            },
+            openai: {
+              ...source.reranker.openai,
+              ...(input.openai ?? {}),
+            },
+          },
+        }));
         maybeDownloadRerankerModel(updated);
         return updated;
       },
@@ -77,10 +123,18 @@ const rpc = BrowserView.defineRPC({
         return container.addSourceAndReindex(path);
       },
       update_source({ path, enabled }: { path: string; enabled: boolean }) {
-        return container.configService.updateSource(path, enabled);
+        return container.configService.updateConfig((source) => ({
+          ...source,
+          sources: source.sources.map((item) =>
+            item.path === path ? { ...item, enabled } : item,
+          ),
+        })).sources;
       },
       remove_source({ path }: { path: string }) {
-        return container.configService.removeSource(path);
+        return container.configService.updateConfig((source) => ({
+          ...source,
+          sources: source.sources.filter((item) => item.path !== path),
+        })).sources;
       },
       get_health() {
         return container.healthService.getComponentHealth();

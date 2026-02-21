@@ -124,12 +124,20 @@ function registerDependencies(
       const retrievalService = c.resolve<RetrievalService>(TOKENS.RetrievalService);
       const indexingService = c.resolve<IndexingService>(TOKENS.IndexingService);
       const addSourceAndReindex = async (path: string) => {
-        const sources = configService.addSource(path);
+        const next = configService.updateConfig((source) => {
+          if (source.sources.some((item) => item.path === path)) {
+            return source;
+          }
+          return {
+            ...source,
+            sources: [...source.sources, { path, enabled: true }],
+          };
+        });
         void indexingService.runFullRebuild("source_added");
-        return sources;
+        return next.sources;
       };
 
-      if (!configService.getMcpEnabled()) {
+      if (!configService.getConfig().mcp.enabled) {
         return {
           configService,
           healthService,
@@ -142,7 +150,7 @@ function registerDependencies(
 
       const mcpServer = createMcpServer({
         retrieval: retrievalService,
-        isEnabled: () => configService.getMcpEnabled(),
+        isEnabled: () => configService.getConfig().mcp.enabled,
       });
 
       return {
@@ -179,7 +187,7 @@ function createIndexingServiceForSources(
         indexingState.errors = [];
         let indexedFiles = 0;
 
-        const sources = configService.getSources().filter((source) => source.enabled);
+        const sources = configService.getConfig().sources.filter((source) => source.enabled);
         for (const source of sources) {
           try {
             const files = await collectIndexableFiles(source.path);

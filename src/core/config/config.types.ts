@@ -65,12 +65,5 @@ export interface AppConfig {
 
 export type ConfigService = {
   getConfig: () => AppConfig;
-  getMcpEnabled: () => boolean;
-  setMcpEnabled: (enabled: boolean) => AppConfig;
-  getSources: () => SourceConfig[];
-  addSource: (path: string) => SourceConfig[];
-  updateSource: (path: string, enabled: boolean) => SourceConfig[];
-  removeSource: (path: string) => SourceConfig[];
-  updateEmbedding: (input: Partial<AppConfig["embedding"]>) => AppConfig;
-  updateReranker: (input: Partial<AppConfig["reranker"]>) => AppConfig;
+  updateConfig: (updater: (source: AppConfig) => AppConfig) => AppConfig;
 };

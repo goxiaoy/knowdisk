@@ -6,7 +6,13 @@ import {
   type ComponentHealth,
 } from "../../../core/health/health.service";
 import { defaultMainviewConfigService } from "../../services/config.service";
-import { getHealthFromBun, pickSourceDirectoryFromBun } from "../../services/bun.rpc";
+import {
+  addSourceInBun,
+  getHealthFromBun,
+  pickSourceDirectoryFromBun,
+  removeSourceInBun,
+  updateSourceInBun,
+} from "../../services/bun.rpc";
 
 function healthClass(health: AppHealth) {
   if (health === "failed") return "health health-failed";
@@ -89,7 +95,10 @@ export function SettingsPage({
 
   const toggleMcp = () => {
     const next = !mcpEnabled;
-    const updated = configService.setMcpEnabled(next);
+    const updated = configService.updateConfig((source) => ({
+      ...source,
+      mcp: { enabled: next },
+    }));
     setConfig(updated);
     setMcpEnabled(next);
   };
@@ -97,38 +106,69 @@ export function SettingsPage({
   const addSource = async () => {
     const path = await pickSourceDirectory();
     if (!path) return;
-    setSources(configService.addSource(path));
+    const next = configService.updateConfig((source) => {
+      if (source.sources.some((item) => item.path === path)) {
+        return source;
+      }
+      return {
+        ...source,
+        sources: [...source.sources, { path, enabled: true }],
+      };
+    });
+    setSources(next.sources);
+    void addSourceInBun(path);
     setActivity("Source added. Indexing started.");
   };
 
   const setSourceEnabled = (path: string, enabled: boolean) => {
-    setSources(configService.updateSource(path, enabled));
+    const next = configService.updateConfig((source) => ({
+      ...source,
+      sources: source.sources.map((item) =>
+        item.path === path ? { ...item, enabled } : item,
+      ),
+    }));
+    setSources(next.sources);
+    void updateSourceInBun(path, enabled);
   };
 
   const removeSource = (path: string) => {
-    setSources(configService.removeSource(path));
+    const next = configService.updateConfig((source) => ({
+      ...source,
+      sources: source.sources.filter((item) => item.path !== path),
+    }));
+    setSources(next.sources);
+    void removeSourceInBun(path);
   };
 
   const saveEmbeddingConfig = () => {
     const next =
       embeddingProvider === "local"
-        ? configService.updateEmbedding({
-            provider: "local",
-            local: {
-              hfEndpoint: embeddingLocalHfEndpoint.trim() || "https://hf-mirror.com",
-              cacheDir: embeddingLocalCacheDir.trim() || "build/cache/embedding/local",
-              model: embeddingLocalModel.trim() || "Xenova/all-MiniLM-L6-v2",
-              dimension: Math.max(1, Number.parseInt(embeddingLocalDimension, 10) || 384),
+        ? configService.updateConfig((source) => ({
+            ...source,
+            embedding: {
+              ...source.embedding,
+              provider: "local",
+              local: {
+                hfEndpoint: embeddingLocalHfEndpoint.trim() || "https://hf-mirror.com",
+                cacheDir: embeddingLocalCacheDir.trim() || "build/cache/embedding/local",
+                model: embeddingLocalModel.trim() || "Xenova/all-MiniLM-L6-v2",
+                dimension: Math.max(1, Number.parseInt(embeddingLocalDimension, 10) || 384),
+              },
             },
-          })
-        : configService.updateEmbedding({
-            provider: embeddingProvider,
-            [embeddingProvider]: {
-              apiKey: embeddingCloudApiKey,
-              model: embeddingCloudModel,
-              dimension: Math.max(1, Number.parseInt(embeddingCloudDimension, 10) || 1024),
+          }))
+        : configService.updateConfig((source) => ({
+            ...source,
+            embedding: {
+              ...source.embedding,
+              provider: embeddingProvider,
+              [embeddingProvider]: {
+                ...source.embedding[embeddingProvider],
+                apiKey: embeddingCloudApiKey,
+                model: embeddingCloudModel,
+                dimension: Math.max(1, Number.parseInt(embeddingCloudDimension, 10) || 1024),
+              },
             },
-          });
+          }));
     setConfig(next);
     setActivity("Embedding settings saved.");
   };
@@ -136,25 +176,34 @@ export function SettingsPage({
   const saveRerankerConfig = () => {
     const next =
       rerankerProvider === "local"
-        ? configService.updateReranker({
-            enabled: rerankerEnabled,
-            provider: "local",
-            local: {
-              hfEndpoint: rerankerLocalHfEndpoint.trim() || "https://hf-mirror.com",
-              cacheDir: rerankerLocalCacheDir.trim() || "build/cache/reranker/local",
-              model: rerankerLocalModel.trim() || "BAAI/bge-reranker-base",
-              topN: Math.max(1, Number.parseInt(rerankerLocalTopN, 10) || 5),
+        ? configService.updateConfig((source) => ({
+            ...source,
+            reranker: {
+              ...source.reranker,
+              enabled: rerankerEnabled,
+              provider: "local",
+              local: {
+                hfEndpoint: rerankerLocalHfEndpoint.trim() || "https://hf-mirror.com",
+                cacheDir: rerankerLocalCacheDir.trim() || "build/cache/reranker/local",
+                model: rerankerLocalModel.trim() || "BAAI/bge-reranker-base",
+                topN: Math.max(1, Number.parseInt(rerankerLocalTopN, 10) || 5),
+              },
             },
-          })
-        : configService.updateReranker({
-            enabled: rerankerEnabled,
-            provider: rerankerProvider,
-            [rerankerProvider]: {
-              apiKey: rerankerCloudApiKey,
-              model: rerankerCloudModel,
-              topN: Math.max(1, Number.parseInt(rerankerCloudTopN, 10) || 5),
+          }))
+        : configService.updateConfig((source) => ({
+            ...source,
+            reranker: {
+              ...source.reranker,
+              enabled: rerankerEnabled,
+              provider: rerankerProvider,
+              [rerankerProvider]: {
+                ...source.reranker[rerankerProvider],
+                apiKey: rerankerCloudApiKey,
+                model: rerankerCloudModel,
+                topN: Math.max(1, Number.parseInt(rerankerCloudTopN, 10) || 5),
+              },
             },
-          });
+          }));
     setConfig(next);
     setActivity("Reranker settings saved.");
   };

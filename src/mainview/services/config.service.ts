@@ -1,12 +1,7 @@
 import type { AppConfig, ConfigService } from "../../core/config/config.types";
 import {
-  addSourceInBun,
   getConfigFromBun,
-  removeSourceInBun,
-  setEmbeddingConfigInBun,
-  setMcpEnabledInBun,
-  setRerankerConfigInBun,
-  updateSourceInBun,
+  updateConfigInBun,
 } from "./bun.rpc";
 
 const STORAGE_KEY = "knowdisk-app-config";
@@ -141,96 +136,11 @@ export const defaultMainviewConfigService: ConfigService = {
   getConfig() {
     return loadConfig();
   },
-  getMcpEnabled() {
-    return loadConfig().mcp.enabled;
-  },
-  setMcpEnabled(enabled: boolean) {
-    const next = { ...loadConfig(), mcp: { enabled } };
+  updateConfig(updater) {
+    const current = loadConfig();
+    const next = updater(current);
     saveConfig(next);
-    void setMcpEnabledInBun(enabled);
-    return next;
-  },
-  getSources() {
-    return loadConfig().sources;
-  },
-  addSource(path: string) {
-    const current = loadConfig();
-    if (current.sources.some((item) => item.path === path)) {
-      return current.sources;
-    }
-    const sources = [...current.sources, { path, enabled: true }];
-    saveConfig({ ...current, sources });
-    void addSourceInBun(path);
-    return sources;
-  },
-  updateSource(path: string, enabled: boolean) {
-    const current = loadConfig();
-    const sources = current.sources.map((item) =>
-      item.path === path ? { ...item, enabled } : item,
-    );
-    saveConfig({ ...current, sources });
-    void updateSourceInBun(path, enabled);
-    return sources;
-  },
-  removeSource(path: string) {
-    const current = loadConfig();
-    const sources = current.sources.filter((item) => item.path !== path);
-    saveConfig({ ...current, sources });
-    void removeSourceInBun(path);
-    return sources;
-  },
-  updateEmbedding(input) {
-    const current = loadConfig();
-    const next = {
-      ...current,
-      embedding: {
-        ...current.embedding,
-        ...input,
-        local: {
-          ...current.embedding.local,
-          ...(input.local ?? {}),
-        },
-        qwen_dense: {
-          ...current.embedding.qwen_dense,
-          ...(input.qwen_dense ?? {}),
-        },
-        qwen_sparse: {
-          ...current.embedding.qwen_sparse,
-          ...(input.qwen_sparse ?? {}),
-        },
-        openai_dense: {
-          ...current.embedding.openai_dense,
-          ...(input.openai_dense ?? {}),
-        },
-      },
-    };
-    saveConfig(next);
-    void setEmbeddingConfigInBun(input);
-    return next;
-  },
-  updateReranker(input) {
-    const current = loadConfig();
-    const next = {
-      ...current,
-      reranker: {
-        ...current.reranker,
-        ...input,
-        local: {
-          ...current.reranker.local,
-          ...(input.local ?? {}),
-        },
-        qwen: {
-          ...current.reranker.qwen,
-          ...(input.qwen ?? {}),
-        },
-        openai: {
-          ...current.reranker.openai,
-          ...(input.openai ?? {}),
-        },
-      },
-    };
-    saveConfig(next);
-    void setRerankerConfigInBun(input);
+    void updateConfigInBun(next);
     return next;
   },
 };
