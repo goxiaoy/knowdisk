@@ -8,7 +8,8 @@
 		"hmr": "vite --port 5173",
 		"build": "vite build && electrobun build",
 		"build:prod": "vite build && electrobun build --channel prod",
-		"start": "bun run dev"
+		"start": "bun run dev",
+		"test": "bun test"
 	},
 	"dependencies": {
 		"electrobun": "1.13.1",
