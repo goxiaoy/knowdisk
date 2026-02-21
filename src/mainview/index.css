@@ -27,3 +27,20 @@ body {
   padding: 0.6rem 1rem;
   cursor: pointer;
 }
+
+.health {
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.health-healthy {
+  color: #166534;
+}
+
+.health-degraded {
+  color: #b45309;
+}
+
+.health-failed {
+  color: #b91c1c;
+}
