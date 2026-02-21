@@ -6,11 +6,16 @@ test("uses configured local provider", async () => {
     provider: "local",
     apiKeys: {},
     endpoint: "",
+    hfEndpoint: "https://hf-mirror.com",
     dimension: 16,
+  }, {
+    createExtractor: async () => {
+      return async () => ({ data: new Float32Array([0.1, 0.2, 0.3]) });
+    },
   });
   const vec = await provider.embed("hello");
   expect(Array.isArray(vec)).toBe(true);
-  expect(vec.length).toBe(16);
+  expect(vec.length).toBe(3);
 });
 
 test("changes vector output for different provider settings", async () => {
@@ -18,13 +23,19 @@ test("changes vector output for different provider settings", async () => {
     provider: "local",
     apiKeys: {},
     endpoint: "",
+    hfEndpoint: "https://hf-mirror.com",
     dimension: 8,
+  }, {
+    createExtractor: async () => async (text) => ({ data: new Float32Array([text.length, 1]) }),
   });
   const b = makeEmbeddingProvider({
     provider: "local",
     apiKeys: {},
     endpoint: "https://example.local",
+    hfEndpoint: "https://another-hf-mirror.com",
     dimension: 8,
+  }, {
+    createExtractor: async () => async (text) => ({ data: new Float32Array([text.length, 2]) }),
   });
   const [va, vb] = await Promise.all([a.embed("hello"), b.embed("hello")]);
   expect(va).not.toEqual(vb);
@@ -36,6 +47,7 @@ test("uses openai dense embedding when cloud provider is configured", async () =
       provider: "openai_dense",
       endpoint: "https://api.openai.com/v1/embeddings",
       apiKeys: { openai_dense: "sk-test" },
+      hfEndpoint: "https://hf-mirror.com",
       dimension: 3,
     },
     {
@@ -58,6 +70,7 @@ test("supports qwen sparse embedding response", async () => {
       provider: "qwen_sparse",
       endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
       apiKeys: { qwen_sparse: "sk-test" },
+      hfEndpoint: "https://hf-mirror.com",
       dimension: 4,
     },
     {

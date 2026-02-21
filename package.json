@@ -12,6 +12,7 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@huggingface/transformers": "^3.8.1",
 		"@zvec/zvec": "^0.2.0",
 		"electrobun": "1.13.1",
 		"react": "^18.3.1",

@@ -7,23 +7,29 @@ import {
 
 type EmbeddingDeps = {
   fetchImpl?: typeof fetch;
+  createExtractor?: (
+    model: string,
+    opts: { hfEndpoint?: string },
+  ) => Promise<(text: string, opts: { pooling: "mean"; normalize: true }) => Promise<unknown>>;
 };
 
 export function makeEmbeddingProvider(cfg: EmbeddingConfig, deps?: EmbeddingDeps): EmbeddingProvider {
   const fetchImpl = deps?.fetchImpl ?? fetch;
+  const createExtractor = deps?.createExtractor ?? createDefaultExtractor;
   return {
     async embed(text: string) {
       if (isCloudEmbeddingProvider(cfg.provider)) {
         return embedCloud(cfg, text, fetchImpl);
       }
-      const dims = Math.max(1, cfg.dimension);
-      const seed = hash(`${cfg.provider}:${cfg.endpoint ?? ""}:${text}`);
-      const vector = new Array<number>(dims);
-      for (let i = 0; i < dims; i += 1) {
-        const value = Math.sin(seed * (i + 1)) + Math.cos((seed + i) * 0.37);
-        vector[i] = value;
+      const extractor = await getLocalExtractor(cfg, createExtractor);
+      const output = (await extractor(text, {
+        pooling: "mean",
+        normalize: true,
+      })) as { data?: ArrayLike<number> };
+      if (!output?.data) {
+        throw new Error("local embedding output missing data");
       }
-      return normalize(vector);
+      return Array.from(output.data);
     },
   };
 }
@@ -88,20 +94,49 @@ function extractDenseVector(payload: Record<string, unknown>, dims: number): num
   return null;
 }
 
-function hash(input: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < input.length; i += 1) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+const localExtractorCache = new Map<
+  string,
+  Promise<(text: string, opts: { pooling: "mean"; normalize: true }) => Promise<unknown>>
+>();
+
+async function getLocalExtractor(
+  cfg: EmbeddingConfig,
+  createExtractor: (
+    model: string,
+    opts: { hfEndpoint?: string },
+  ) => Promise<(text: string, opts: { pooling: "mean"; normalize: true }) => Promise<unknown>>,
+) {
+  const model = getEmbeddingProviderModel("local");
+  const key = `${model}|${cfg.hfEndpoint ?? ""}`;
+  let extractor = localExtractorCache.get(key);
+  if (!extractor) {
+    extractor = createExtractor(model, { hfEndpoint: cfg.hfEndpoint });
+    localExtractorCache.set(key, extractor);
   }
-  return Math.abs(h) + 1;
+  return extractor;
 }
 
-function normalize(input: number[]): number[] {
-  let sum = 0;
-  for (const value of input) {
-    sum += value * value;
+async function createDefaultExtractor(model: string, opts: { hfEndpoint?: string }) {
+  const transformers = await import("@huggingface/transformers");
+  const env = (
+    transformers as unknown as {
+      env?: { allowRemoteModels?: boolean; remoteHost?: string; remotePathTemplate?: string };
+    }
+  ).env;
+
+  if (env) {
+    env.allowRemoteModels = true;
+    if (opts.hfEndpoint) {
+      env.remoteHost = opts.hfEndpoint.replace(/\/+$/, "") + "/";
+      env.remotePathTemplate = "{model}/resolve/{revision}/{file}";
+    }
   }
-  const norm = Math.sqrt(sum) || 1;
-  return input.map((value) => value / norm);
+
+  const extractor = await (transformers as unknown as {
+    pipeline: (
+      task: "feature-extraction",
+      model: string,
+    ) => Promise<(text: string, opts: { pooling: "mean"; normalize: true }) => Promise<unknown>>;
+  }).pipeline("feature-extraction", model);
+  return extractor;
 }

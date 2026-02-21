@@ -60,8 +60,11 @@ function registerDependencies(
   });
   di.register(TOKENS.EmbeddingProvider, {
     useFactory: (c) => {
-      const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig().embedding;
-      return makeEmbeddingProvider(cfg);
+      const appCfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
+      return makeEmbeddingProvider({
+        ...appCfg.embedding,
+        hfEndpoint: appCfg.modelHub.hfEndpoint,
+      });
     },
   });
   di.register(TOKENS.VectorRepository, {
