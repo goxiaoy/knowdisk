@@ -1,53 +1,137 @@
-import { extname, join } from "node:path";
+import "reflect-metadata";
 import { readdir, readFile, stat } from "node:fs/promises";
+import { extname, join } from "node:path";
+import { container as rootContainer, type DependencyContainer } from "tsyringe";
 import { defaultConfigService, type ConfigService } from "../core/config/config.service";
+import type { SourceConfig } from "../core/config/config.types";
 import { makeEmbeddingProvider } from "../core/embedding/embedding.service";
+import type { EmbeddingProvider } from "../core/embedding/embedding.types";
 import { createHealthService } from "../core/health/health.service";
 import { createIndexingService } from "../core/indexing/indexing.service";
 import { createMcpServer } from "../core/mcp/mcp.server";
 import { createRetrievalService } from "../core/retrieval/retrieval.service";
-import { createVectorRepository } from "../core/vector/vector.repository";
-import type { SourceConfig } from "../core/config/config.types";
+import { createVectorRepository, type VectorRow } from "../core/vector/vector.repository";
 
 type RetrievalService = {
   search: (query: string, opts: { topK?: number }) => Promise<unknown[]>;
 };
 
 type HealthService = ReturnType<typeof createHealthService>;
+type VectorRepository = ReturnType<typeof createVectorRepository>;
+type IndexingService = ReturnType<typeof createIndexingService>;
 
 export type AppContainer = {
   configService: ConfigService;
   healthService: HealthService;
   retrievalService: RetrievalService;
-  indexingService: ReturnType<typeof createIndexingService>;
+  indexingService: IndexingService;
   addSourceAndReindex: (path: string) => Promise<SourceConfig[]>;
   mcpServer: ReturnType<typeof createMcpServer> | null;
 };
 
+const TOKENS = {
+  ConfigService: Symbol("ConfigService"),
+  HealthService: Symbol("HealthService"),
+  EmbeddingProvider: Symbol("EmbeddingProvider"),
+  VectorRepository: Symbol("VectorRepository"),
+  RetrievalService: Symbol("RetrievalService"),
+  IndexingService: Symbol("IndexingService"),
+  AppContainer: Symbol("AppContainer"),
+} as const;
+
 export function createAppContainer(deps?: { configService?: ConfigService }): AppContainer {
-  const configService = deps?.configService ?? defaultConfigService;
-  const healthService = createHealthService();
+  const di = rootContainer.createChildContainer();
+  registerDependencies(di, deps);
+  return di.resolve<AppContainer>(TOKENS.AppContainer);
+}
 
-  const embedding = makeEmbeddingProvider({ mode: "local", model: "bge-small" });
-  const vector = createVectorRepository();
-
-  const retrievalService = createRetrievalService({
-    embedding,
-    vector: {
-      async search(queryVector, opts) {
-        const rows = await vector.search(queryVector, opts);
-        return rows.map((row) => ({
-          ...row,
-          metadata: {
-            sourcePath: row.metadata.sourcePath,
-            chunkText: row.metadata.chunkText ?? "",
-            updatedAt: row.metadata.updatedAt ?? "",
-          },
-        }));
-      },
-    },
-    defaults: { topK: 5 },
+function registerDependencies(di: DependencyContainer, deps?: { configService?: ConfigService }) {
+  di.registerInstance<ConfigService>(TOKENS.ConfigService, deps?.configService ?? defaultConfigService);
+  di.register(TOKENS.HealthService, {
+    useFactory: () => createHealthService(),
   });
+  di.register(TOKENS.EmbeddingProvider, {
+    useFactory: () => makeEmbeddingProvider({ mode: "local", model: "bge-small" }),
+  });
+  di.register(TOKENS.VectorRepository, {
+    useFactory: () => createVectorRepository(),
+  });
+  di.register(TOKENS.RetrievalService, {
+    useFactory: (c) => {
+      const embedding = c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider);
+      const vector = c.resolve<VectorRepository>(TOKENS.VectorRepository);
+      return createRetrievalService({
+        embedding,
+        vector: {
+          async search(queryVector, opts) {
+            const rows = await vector.search(queryVector, opts);
+            return rows.map((row) => ({
+              ...row,
+              metadata: {
+                sourcePath: row.metadata.sourcePath,
+                chunkText: row.metadata.chunkText ?? "",
+                updatedAt: row.metadata.updatedAt ?? "",
+              },
+            }));
+          },
+        },
+        defaults: { topK: 5 },
+      });
+    },
+  });
+  di.register(TOKENS.IndexingService, {
+    useFactory: (c) =>
+      createIndexingServiceForSources(
+        c.resolve<ConfigService>(TOKENS.ConfigService),
+        c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
+        c.resolve<VectorRepository>(TOKENS.VectorRepository),
+      ),
+  });
+  di.register(TOKENS.AppContainer, {
+    useFactory: (c) => {
+      const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
+      const healthService = c.resolve<HealthService>(TOKENS.HealthService);
+      const retrievalService = c.resolve<RetrievalService>(TOKENS.RetrievalService);
+      const indexingService = c.resolve<IndexingService>(TOKENS.IndexingService);
+      const addSourceAndReindex = async (path: string) => {
+        const sources = configService.addSource(path);
+        void indexingService.runFullRebuild("source_added");
+        return sources;
+      };
+
+      if (!configService.getMcpEnabled()) {
+        return {
+          configService,
+          healthService,
+          retrievalService,
+          indexingService,
+          addSourceAndReindex,
+          mcpServer: null,
+        } satisfies AppContainer;
+      }
+
+      const mcpServer = createMcpServer({
+        retrieval: retrievalService,
+        isEnabled: () => configService.getMcpEnabled(),
+      });
+
+      return {
+        configService,
+        healthService,
+        retrievalService,
+        indexingService,
+        addSourceAndReindex,
+        mcpServer,
+      } satisfies AppContainer;
+    },
+  });
+}
+
+function createIndexingServiceForSources(
+  configService: ConfigService,
+  embedding: EmbeddingProvider,
+  vector: VectorRepository,
+): IndexingService {
   const indexingState = {
     running: false,
     lastReason: "",
@@ -56,7 +140,7 @@ export function createAppContainer(deps?: { configService?: ConfigService }): Ap
     errors: [] as string[],
   };
 
-  const indexingService = createIndexingService({
+  return createIndexingService({
     pipeline: {
       async rebuild(reason: string) {
         indexingState.running = true;
@@ -72,17 +156,16 @@ export function createAppContainer(deps?: { configService?: ConfigService }): Ap
             for (const filePath of files) {
               const content = await readFile(filePath, "utf8");
               const vectorValue = await embedding.embed(content);
-              await vector.upsert([
-                {
-                  chunkId: filePath,
-                  vector: vectorValue,
-                  metadata: {
-                    sourcePath: filePath,
-                    chunkText: content.slice(0, 1000),
-                    updatedAt: new Date().toISOString(),
-                  },
+              const row: VectorRow = {
+                chunkId: filePath,
+                vector: vectorValue,
+                metadata: {
+                  sourcePath: filePath,
+                  chunkText: content.slice(0, 1000),
+                  updatedAt: new Date().toISOString(),
                 },
-              ]);
+              };
+              await vector.upsert([row]);
               indexedFiles += 1;
             }
           } catch (error) {
@@ -105,37 +188,6 @@ export function createAppContainer(deps?: { configService?: ConfigService }): Ap
       },
     },
   });
-
-  const addSourceAndReindex = async (path: string) => {
-    const sources = configService.addSource(path);
-    void indexingService.runFullRebuild("source_added");
-    return sources;
-  };
-
-  if (!configService.getMcpEnabled()) {
-    return {
-      configService,
-      healthService,
-      retrievalService,
-      indexingService,
-      addSourceAndReindex,
-      mcpServer: null,
-    };
-  }
-
-  const mcpServer = createMcpServer({
-    retrieval: retrievalService,
-    isEnabled: () => configService.getMcpEnabled(),
-  });
-
-  return {
-    configService,
-    healthService,
-    retrievalService,
-    indexingService,
-    addSourceAndReindex,
-    mcpServer,
-  };
 }
 
 const TEXT_EXTENSIONS = new Set([".md", ".txt", ".json", ".yml", ".yaml"]);
@@ -152,7 +204,6 @@ async function collectIndexableFiles(sourcePath: string): Promise<string[]> {
 
   const results: string[] = [];
   const queue = [sourcePath];
-
   while (queue.length > 0) {
     const current = queue.shift()!;
     const entries = await readdir(current, { withFileTypes: true });
@@ -165,6 +216,5 @@ async function collectIndexableFiles(sourcePath: string): Promise<string[]> {
       }
     }
   }
-
   return results;
 }
