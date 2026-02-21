@@ -1,7 +1,7 @@
 {
-	"name": "electrobun-react-tailwind-vite",
+	"name": "knowdisk",
 	"version": "1.0.0",
-	"description": "Electrobun app with React, Tailwind CSS, and Vite HMR",
+	"description": "Know Disk desktop app",
 	"scripts": {
 		"dev": "bun run build && electrobun dev",
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run dev\"",

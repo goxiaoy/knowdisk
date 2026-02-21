@@ -43,6 +43,7 @@ const TOKENS = {
 export function createAppContainer(deps?: {
   configService?: ConfigService;
   vectorCollectionPath?: string;
+  userDataDir?: string;
 }): AppContainer {
   const di = rootContainer.createChildContainer();
   registerDependencies(di, deps);
@@ -51,7 +52,7 @@ export function createAppContainer(deps?: {
 
 function registerDependencies(
   di: DependencyContainer,
-  deps?: { configService?: ConfigService; vectorCollectionPath?: string },
+  deps?: { configService?: ConfigService; vectorCollectionPath?: string; userDataDir?: string },
 ) {
   let vectorRepo: VectorRepository | null = null;
   di.registerInstance<ConfigService>(TOKENS.ConfigService, deps?.configService ?? defaultConfigService);
@@ -75,7 +76,15 @@ function registerDependencies(
           ? cfg.embedding.local.dimension
           : cfg.embedding[cfg.embedding.provider].dimension;
       vectorRepo = createVectorRepository({
-        collectionPath: deps?.vectorCollectionPath ?? "build/zvec/knowdisk.zvec",
+        collectionPath:
+          deps?.vectorCollectionPath ??
+          join(
+            deps?.userDataDir ?? "build",
+            "zvec",
+            `provider-${cfg.embedding.provider}`,
+            `dim-${embeddingDimension}`,
+            "knowdisk.zvec",
+          ),
         dimension: embeddingDimension,
         indexType: "hnsw",
         metric: "cosine",

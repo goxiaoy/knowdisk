@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -109,5 +109,17 @@ describe("getDefaultConfig", () => {
     expect(reloaded.reranker.qwen.apiKey).toBe("rk-test");
 
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("uses userDataDir for config file and local cache defaults", () => {
+    const userDataDir = mkdtempSync(join(tmpdir(), "knowdisk-user-data-"));
+    const service = createConfigService({ userDataDir });
+    const config = service.getConfig();
+
+    expect(existsSync(join(userDataDir, "app-config.json"))).toBe(true);
+    expect(config.embedding.local.cacheDir).toBe(join(userDataDir, "cache", "embedding", "local"));
+    expect(config.reranker.local.cacheDir).toBe(join(userDataDir, "cache", "reranker", "local"));
+
+    rmSync(userDataDir, { recursive: true, force: true });
   });
 });

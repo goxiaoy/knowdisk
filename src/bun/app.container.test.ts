@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAppContainer } from "./app.container";
@@ -107,4 +107,17 @@ test("addSourceAndReindex triggers indexing task", async () => {
 
   expect(calls).toEqual(["source_added"]);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("uses userDataDir as base path for vector collection", () => {
+  const userDataDir = mkdtempSync(join(tmpdir(), "knowdisk-app-container-userdata-"));
+  createAppContainer({
+    configService: makeConfigService(true),
+    userDataDir,
+  });
+
+  const expectedVectorDir = join(userDataDir, "zvec", "provider-local", "dim-384");
+  expect(existsSync(expectedVectorDir)).toBe(true);
+
+  rmSync(userDataDir, { recursive: true, force: true });
 });

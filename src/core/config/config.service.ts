@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import type {
   AppConfig,
   CloudEmbeddingConfig,
@@ -12,6 +12,16 @@ import type {
 import { isCloudEmbeddingProvider } from "../embedding/embedding.types";
 
 export function getDefaultConfig(): AppConfig {
+  return getDefaultConfigWithPaths({});
+}
+
+function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
+  const embeddingCacheDir = opts.userDataDir
+    ? join(opts.userDataDir, "cache", "embedding", "local")
+    : "build/cache/embedding/local";
+  const rerankerCacheDir = opts.userDataDir
+    ? join(opts.userDataDir, "cache", "reranker", "local")
+    : "build/cache/reranker/local";
   return {
     version: 1,
     sources: [],
@@ -24,7 +34,7 @@ export function getDefaultConfig(): AppConfig {
       provider: "local",
       local: {
         hfEndpoint: "https://hf-mirror.com",
-        cacheDir: "build/cache/embedding/local",
+        cacheDir: embeddingCacheDir,
         model: "Xenova/all-MiniLM-L6-v2",
         dimension: 384,
       },
@@ -49,7 +59,7 @@ export function getDefaultConfig(): AppConfig {
       provider: "local",
       local: {
         hfEndpoint: "https://hf-mirror.com",
-        cacheDir: "build/cache/reranker/local",
+        cacheDir: rerankerCacheDir,
         model: "BAAI/bge-reranker-base",
         topN: 5,
       },
@@ -138,6 +148,10 @@ function validateReranker(reranker: AppConfig["reranker"]): string[] {
 }
 
 export function migrateConfig(input: unknown): AppConfig {
+  return migrateConfigWithDefaults(input, getDefaultConfig());
+}
+
+function migrateConfigWithDefaults(input: unknown, defaults: AppConfig): AppConfig {
   const version = (input as { version?: number })?.version ?? 0;
   if (version === 1) {
     const next = input as Partial<AppConfig> & {
@@ -157,7 +171,6 @@ export function migrateConfig(input: unknown): AppConfig {
       };
     };
 
-    const defaults = getDefaultConfig();
     const migratedSources =
       Array.isArray(next.sources) && next.sources.length > 0
         ? normalizeSources(next.sources as unknown[])
@@ -180,7 +193,7 @@ export function migrateConfig(input: unknown): AppConfig {
 
   const legacy = input as { sources?: unknown };
   return {
-    ...getDefaultConfig(),
+    ...defaults,
     version: 1,
     sources: normalizeSources(Array.isArray(legacy.sources) ? legacy.sources : []),
   };
@@ -314,8 +327,10 @@ function normalizeSources(input: unknown[]): SourceConfig[] {
     .filter((item): item is SourceConfig => item !== null);
 }
 
-export function createConfigService(opts?: { configPath?: string }): ConfigService {
-  const configPath = opts?.configPath ?? "build/app-config.json";
+export function createConfigService(opts?: { configPath?: string; userDataDir?: string }): ConfigService {
+  const defaults = getDefaultConfigWithPaths({ userDataDir: opts?.userDataDir });
+  const configPath =
+    opts?.configPath ?? (opts?.userDataDir ? join(opts.userDataDir, "app-config.json") : "build/app-config.json");
   let cache: AppConfig | null = null;
 
   function persist(config: AppConfig) {
@@ -326,16 +341,16 @@ export function createConfigService(opts?: { configPath?: string }): ConfigServi
   function load(): AppConfig {
     try {
       const raw = readFileSync(configPath, "utf8");
-      const parsed = migrateConfig(JSON.parse(raw));
+      const parsed = migrateConfigWithDefaults(JSON.parse(raw), defaults);
       const validation = validateConfig(parsed);
       if (!validation.ok) {
-        const fallback = getDefaultConfig();
+        const fallback = defaults;
         persist(fallback);
         return fallback;
       }
       return parsed;
     } catch {
-      const fallback = getDefaultConfig();
+      const fallback = defaults;
       persist(fallback);
       return fallback;
     }

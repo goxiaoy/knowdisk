@@ -1,7 +1,9 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
+import { join } from "node:path";
 import { createAppContainer } from "./app.container";
 import { downloadModelFromHub } from "../core/model/model-download.service";
 import type { AppConfig } from "../core/config/config.types";
+import { createConfigService } from "../core/config/config.service";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -20,7 +22,9 @@ async function getMainViewUrl(): Promise<string> {
   return "views://mainview/index.html";
 }
 
-const container = createAppContainer();
+const userDataDir = Utils.paths.userData;
+const configService = createConfigService({ userDataDir });
+const container = createAppContainer({ configService, userDataDir });
 const startupConfig = container.configService.getConfig();
 console.log("App startup config:", JSON.stringify(startupConfig, null, 2));
 
@@ -35,7 +39,7 @@ function maybeDownloadEmbeddingModel(config: AppConfig) {
   void downloadModelFromHub({
     hfEndpoint: config.embedding.local.hfEndpoint,
     model: config.embedding.local.model,
-    targetRoot: "build/models/embedding/local",
+    targetRoot: join(userDataDir, "models", "embedding", "provider-local"),
   }).catch((error) => {
     console.error(`Embedding model download failed for ${config.embedding.local.model}:`, error);
   });
@@ -48,7 +52,7 @@ function maybeDownloadRerankerModel(config: AppConfig) {
   void downloadModelFromHub({
     hfEndpoint: config.reranker.local.hfEndpoint,
     model: config.reranker.local.model,
-    targetRoot: "build/models/reranker/local",
+    targetRoot: join(userDataDir, "models", "reranker", "provider-local"),
   }).catch((error) => {
     console.error(`Reranker model download failed for ${config.reranker.local.model}:`, error);
   });
@@ -155,7 +159,7 @@ const rpc = BrowserView.defineRPC({
 const url = await getMainViewUrl();
 
 const mainWindow = new BrowserWindow({
-  title: "React + Tailwind + Vite",
+  title: "Know Disk",
   url,
   rpc,
   frame: {
@@ -170,4 +174,4 @@ mainWindow.on("close", () => {
   Utils.quit();
 });
 
-console.log("React Tailwind Vite app started!");
+console.log("Know Disk app started!");

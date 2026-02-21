@@ -17,7 +17,7 @@ function getDefaultConfig(): AppConfig {
       provider: "local",
       local: {
         hfEndpoint: "https://hf-mirror.com",
-        cacheDir: "build/cache/embedding/local",
+        cacheDir: "cache/embedding/local",
         model: "Xenova/all-MiniLM-L6-v2",
         dimension: 384,
       },
@@ -42,7 +42,7 @@ function getDefaultConfig(): AppConfig {
       provider: "local",
       local: {
         hfEndpoint: "https://hf-mirror.com",
-        cacheDir: "build/cache/reranker/local",
+        cacheDir: "cache/reranker/local",
         model: "BAAI/bge-reranker-base",
         topN: 5,
       },

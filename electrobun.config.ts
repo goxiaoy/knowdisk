@@ -2,8 +2,8 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
 	app: {
-		name: "react-tailwind-vite",
-		identifier: "reacttailwindvite.electrobun.dev",
+		name: "Know Disk",
+		identifier: "knowdisk.electrobun.dev",
 		version: "0.0.1",
 	},
 	build: {

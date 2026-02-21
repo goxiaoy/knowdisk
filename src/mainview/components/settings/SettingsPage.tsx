@@ -150,7 +150,7 @@ export function SettingsPage({
               provider: "local",
               local: {
                 hfEndpoint: embeddingLocalHfEndpoint.trim() || "https://hf-mirror.com",
-                cacheDir: embeddingLocalCacheDir.trim() || "build/cache/embedding/local",
+                cacheDir: embeddingLocalCacheDir.trim() || source.embedding.local.cacheDir,
                 model: embeddingLocalModel.trim() || "Xenova/all-MiniLM-L6-v2",
                 dimension: Math.max(1, Number.parseInt(embeddingLocalDimension, 10) || 384),
               },
@@ -184,7 +184,7 @@ export function SettingsPage({
               provider: "local",
               local: {
                 hfEndpoint: rerankerLocalHfEndpoint.trim() || "https://hf-mirror.com",
-                cacheDir: rerankerLocalCacheDir.trim() || "build/cache/reranker/local",
+                cacheDir: rerankerLocalCacheDir.trim() || source.reranker.local.cacheDir,
                 model: rerankerLocalModel.trim() || "BAAI/bge-reranker-base",
                 topN: Math.max(1, Number.parseInt(rerankerLocalTopN, 10) || 5),
               },
