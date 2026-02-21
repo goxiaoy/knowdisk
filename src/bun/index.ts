@@ -1,7 +1,5 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
-import { defaultConfigService } from "../core/config/config.service";
-import { createHealthService } from "../core/health/health.service";
-import { createMcpServer } from "../core/mcp/mcp.server";
+import { createAppContainer } from "./app.container";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -23,44 +21,31 @@ async function getMainViewUrl(): Promise<string> {
   return "views://mainview/index.html";
 }
 
-function bootstrapMcp() {
-  if (!defaultConfigService.getMcpEnabled()) {
-    console.log("MCP server disabled in settings.");
-    return null;
-  }
-
-  return createMcpServer({
-    retrieval: {
-      async search() {
-        return [];
-      },
-    },
-    isEnabled: () => defaultConfigService.getMcpEnabled(),
-  });
+const container = createAppContainer();
+if (!container.mcpServer) {
+  console.log("MCP server disabled in settings.");
 }
-
-bootstrapMcp();
 
 const rpc = BrowserView.defineRPC({
   handlers: {
     requests: {
       get_config() {
-        return defaultConfigService.getConfig();
+        return container.configService.getConfig();
       },
       set_mcp_enabled({ enabled }: { enabled: boolean }) {
-        return defaultConfigService.setMcpEnabled(enabled);
+        return container.configService.setMcpEnabled(enabled);
       },
       add_source({ path }: { path: string }) {
-        return defaultConfigService.addSource(path);
+        return container.configService.addSource(path);
       },
       update_source({ path, enabled }: { path: string; enabled: boolean }) {
-        return defaultConfigService.updateSource(path, enabled);
+        return container.configService.updateSource(path, enabled);
       },
       remove_source({ path }: { path: string }) {
-        return defaultConfigService.removeSource(path);
+        return container.configService.removeSource(path);
       },
       get_health() {
-        return createHealthService().getComponentHealth();
+        return container.healthService.getComponentHealth();
       },
     },
     messages: {},
