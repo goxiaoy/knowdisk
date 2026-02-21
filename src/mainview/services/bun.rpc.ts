@@ -10,6 +10,7 @@ type AppBridgeSchema = {
       update_source: { params: { path: string; enabled: boolean }; response: SourceConfig[] };
       remove_source: { params: { path: string }; response: SourceConfig[] };
       get_health: { params: void; response: Record<string, ComponentHealth> };
+      pick_source_directory: { params: void; response: string | null };
     };
     messages: {};
   };
@@ -27,6 +28,7 @@ type BridgeRpc = {
     update_source: (params: { path: string; enabled: boolean }) => Promise<SourceConfig[]>;
     remove_source: (params: { path: string }) => Promise<SourceConfig[]>;
     get_health: () => Promise<Record<string, ComponentHealth>>;
+    pick_source_directory: () => Promise<string | null>;
   };
 };
 
@@ -100,6 +102,16 @@ export async function getHealthFromBun(): Promise<Record<string, ComponentHealth
   if (!channel) return null;
   try {
     return await channel.request.get_health();
+  } catch {
+    return null;
+  }
+}
+
+export async function pickSourceDirectoryFromBun(): Promise<string | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.pick_source_directory();
   } catch {
     return null;
   }

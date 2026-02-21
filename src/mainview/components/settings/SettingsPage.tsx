@@ -6,7 +6,7 @@ import {
   type ComponentHealth,
 } from "../../../core/health/health.service";
 import { defaultMainviewConfigService } from "../../services/config.service";
-import { getHealthFromBun } from "../../services/bun.rpc";
+import { getHealthFromBun, pickSourceDirectoryFromBun } from "../../services/bun.rpc";
 
 function healthClass(health: AppHealth) {
   if (health === "failed") return "health health-failed";
@@ -16,13 +16,15 @@ function healthClass(health: AppHealth) {
 
 export function SettingsPage({
   configService = defaultMainviewConfigService,
+  pickSourceDirectory = pickSourceDirectoryFromBun,
 }: {
   configService?: ConfigService;
+  pickSourceDirectory?: () => Promise<string | null>;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [mcpEnabled, setMcpEnabled] = useState(configService.getMcpEnabled());
   const [sources, setSources] = useState(configService.getSources());
-  const [sourceInput, setSourceInput] = useState("");
+  const [activity, setActivity] = useState("");
   const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
 
   const { health, components } = useMemo(() => {
@@ -53,11 +55,11 @@ export function SettingsPage({
     setMcpEnabled(next);
   };
 
-  const addSource = () => {
-    const path = sourceInput.trim();
+  const addSource = async () => {
+    const path = await pickSourceDirectory();
     if (!path) return;
     setSources(configService.addSource(path));
-    setSourceInput("");
+    setActivity("Source added. Indexing started.");
   };
 
   const setSourceEnabled = (path: string, enabled: boolean) => {
@@ -88,17 +90,10 @@ export function SettingsPage({
         {mcpEnabled ? "Turn MCP Off" : "Turn MCP On"}
       </button>
       <h2>Sources</h2>
-      <div>
-        <input
-          data-testid="source-input"
-          type="text"
-          value={sourceInput}
-          onChange={(event) => setSourceInput(event.target.value)}
-        />
-        <button data-testid="add-source" type="button" onClick={addSource}>
-          Add Source
-        </button>
-      </div>
+      <button data-testid="add-source" type="button" onClick={() => void addSource()}>
+        Add Source
+      </button>
+      {activity ? <p>{activity}</p> : null}
       <ul>
         {sources.map((source) => (
           <li key={source.path}>

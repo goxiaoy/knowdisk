@@ -36,7 +36,7 @@ const rpc = BrowserView.defineRPC({
         return container.configService.setMcpEnabled(enabled);
       },
       add_source({ path }: { path: string }) {
-        return container.configService.addSource(path);
+        return container.addSourceAndReindex(path);
       },
       update_source({ path, enabled }: { path: string; enabled: boolean }) {
         return container.configService.updateSource(path, enabled);
@@ -46,6 +46,14 @@ const rpc = BrowserView.defineRPC({
       },
       get_health() {
         return container.healthService.getComponentHealth();
+      },
+      async pick_source_directory() {
+        const paths = await Utils.openFileDialog({
+          canChooseFiles: false,
+          canChooseDirectory: true,
+          allowsMultipleSelection: false,
+        });
+        return paths[0] ?? null;
       },
     },
     messages: {},

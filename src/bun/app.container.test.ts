@@ -68,3 +68,17 @@ test("mcp server delegates search to retrieval service", async () => {
   expect(called).toBe(true);
   expect(Array.isArray(result.results)).toBe(true);
 });
+
+test("addSourceAndReindex triggers indexing task", async () => {
+  const container = createAppContainer({ configService: makeConfigService(true) });
+  const calls: string[] = [];
+  const original = container.indexingService.runFullRebuild;
+  container.indexingService.runFullRebuild = async (reason: string) => {
+    calls.push(reason);
+    return original(reason);
+  };
+
+  await container.addSourceAndReindex("/tmp/docs");
+
+  expect(calls).toEqual(["source_added"]);
+});

@@ -1,7 +1,7 @@
 export type VectorRow = {
   chunkId: string;
   vector: number[];
-  metadata: { sourcePath: string };
+  metadata: { sourcePath: string; chunkText?: string; updatedAt?: string };
 };
 
 export function createVectorRepository() {

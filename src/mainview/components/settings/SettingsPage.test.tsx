@@ -6,6 +6,7 @@ describe("SettingsPage", () => {
   it("hides advanced section by default", () => {
     const renderer = create(
       <SettingsPage
+        pickSourceDirectory={async () => null}
         configService={{
           getConfig() {
             throw new Error("unused");
@@ -48,6 +49,7 @@ describe("SettingsPage", () => {
     let enabled = true;
     const renderer = create(
       <SettingsPage
+        pickSourceDirectory={async () => null}
         configService={{
           getConfig() {
             throw new Error("unused");
@@ -97,13 +99,14 @@ describe("SettingsPage", () => {
     expect(enabled).toBe(false);
   });
 
-  it("shows and edits sources", () => {
+  it("shows and edits sources", async () => {
     let sources = [
       { path: "/notes", enabled: true },
       { path: "/archive", enabled: false },
     ];
     const renderer = create(
       <SettingsPage
+        pickSourceDirectory={async () => "/docs"}
         configService={{
           getConfig() {
             throw new Error("unused");
@@ -145,15 +148,12 @@ describe("SettingsPage", () => {
     });
     expect(sources.find((item) => item.path === "/archive")?.enabled).toBe(true);
 
-    const input = root.findByProps({ "data-testid": "source-input" });
-    act(() => {
-      input.props.onChange({ target: { value: "/docs" } });
-    });
     const addButton = root.findByProps({ "data-testid": "add-source" });
-    act(() => {
-      addButton.props.onClick();
+    await act(async () => {
+      await addButton.props.onClick();
     });
     expect(sources.find((item) => item.path === "/docs")).toBeDefined();
+    expect(root.findByProps({ children: "Source added. Indexing started." })).toBeDefined();
 
     const removeButton = root.findByProps({ "data-testid": "remove-/notes" });
     act(() => {
