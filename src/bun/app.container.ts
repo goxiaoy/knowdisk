@@ -9,6 +9,7 @@ import type { EmbeddingProvider } from "../core/embedding/embedding.types";
 import { createHealthService } from "../core/health/health.service";
 import { createIndexingService } from "../core/indexing/indexing.service";
 import { createMcpServer } from "../core/mcp/mcp.server";
+import { createReranker } from "../core/reranker/reranker.service";
 import { createRetrievalService } from "../core/retrieval/retrieval.service";
 import { createVectorRepository, type VectorRow } from "../core/vector/vector.repository";
 
@@ -39,27 +40,51 @@ const TOKENS = {
   AppContainer: Symbol("AppContainer"),
 } as const;
 
-export function createAppContainer(deps?: { configService?: ConfigService }): AppContainer {
+export function createAppContainer(deps?: {
+  configService?: ConfigService;
+  vectorCollectionPath?: string;
+}): AppContainer {
   const di = rootContainer.createChildContainer();
   registerDependencies(di, deps);
   return di.resolve<AppContainer>(TOKENS.AppContainer);
 }
 
-function registerDependencies(di: DependencyContainer, deps?: { configService?: ConfigService }) {
+function registerDependencies(
+  di: DependencyContainer,
+  deps?: { configService?: ConfigService; vectorCollectionPath?: string },
+) {
+  let vectorRepo: VectorRepository | null = null;
   di.registerInstance<ConfigService>(TOKENS.ConfigService, deps?.configService ?? defaultConfigService);
   di.register(TOKENS.HealthService, {
     useFactory: () => createHealthService(),
   });
   di.register(TOKENS.EmbeddingProvider, {
-    useFactory: () => makeEmbeddingProvider({ mode: "local", model: "bge-small" }),
+    useFactory: (c) => {
+      const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig().embedding;
+      return makeEmbeddingProvider(cfg);
+    },
   });
   di.register(TOKENS.VectorRepository, {
-    useFactory: () => createVectorRepository(),
+    useFactory: (c) => {
+      if (vectorRepo) {
+        return vectorRepo;
+      }
+      const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
+      vectorRepo = createVectorRepository({
+        collectionPath: deps?.vectorCollectionPath ?? "build/zvec/knowdisk.zvec",
+        dimension: cfg.embedding.dimension,
+        indexType: "hnsw",
+        metric: "cosine",
+      });
+      return vectorRepo;
+    },
   });
   di.register(TOKENS.RetrievalService, {
     useFactory: (c) => {
+      const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
       const embedding = c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider);
       const vector = c.resolve<VectorRepository>(TOKENS.VectorRepository);
+      const reranker = createReranker(cfg.reranker);
       return createRetrievalService({
         embedding,
         vector: {
@@ -75,6 +100,7 @@ function registerDependencies(di: DependencyContainer, deps?: { configService?: 
             }));
           },
         },
+        reranker: reranker ?? undefined,
         defaults: { topK: 5 },
       });
     },

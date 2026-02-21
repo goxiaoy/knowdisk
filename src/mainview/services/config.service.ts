@@ -3,7 +3,9 @@ import {
   addSourceInBun,
   getConfigFromBun,
   removeSourceInBun,
+  setEmbeddingConfigInBun,
   setMcpEnabledInBun,
+  setRerankerConfigInBun,
   updateSourceInBun,
 } from "./bun.rpc";
 
@@ -16,7 +18,8 @@ function getDefaultConfig(): AppConfig {
     mcp: { enabled: true },
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
-    embedding: { mode: "local", model: "bge-small", endpoint: "" },
+    embedding: { mode: "local", model: "BAAI/bge-small-en-v1.5", endpoint: "", dimension: 384 },
+    reranker: { mode: "local", model: "BAAI/bge-reranker-base", topN: 5 },
   };
 }
 
@@ -38,6 +41,14 @@ function loadConfig(): AppConfig {
       ...parsed,
       sources: normalizedSources.filter((item) => item.path.length > 0),
       mcp: { enabled: parsed.mcp?.enabled ?? true },
+      embedding: {
+        ...getDefaultConfig().embedding,
+        ...(parsed.embedding ?? {}),
+      },
+      reranker: {
+        ...getDefaultConfig().reranker,
+        ...(parsed.reranker ?? {}),
+      },
     };
   } catch {
     return getDefaultConfig();
@@ -96,5 +107,19 @@ export const defaultMainviewConfigService: ConfigService = {
     saveConfig({ ...current, sources });
     void removeSourceInBun(path);
     return sources;
+  },
+  updateEmbedding(input) {
+    const current = loadConfig();
+    const next = { ...current, embedding: { ...current.embedding, ...input } };
+    saveConfig(next);
+    void setEmbeddingConfigInBun(input);
+    return next;
+  },
+  updateReranker(input) {
+    const current = loadConfig();
+    const next = { ...current, reranker: { ...current.reranker, ...input } };
+    saveConfig(next);
+    void setRerankerConfigInBun(input);
+    return next;
   },
 };

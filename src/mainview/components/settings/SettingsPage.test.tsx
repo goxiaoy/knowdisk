@@ -1,37 +1,65 @@
 import { describe, expect, it } from "bun:test";
 import { act, create } from "react-test-renderer";
 import { SettingsPage } from "./SettingsPage";
+import type { ConfigService } from "../../../core/config/config.types";
+
+function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
+  let enabled = true;
+  let sources: Array<{ path: string; enabled: boolean }> = [];
+  let embedding = { mode: "local" as const, model: "BAAI/bge-small-en-v1.5", endpoint: "", dimension: 384 };
+  let reranker = { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 };
+
+  const base: ConfigService = {
+    getConfig() {
+      return {
+        version: 1,
+        sources,
+        mcp: { enabled },
+        ui: { mode: "safe" as const },
+        indexing: { watch: { enabled: true } },
+        embedding,
+        reranker,
+      };
+    },
+    getMcpEnabled() {
+      return enabled;
+    },
+    setMcpEnabled(next: boolean) {
+      enabled = next;
+      return this.getConfig();
+    },
+    getSources() {
+      return sources;
+    },
+    addSource(path: string) {
+      if (!sources.find((item) => item.path === path)) {
+        sources = [...sources, { path, enabled: true }];
+      }
+      return sources;
+    },
+    updateSource(path: string, nextEnabled: boolean) {
+      sources = sources.map((item) => (item.path === path ? { ...item, enabled: nextEnabled } : item));
+      return sources;
+    },
+    removeSource(path: string) {
+      sources = sources.filter((item) => item.path !== path);
+      return sources;
+    },
+    updateEmbedding(input) {
+      embedding = { ...embedding, ...input };
+      return this.getConfig();
+    },
+    updateReranker(input) {
+      reranker = { ...reranker, ...input };
+      return this.getConfig();
+    },
+  };
+  return { ...base, ...overrides };
+}
 
 describe("SettingsPage", () => {
   it("hides advanced section by default", () => {
-    const renderer = create(
-      <SettingsPage
-        pickSourceDirectory={async () => null}
-        configService={{
-          getConfig() {
-            throw new Error("unused");
-          },
-          getMcpEnabled() {
-            return true;
-          },
-          setMcpEnabled() {
-            throw new Error("unused");
-          },
-          getSources() {
-            return [];
-          },
-          addSource() {
-            throw new Error("unused");
-          },
-          updateSource() {
-            throw new Error("unused");
-          },
-          removeSource() {
-            throw new Error("unused");
-          },
-        }}
-      />,
-    );
+    const renderer = create(<SettingsPage pickSourceDirectory={async () => null} configService={makeConfigService()} />);
     const root = renderer.root;
 
     expect(() => root.findByProps({ children: "Advanced Settings" })).toThrow();
@@ -46,41 +74,19 @@ describe("SettingsPage", () => {
   });
 
   it("toggles mcp server setting", () => {
-    let enabled = true;
+    let enabled = true;    
     const renderer = create(
       <SettingsPage
         pickSourceDirectory={async () => null}
-        configService={{
-          getConfig() {
-            throw new Error("unused");
-          },
+        configService={makeConfigService({
           getMcpEnabled() {
             return enabled;
           },
           setMcpEnabled(next: boolean) {
             enabled = next;
-            return {
-              version: 1,
-              sources: [],
-              mcp: { enabled: next },
-              ui: { mode: "safe" as const },
-              indexing: { watch: { enabled: true } },
-              embedding: { mode: "local" as const, model: "bge-small", endpoint: "" },
-            };
+            return this.getConfig();
           },
-          getSources() {
-            return [];
-          },
-          addSource() {
-            throw new Error("unused");
-          },
-          updateSource() {
-            throw new Error("unused");
-          },
-          removeSource() {
-            throw new Error("unused");
-          },
-        }}
+        })}
       />,
     );
     const root = renderer.root;
@@ -107,15 +113,22 @@ describe("SettingsPage", () => {
     const renderer = create(
       <SettingsPage
         pickSourceDirectory={async () => "/docs"}
-        configService={{
+        configService={makeConfigService({
           getConfig() {
-            throw new Error("unused");
-          },
-          getMcpEnabled() {
-            return true;
-          },
-          setMcpEnabled() {
-            throw new Error("unused");
+            return {
+              version: 1,
+              sources,
+              mcp: { enabled: true },
+              ui: { mode: "safe" as const },
+              indexing: { watch: { enabled: true } },
+              embedding: {
+                mode: "local" as const,
+                model: "BAAI/bge-small-en-v1.5",
+                endpoint: "",
+                dimension: 384,
+              },
+              reranker: { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 },
+            };
           },
           getSources() {
             return sources;
@@ -134,7 +147,7 @@ describe("SettingsPage", () => {
             sources = sources.filter((item) => item.path !== path);
             return sources;
           },
-        }}
+        })}
       />,
     );
     const root = renderer.root;
@@ -160,5 +173,47 @@ describe("SettingsPage", () => {
       removeButton.props.onClick();
     });
     expect(sources.find((item) => item.path === "/notes")).toBeUndefined();
+  });
+
+  it("saves embedding and reranker settings", () => {
+    let embeddingModel = "BAAI/bge-small-en-v1.5";
+    let rerankerMode: "none" | "local" = "local";
+    const renderer = create(
+      <SettingsPage
+        pickSourceDirectory={async () => null}
+        configService={makeConfigService({
+          updateEmbedding(input) {
+            embeddingModel = input.model ?? embeddingModel;
+            return this.getConfig();
+          },
+          updateReranker(input) {
+            rerankerMode = (input.mode as "none" | "local") ?? rerankerMode;
+            return this.getConfig();
+          },
+        })}
+      />,
+    );
+    const root = renderer.root;
+
+    const embeddingInput = root.findByProps({ "data-testid": "embedding-model" });
+    act(() => {
+      embeddingInput.props.onChange({ target: { value: "BAAI/bge-base-en-v1.5" } });
+    });
+    const saveEmbedding = root.findByProps({ "data-testid": "save-embedding" });
+    act(() => {
+      saveEmbedding.props.onClick();
+    });
+
+    const rerankerModeSelect = root.findByProps({ "data-testid": "reranker-mode" });
+    act(() => {
+      rerankerModeSelect.props.onChange({ target: { value: "none" } });
+    });
+    const saveReranker = root.findByProps({ "data-testid": "save-reranker" });
+    act(() => {
+      saveReranker.props.onClick();
+    });
+
+    expect(embeddingModel).toBe("BAAI/bge-base-en-v1.5");
+    expect(rerankerMode).toBe("none");
   });
 });

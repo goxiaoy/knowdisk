@@ -15,12 +15,14 @@ describe("getDefaultConfig", () => {
     expect(cfg.ui.mode).toBe("safe");
     expect(cfg.indexing.watch.enabled).toBe(true);
     expect(cfg.mcp.enabled).toBe(true);
+    expect(cfg.embedding.dimension).toBe(384);
+    expect(cfg.reranker.mode).toBe("local");
   });
 
   test("rejects cloud provider without endpoint", () => {
     const result = validateConfig({
       ...getDefaultConfig(),
-      embedding: { mode: "cloud", model: "text-embed-3", endpoint: "" },
+      embedding: { mode: "cloud", model: "text-embed-3", endpoint: "", dimension: 1536 },
     });
     expect(result.ok).toBe(false);
   });
@@ -58,6 +60,23 @@ describe("getDefaultConfig", () => {
 
     const second = createConfigService({ configPath });
     expect(second.getSources()).toEqual([{ path: "/Users/a/wiki", enabled: false }]);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("updates embedding and reranker settings", () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-config-"));
+    const configPath = join(dir, "app-config.json");
+    const service = createConfigService({ configPath });
+
+    service.updateEmbedding({ model: "BAAI/bge-base-en-v1.5", dimension: 768 });
+    service.updateReranker({ mode: "none", topN: 3 });
+
+    const reloaded = createConfigService({ configPath }).getConfig();
+    expect(reloaded.embedding.model).toBe("BAAI/bge-base-en-v1.5");
+    expect(reloaded.embedding.dimension).toBe(768);
+    expect(reloaded.reranker.mode).toBe("none");
+    expect(reloaded.reranker.topN).toBe(3);
 
     rmSync(dir, { recursive: true, force: true });
   });

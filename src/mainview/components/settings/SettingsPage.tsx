@@ -22,10 +22,17 @@ export function SettingsPage({
   pickSourceDirectory?: () => Promise<string | null>;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [mcpEnabled, setMcpEnabled] = useState(configService.getMcpEnabled());
-  const [sources, setSources] = useState(configService.getSources());
+  const [config, setConfig] = useState(configService.getConfig());
+  const [mcpEnabled, setMcpEnabled] = useState(config.mcp.enabled);
+  const [sources, setSources] = useState(config.sources);
   const [activity, setActivity] = useState("");
   const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
+  const [embeddingMode, setEmbeddingMode] = useState(config.embedding.mode);
+  const [embeddingModel, setEmbeddingModel] = useState(config.embedding.model);
+  const [embeddingDimension, setEmbeddingDimension] = useState(String(config.embedding.dimension));
+  const [rerankerMode, setRerankerMode] = useState(config.reranker.mode);
+  const [rerankerModel, setRerankerModel] = useState(config.reranker.model);
+  const [rerankerTopN, setRerankerTopN] = useState(String(config.reranker.topN));
 
   const { health, components } = useMemo(() => {
     const svc = createHealthService();
@@ -51,7 +58,8 @@ export function SettingsPage({
 
   const toggleMcp = () => {
     const next = !mcpEnabled;
-    configService.setMcpEnabled(next);
+    const updated = configService.setMcpEnabled(next);
+    setConfig(updated);
     setMcpEnabled(next);
   };
 
@@ -68,6 +76,26 @@ export function SettingsPage({
 
   const removeSource = (path: string) => {
     setSources(configService.removeSource(path));
+  };
+
+  const saveEmbeddingConfig = () => {
+    const next = configService.updateEmbedding({
+      mode: embeddingMode,
+      model: embeddingModel,
+      dimension: Math.max(1, Number.parseInt(embeddingDimension, 10) || 384),
+    });
+    setConfig(next);
+    setActivity("Embedding settings saved.");
+  };
+
+  const saveRerankerConfig = () => {
+    const next = configService.updateReranker({
+      mode: rerankerMode,
+      model: rerankerModel,
+      topN: Math.max(1, Number.parseInt(rerankerTopN, 10) || 5),
+    });
+    setConfig(next);
+    setActivity("Reranker settings saved.");
   };
 
   const subsystemList = Object.entries(
@@ -117,6 +145,74 @@ export function SettingsPage({
           </li>
         ))}
       </ul>
+      <h2>Embedding</h2>
+      <p>
+        Current: {config.embedding.mode} / {config.embedding.model} / dim {config.embedding.dimension}
+      </p>
+      <label>
+        Mode
+        <select
+          data-testid="embedding-mode"
+          value={embeddingMode}
+          onChange={(event) => setEmbeddingMode(event.target.value as "local" | "cloud")}
+        >
+          <option value="local">local</option>
+          <option value="cloud">cloud</option>
+        </select>
+      </label>
+      <label>
+        Model
+        <input
+          data-testid="embedding-model"
+          value={embeddingModel}
+          onChange={(event) => setEmbeddingModel(event.target.value)}
+        />
+      </label>
+      <label>
+        Dimension
+        <input
+          data-testid="embedding-dimension"
+          value={embeddingDimension}
+          onChange={(event) => setEmbeddingDimension(event.target.value)}
+        />
+      </label>
+      <button data-testid="save-embedding" type="button" onClick={saveEmbeddingConfig}>
+        Save Embedding
+      </button>
+      <h2>Reranker</h2>
+      <p>
+        Current: {config.reranker.mode} / {config.reranker.model} / topN {config.reranker.topN}
+      </p>
+      <label>
+        Mode
+        <select
+          data-testid="reranker-mode"
+          value={rerankerMode}
+          onChange={(event) => setRerankerMode(event.target.value as "none" | "local")}
+        >
+          <option value="local">local</option>
+          <option value="none">none</option>
+        </select>
+      </label>
+      <label>
+        Model
+        <input
+          data-testid="reranker-model"
+          value={rerankerModel}
+          onChange={(event) => setRerankerModel(event.target.value)}
+        />
+      </label>
+      <label>
+        TopN
+        <input
+          data-testid="reranker-topn"
+          value={rerankerTopN}
+          onChange={(event) => setRerankerTopN(event.target.value)}
+        />
+      </label>
+      <button data-testid="save-reranker" type="button" onClick={saveRerankerConfig}>
+        Save Reranker
+      </button>
       <button type="button" onClick={() => setShowAdvanced((v) => !v)}>
         {showAdvanced ? "Hide Advanced" : "Show Advanced"}
       </button>

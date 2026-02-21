@@ -22,6 +22,12 @@ export interface AppConfig {
     mode: "local" | "cloud";
     model: string;
     endpoint: string;
+    dimension: number;
+  };
+  reranker: {
+    mode: "none" | "local";
+    model: string;
+    topN: number;
   };
 }
 
@@ -33,4 +39,6 @@ export type ConfigService = {
   addSource: (path: string) => SourceConfig[];
   updateSource: (path: string, enabled: boolean) => SourceConfig[];
   removeSource: (path: string) => SourceConfig[];
+  updateEmbedding: (input: Partial<AppConfig["embedding"]>) => AppConfig;
+  updateReranker: (input: Partial<AppConfig["reranker"]>) => AppConfig;
 };

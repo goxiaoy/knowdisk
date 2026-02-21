@@ -21,6 +21,31 @@ export type RetrievalDeps = {
   defaults: {
     topK: number;
   };
+  reranker?: {
+    rerank: (
+      query: string,
+      rows: Array<{
+        chunkId: string;
+        score: number;
+        metadata: {
+          chunkText: string;
+          sourcePath: string;
+          updatedAt: string;
+        };
+      }>,
+      opts: { topK: number },
+    ) => Promise<
+      Array<{
+        chunkId: string;
+        score: number;
+        metadata: {
+          chunkText: string;
+          sourcePath: string;
+          updatedAt: string;
+        };
+      }>
+    >;
+  };
 };
 
 export function createRetrievalService(deps: RetrievalDeps) {
@@ -30,8 +55,11 @@ export function createRetrievalService(deps: RetrievalDeps) {
       const rows = await deps.vector.search(queryVector, {
         topK: opts.topK ?? deps.defaults.topK,
       });
+      const finalRows = deps.reranker
+        ? await deps.reranker.rerank(query, rows, { topK: opts.topK ?? deps.defaults.topK })
+        : rows;
 
-      return rows.map((row) => ({
+      return finalRows.map((row) => ({
         chunkId: row.chunkId,
         chunkText: row.metadata.chunkText,
         sourcePath: row.metadata.sourcePath,

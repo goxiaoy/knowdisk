@@ -35,6 +35,30 @@ const rpc = BrowserView.defineRPC({
       set_mcp_enabled({ enabled }: { enabled: boolean }) {
         return container.configService.setMcpEnabled(enabled);
       },
+      set_embedding_config({
+        mode,
+        model,
+        endpoint,
+        dimension,
+      }: {
+        mode?: "local" | "cloud";
+        model?: string;
+        endpoint?: string;
+        dimension?: number;
+      }) {
+        return container.configService.updateEmbedding({ mode, model, endpoint, dimension });
+      },
+      set_reranker_config({
+        mode,
+        model,
+        topN,
+      }: {
+        mode?: "none" | "local";
+        model?: string;
+        topN?: number;
+      }) {
+        return container.configService.updateReranker({ mode, model, topN });
+      },
       add_source({ path }: { path: string }) {
         return container.addSourceAndReindex(path);
       },

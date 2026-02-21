@@ -1,0 +1,49 @@
+import type { AppConfig } from "../config/config.types";
+
+type RetrievalRow = {
+  chunkId: string;
+  score: number;
+  metadata: {
+    chunkText: string;
+    sourcePath: string;
+    updatedAt: string;
+  };
+};
+
+export function createReranker(config: AppConfig["reranker"]) {
+  if (config.mode === "none") {
+    return null;
+  }
+
+  return {
+    async rerank(query: string, rows: RetrievalRow[], opts: { topK: number }) {
+      const queryTerms = tokenize(query);
+      const rescored = rows.map((row) => {
+        const overlap = countOverlap(queryTerms, tokenize(row.metadata.chunkText));
+        const blend = row.score * 0.75 + overlap * 0.25;
+        return { ...row, score: blend };
+      });
+
+      rescored.sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId));
+      return rescored.slice(0, Math.min(opts.topK, config.topN));
+    },
+  };
+}
+
+function tokenize(input: string): string[] {
+  return input
+    .toLowerCase()
+    .split(/[^a-z0-9]+/g)
+    .filter((item) => item.length > 1);
+}
+
+function countOverlap(a: string[], b: string[]): number {
+  const set = new Set(a);
+  let count = 0;
+  for (const token of b) {
+    if (set.has(token)) {
+      count += 1;
+    }
+  }
+  return count;
+}

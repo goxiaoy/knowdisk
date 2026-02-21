@@ -6,6 +6,14 @@ type AppBridgeSchema = {
     requests: {
       get_config: { params: void; response: AppConfig };
       set_mcp_enabled: { params: { enabled: boolean }; response: AppConfig };
+      set_embedding_config: {
+        params: { mode?: "local" | "cloud"; model?: string; endpoint?: string; dimension?: number };
+        response: AppConfig;
+      };
+      set_reranker_config: {
+        params: { mode?: "none" | "local"; model?: string; topN?: number };
+        response: AppConfig;
+      };
       add_source: { params: { path: string }; response: SourceConfig[] };
       update_source: { params: { path: string; enabled: boolean }; response: SourceConfig[] };
       remove_source: { params: { path: string }; response: SourceConfig[] };
@@ -24,6 +32,17 @@ type BridgeRpc = {
   request: {
     get_config: () => Promise<AppConfig>;
     set_mcp_enabled: (params: { enabled: boolean }) => Promise<AppConfig>;
+    set_embedding_config: (params: {
+      mode?: "local" | "cloud";
+      model?: string;
+      endpoint?: string;
+      dimension?: number;
+    }) => Promise<AppConfig>;
+    set_reranker_config: (params: {
+      mode?: "none" | "local";
+      model?: string;
+      topN?: number;
+    }) => Promise<AppConfig>;
     add_source: (params: { path: string }) => Promise<SourceConfig[]>;
     update_source: (params: { path: string; enabled: boolean }) => Promise<SourceConfig[]>;
     remove_source: (params: { path: string }) => Promise<SourceConfig[]>;
@@ -72,6 +91,35 @@ export async function addSourceInBun(path: string): Promise<void> {
   if (!channel) return;
   try {
     await channel.request.add_source({ path });
+  } catch {
+    return;
+  }
+}
+
+export async function setEmbeddingConfigInBun(input: {
+  mode?: "local" | "cloud";
+  model?: string;
+  endpoint?: string;
+  dimension?: number;
+}): Promise<void> {
+  const channel = await getRpc();
+  if (!channel) return;
+  try {
+    await channel.request.set_embedding_config(input);
+  } catch {
+    return;
+  }
+}
+
+export async function setRerankerConfigInBun(input: {
+  mode?: "none" | "local";
+  model?: string;
+  topN?: number;
+}): Promise<void> {
+  const channel = await getRpc();
+  if (!channel) return;
+  try {
+    await channel.request.set_reranker_config(input);
   } catch {
     return;
   }

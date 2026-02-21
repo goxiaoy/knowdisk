@@ -13,8 +13,14 @@ export function getDefaultConfig(): AppConfig {
     indexing: { watch: { enabled: true } },
     embedding: {
       mode: "local",
-      model: "bge-small",
+      model: "BAAI/bge-small-en-v1.5",
       endpoint: "",
+      dimension: 384,
+    },
+    reranker: {
+      mode: "local",
+      model: "BAAI/bge-reranker-base",
+      topN: 5,
     },
   };
 }
@@ -22,6 +28,12 @@ export function getDefaultConfig(): AppConfig {
 export function validateConfig(cfg: AppConfig): { ok: boolean; errors: string[] } {
   if (cfg.embedding.mode === "cloud" && !cfg.embedding.endpoint) {
     return { ok: false, errors: ["embedding.endpoint is required for cloud mode"] };
+  }
+  if (cfg.embedding.dimension <= 0) {
+    return { ok: false, errors: ["embedding.dimension must be > 0"] };
+  }
+  if (cfg.reranker.topN <= 0) {
+    return { ok: false, errors: ["reranker.topN must be > 0"] };
   }
   return { ok: true, errors: [] };
 }
@@ -40,6 +52,14 @@ export function migrateConfig(input: unknown): AppConfig {
       sources: migratedSources,
       mcp: {
         enabled: next.mcp?.enabled ?? true,
+      },
+      embedding: {
+        ...getDefaultConfig().embedding,
+        ...(next.embedding ?? {}),
+      },
+      reranker: {
+        ...getDefaultConfig().reranker,
+        ...(next.reranker ?? {}),
       },
     };
   }
@@ -142,6 +162,20 @@ export function createConfigService(opts?: { configPath?: string }): ConfigServi
       cache = next;
       persist(next);
       return sources;
+    },
+    updateEmbedding(input) {
+      const current = this.getConfig();
+      const next = { ...current, embedding: { ...current.embedding, ...input } };
+      cache = next;
+      persist(next);
+      return next;
+    },
+    updateReranker(input) {
+      const current = this.getConfig();
+      const next = { ...current, reranker: { ...current.reranker, ...input } };
+      cache = next;
+      persist(next);
+      return next;
     },
   };
 }
