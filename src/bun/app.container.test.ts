@@ -21,9 +21,10 @@ function makeConfigService(enabled: boolean): ConfigService {
           provider: "local" as const,
           model: "BAAI/bge-small-en-v1.5",
           endpoint: "",
-          apiKey: "",
+          apiKeys: {},
           dimension: 384,
         },
+        modelHub: { hfEndpoint: "https://hf-mirror.com" },
         reranker: { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 },
       };
     },
@@ -55,7 +56,18 @@ function makeConfigService(enabled: boolean): ConfigService {
     },
     updateEmbedding(input) {
       const current = this.getConfig();
-      return { ...current, embedding: { ...current.embedding, ...input } };
+      return {
+        ...current,
+        embedding: {
+          ...current.embedding,
+          ...input,
+          apiKeys: { ...current.embedding.apiKeys, ...(input.apiKeys ?? {}) },
+        },
+      };
+    },
+    updateModelHub(input) {
+      const current = this.getConfig();
+      return { ...current, modelHub: { ...current.modelHub, ...input } };
     },
     updateReranker(input) {
       const current = this.getConfig();

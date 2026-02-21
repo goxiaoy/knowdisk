@@ -23,8 +23,11 @@ export interface AppConfig {
     provider: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
     model: string;
     endpoint: string;
-    apiKey: string;
+    apiKeys: Record<string, string>;
     dimension: number;
+  };
+  modelHub: {
+    hfEndpoint: string;
   };
   reranker: {
     mode: "none" | "local";
@@ -42,5 +45,6 @@ export type ConfigService = {
   updateSource: (path: string, enabled: boolean) => SourceConfig[];
   removeSource: (path: string) => SourceConfig[];
   updateEmbedding: (input: Partial<AppConfig["embedding"]>) => AppConfig;
+  updateModelHub: (input: Partial<AppConfig["modelHub"]>) => AppConfig;
   updateReranker: (input: Partial<AppConfig["reranker"]>) => AppConfig;
 };

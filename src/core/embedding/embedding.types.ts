@@ -10,7 +10,7 @@ export type EmbeddingConfig = {
   provider: EmbeddingProviderId;
   model: string;
   endpoint?: string;
-  apiKey?: string;
+  apiKeys?: Record<string, string>;
   dimension: number;
 };
 

@@ -11,9 +11,10 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
     provider: "local" as const,
     model: "BAAI/bge-small-en-v1.5",
     endpoint: "",
-    apiKey: "",
+    apiKeys: {} as Record<string, string>,
     dimension: 384,
   };
+  let modelHub = { hfEndpoint: "https://hf-mirror.com" };
   let reranker = { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 };
 
   const base: ConfigService = {
@@ -25,6 +26,7 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
         ui: { mode: "safe" as const },
         indexing: { watch: { enabled: true } },
         embedding,
+        modelHub,
         reranker,
       };
     },
@@ -53,7 +55,15 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
       return sources;
     },
     updateEmbedding(input) {
-      embedding = { ...embedding, ...input };
+      embedding = {
+        ...embedding,
+        ...input,
+        apiKeys: { ...embedding.apiKeys, ...(input.apiKeys ?? {}) },
+      };
+      return this.getConfig();
+    },
+    updateModelHub(input) {
+      modelHub = { ...modelHub, ...input };
       return this.getConfig();
     },
     updateReranker(input) {
@@ -133,9 +143,10 @@ describe("SettingsPage", () => {
                 provider: "local" as const,
                 model: "BAAI/bge-small-en-v1.5",
                 endpoint: "",
-                apiKey: "",
+                apiKeys: {},
                 dimension: 384,
               },
+              modelHub: { hfEndpoint: "https://hf-mirror.com" },
               reranker: { mode: "local" as const, model: "BAAI/bge-reranker-base", topN: 5 },
             };
           },
@@ -187,7 +198,8 @@ describe("SettingsPage", () => {
   it("saves embedding and reranker settings", () => {
     let embeddingModel = "BAAI/bge-small-en-v1.5";
     let embeddingProvider: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense" = "local";
-    let embeddingApiKey = "";
+    let embeddingApiKeyMap: Record<string, string> = {};
+    let hfEndpoint = "https://hf-mirror.com";
     let rerankerMode: "none" | "local" = "local";
     const renderer = create(
       <SettingsPage
@@ -196,7 +208,11 @@ describe("SettingsPage", () => {
           updateEmbedding(input) {
             embeddingModel = input.model ?? embeddingModel;
             embeddingProvider = (input.provider as typeof embeddingProvider) ?? embeddingProvider;
-            embeddingApiKey = input.apiKey ?? embeddingApiKey;
+            embeddingApiKeyMap = { ...embeddingApiKeyMap, ...(input.apiKeys ?? {}) };
+            return this.getConfig();
+          },
+          updateModelHub(input) {
+            hfEndpoint = input.hfEndpoint ?? hfEndpoint;
             return this.getConfig();
           },
           updateReranker(input) {
@@ -224,6 +240,14 @@ describe("SettingsPage", () => {
     act(() => {
       saveEmbedding.props.onClick();
     });
+    const hfInput = root.findByProps({ "data-testid": "hf-endpoint" });
+    act(() => {
+      hfInput.props.onChange({ target: { value: "https://hf.example.com" } });
+    });
+    const saveModelHub = root.findByProps({ "data-testid": "save-model-hub" });
+    act(() => {
+      saveModelHub.props.onClick();
+    });
 
     const rerankerModeSelect = root.findByProps({ "data-testid": "reranker-mode" });
     act(() => {
@@ -236,7 +260,8 @@ describe("SettingsPage", () => {
 
     expect(embeddingModel).toBe("BAAI/bge-base-en-v1.5");
     expect(embeddingProvider).toBe("openai_dense");
-    expect(embeddingApiKey).toBe("sk-live-1");
+    expect(embeddingApiKeyMap["openai_dense:BAAI/bge-base-en-v1.5"]).toBe("sk-live-1");
+    expect(hfEndpoint).toBe("https://hf.example.com");
     expect(rerankerMode).toBe("none");
   });
 });

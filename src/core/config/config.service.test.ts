@@ -16,6 +16,7 @@ describe("getDefaultConfig", () => {
     expect(cfg.indexing.watch.enabled).toBe(true);
     expect(cfg.mcp.enabled).toBe(true);
     expect(cfg.embedding.dimension).toBe(384);
+    expect(cfg.modelHub.hfEndpoint).toBe("https://hf-mirror.com");
     expect(cfg.reranker.mode).toBe("local");
   });
 
@@ -27,7 +28,7 @@ describe("getDefaultConfig", () => {
         provider: "openai_dense",
         model: "text-embedding-3-small",
         endpoint: "",
-        apiKey: "sk-test",
+        apiKeys: { "openai_dense:text-embedding-3-small": "sk-test" },
         dimension: 1536,
       },
     });
@@ -42,7 +43,7 @@ describe("getDefaultConfig", () => {
         provider: "qwen_dense",
         model: "text-embedding-v4",
         endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
-        apiKey: "",
+        apiKeys: {},
         dimension: 1024,
       },
     });
@@ -91,12 +92,20 @@ describe("getDefaultConfig", () => {
     const configPath = join(dir, "app-config.json");
     const service = createConfigService({ configPath });
 
-    service.updateEmbedding({ model: "BAAI/bge-base-en-v1.5", dimension: 768 });
+    service.updateEmbedding({
+      provider: "openai_dense",
+      model: "BAAI/bge-base-en-v1.5",
+      apiKeys: { "openai_dense:BAAI/bge-base-en-v1.5": "sk-test" },
+      dimension: 768,
+    });
+    service.updateModelHub({ hfEndpoint: "https://custom-hf.example.com" });
     service.updateReranker({ mode: "none", topN: 3 });
 
     const reloaded = createConfigService({ configPath }).getConfig();
     expect(reloaded.embedding.model).toBe("BAAI/bge-base-en-v1.5");
     expect(reloaded.embedding.dimension).toBe(768);
+    expect(reloaded.modelHub.hfEndpoint).toBe("https://custom-hf.example.com");
+    expect(reloaded.embedding.apiKeys["openai_dense:BAAI/bge-base-en-v1.5"]).toBe("sk-test");
     expect(reloaded.reranker.mode).toBe("none");
     expect(reloaded.reranker.topN).toBe(3);
 

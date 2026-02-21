@@ -16,8 +16,11 @@ export function getDefaultConfig(): AppConfig {
       provider: "local",
       model: "BAAI/bge-small-en-v1.5",
       endpoint: "",
-      apiKey: "",
+      apiKeys: {},
       dimension: 384,
+    },
+    modelHub: {
+      hfEndpoint: "https://hf-mirror.com",
     },
     reranker: {
       mode: "local",
@@ -31,11 +34,15 @@ export function validateConfig(cfg: AppConfig): { ok: boolean; errors: string[] 
   if (cfg.embedding.mode === "cloud" && !cfg.embedding.endpoint) {
     return { ok: false, errors: ["embedding.endpoint is required for cloud mode"] };
   }
-  if (cfg.embedding.mode === "cloud" && !cfg.embedding.apiKey) {
-    return { ok: false, errors: ["embedding.apiKey is required for cloud mode"] };
+  const activeApiKey = cfg.embedding.apiKeys[`${cfg.embedding.provider}:${cfg.embedding.model}`] ?? "";
+  if (cfg.embedding.mode === "cloud" && !activeApiKey) {
+    return { ok: false, errors: ["embedding.apiKeys is missing active model key for cloud mode"] };
   }
   if (cfg.embedding.dimension <= 0) {
     return { ok: false, errors: ["embedding.dimension must be > 0"] };
+  }
+  if (!cfg.modelHub.hfEndpoint) {
+    return { ok: false, errors: ["modelHub.hfEndpoint is required"] };
   }
   if (cfg.reranker.topN <= 0) {
     return { ok: false, errors: ["reranker.topN must be > 0"] };
@@ -47,6 +54,8 @@ export function migrateConfig(input: unknown): AppConfig {
   const version = (input as { version?: number })?.version ?? 0;
   if (version === 1) {
     const next = input as Partial<AppConfig>;
+    const legacyApiKey = (next.embedding as { apiKey?: string } | undefined)?.apiKey ?? "";
+    const legacyApiKeyMapKey = `${next.embedding?.provider ?? "local"}:${next.embedding?.model ?? "BAAI/bge-small-en-v1.5"}`;
     const migratedSources =
       Array.isArray(next.sources) && next.sources.length > 0
         ? normalizeSources(next.sources as unknown[])
@@ -61,6 +70,15 @@ export function migrateConfig(input: unknown): AppConfig {
       embedding: {
         ...getDefaultConfig().embedding,
         ...(next.embedding ?? {}),
+        apiKeys: {
+          ...getDefaultConfig().embedding.apiKeys,
+          ...(legacyApiKey ? { [legacyApiKeyMapKey]: legacyApiKey } : {}),
+          ...((next.embedding as Partial<AppConfig["embedding"]> | undefined)?.apiKeys ?? {}),
+        },
+      },
+      modelHub: {
+        ...getDefaultConfig().modelHub,
+        ...(next.modelHub ?? {}),
       },
       reranker: {
         ...getDefaultConfig().reranker,
@@ -170,7 +188,24 @@ export function createConfigService(opts?: { configPath?: string }): ConfigServi
     },
     updateEmbedding(input) {
       const current = this.getConfig();
-      const next = { ...current, embedding: { ...current.embedding, ...input } };
+      const next = {
+        ...current,
+        embedding: {
+          ...current.embedding,
+          ...input,
+          apiKeys: {
+            ...current.embedding.apiKeys,
+            ...(input.apiKeys ?? {}),
+          },
+        },
+      };
+      cache = next;
+      persist(next);
+      return next;
+    },
+    updateModelHub(input) {
+      const current = this.getConfig();
+      const next = { ...current, modelHub: { ...current.modelHub, ...input } };
       cache = next;
       persist(next);
       return next;

@@ -1,5 +1,6 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { createAppContainer } from "./app.container";
+import { downloadModelFromHub } from "../core/model/model-download.service";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -22,6 +23,9 @@ async function getMainViewUrl(): Promise<string> {
 }
 
 const container = createAppContainer();
+const startupConfig = container.configService.getConfig();
+console.log("App startup config:", JSON.stringify(startupConfig, null, 2));
+
 if (!container.mcpServer) {
   console.log("MCP server disabled in settings.");
 }
@@ -40,24 +44,37 @@ const rpc = BrowserView.defineRPC({
         provider,
         model,
         endpoint,
-        apiKey,
+        apiKeys,
         dimension,
       }: {
         mode?: "local" | "cloud";
         provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
         model?: string;
         endpoint?: string;
-        apiKey?: string;
+        apiKeys?: Record<string, string>;
         dimension?: number;
       }) {
-        return container.configService.updateEmbedding({
+        const updated = container.configService.updateEmbedding({
           mode,
           provider,
           model,
           endpoint,
-          apiKey,
+          apiKeys,
           dimension,
         });
+        if (model) {
+          void downloadModelFromHub({
+            hfEndpoint: updated.modelHub.hfEndpoint,
+            model,
+            targetRoot: "build/models",
+          }).catch((error) => {
+            console.error(`Model download failed for ${model}:`, error);
+          });
+        }
+        return updated;
+      },
+      set_model_hub_config({ hfEndpoint }: { hfEndpoint?: string }) {
+        return container.configService.updateModelHub({ hfEndpoint });
       },
       set_reranker_config({
         mode,
@@ -68,7 +85,17 @@ const rpc = BrowserView.defineRPC({
         model?: string;
         topN?: number;
       }) {
-        return container.configService.updateReranker({ mode, model, topN });
+        const updated = container.configService.updateReranker({ mode, model, topN });
+        if (model) {
+          void downloadModelFromHub({
+            hfEndpoint: updated.modelHub.hfEndpoint,
+            model,
+            targetRoot: "build/models",
+          }).catch((error) => {
+            console.error(`Model download failed for ${model}:`, error);
+          });
+        }
+        return updated;
       },
       add_source({ path }: { path: string }) {
         return container.addSourceAndReindex(path);

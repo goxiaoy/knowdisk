@@ -24,15 +24,16 @@ export function makeEmbeddingProvider(cfg: EmbeddingConfig, deps?: EmbeddingDeps
 }
 
 async function embedCloud(cfg: EmbeddingConfig, text: string, fetchImpl: typeof fetch) {
-  if (!cfg.endpoint || !cfg.apiKey) {
-    throw new Error("cloud embedding requires endpoint and apiKey");
+  const apiKey = cfg.apiKeys?.[`${cfg.provider}:${cfg.model}`] ?? "";
+  if (!cfg.endpoint || !apiKey) {
+    throw new Error("cloud embedding requires endpoint and apiKeys entry");
   }
 
   const response = await fetchImpl(cfg.endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${cfg.apiKey}`,
+      authorization: `Bearer ${apiKey}`,
       ...(cfg.provider === "qwen_dense" || cfg.provider === "qwen_sparse"
         ? { "X-DashScope-SSE": "disable" }
         : {}),

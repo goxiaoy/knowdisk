@@ -31,8 +31,11 @@ export function SettingsPage({
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
   const [embeddingModel, setEmbeddingModel] = useState(config.embedding.model);
   const [embeddingEndpoint, setEmbeddingEndpoint] = useState(config.embedding.endpoint);
-  const [embeddingApiKey, setEmbeddingApiKey] = useState(config.embedding.apiKey);
+  const [embeddingApiKey, setEmbeddingApiKey] = useState(
+    config.embedding.apiKeys[`${config.embedding.provider}:${config.embedding.model}`] ?? "",
+  );
   const [embeddingDimension, setEmbeddingDimension] = useState(String(config.embedding.dimension));
+  const [hfEndpoint, setHfEndpoint] = useState(config.modelHub.hfEndpoint);
   const [rerankerMode, setRerankerMode] = useState(config.reranker.mode);
   const [rerankerModel, setRerankerModel] = useState(config.reranker.model);
   const [rerankerTopN, setRerankerTopN] = useState(String(config.reranker.topN));
@@ -59,6 +62,11 @@ export function SettingsPage({
     };
   }, []);
 
+  useEffect(() => {
+    const key = `${embeddingProvider}:${embeddingModel}`;
+    setEmbeddingApiKey(config.embedding.apiKeys[key] ?? "");
+  }, [config.embedding.apiKeys, embeddingProvider, embeddingModel]);
+
   const toggleMcp = () => {
     const next = !mcpEnabled;
     const updated = configService.setMcpEnabled(next);
@@ -82,16 +90,25 @@ export function SettingsPage({
   };
 
   const saveEmbeddingConfig = () => {
+    const apiKeyMapKey = `${embeddingProvider}:${embeddingModel}`;
     const next = configService.updateEmbedding({
       mode: embeddingMode,
       provider: embeddingProvider,
       model: embeddingModel,
       endpoint: embeddingEndpoint,
-      apiKey: embeddingApiKey,
+      apiKeys: embeddingApiKey.length > 0 ? { [apiKeyMapKey]: embeddingApiKey } : {},
       dimension: Math.max(1, Number.parseInt(embeddingDimension, 10) || 384),
     });
     setConfig(next);
     setActivity("Embedding settings saved.");
+  };
+
+  const saveModelHubConfig = () => {
+    const next = configService.updateModelHub({
+      hfEndpoint: hfEndpoint.trim() || "https://hf-mirror.com",
+    });
+    setConfig(next);
+    setActivity("Model hub settings saved.");
   };
 
   const saveRerankerConfig = () => {
@@ -218,6 +235,19 @@ export function SettingsPage({
       </label>
       <button data-testid="save-embedding" type="button" onClick={saveEmbeddingConfig}>
         Save Embedding
+      </button>
+      <h2>Model Hub</h2>
+      <p>Current HF_ENDPOINT: {config.modelHub.hfEndpoint}</p>
+      <label>
+        HF_ENDPOINT
+        <input
+          data-testid="hf-endpoint"
+          value={hfEndpoint}
+          onChange={(event) => setHfEndpoint(event.target.value)}
+        />
+      </label>
+      <button data-testid="save-model-hub" type="button" onClick={saveModelHubConfig}>
+        Save Model Hub
       </button>
       <h2>Reranker</h2>
       <p>

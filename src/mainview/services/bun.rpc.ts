@@ -12,9 +12,13 @@ type AppBridgeSchema = {
           provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
           model?: string;
           endpoint?: string;
-          apiKey?: string;
+          apiKeys?: Record<string, string>;
           dimension?: number;
         };
+        response: AppConfig;
+      };
+      set_model_hub_config: {
+        params: { hfEndpoint?: string };
         response: AppConfig;
       };
       set_reranker_config: {
@@ -44,9 +48,10 @@ type BridgeRpc = {
       provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
       model?: string;
       endpoint?: string;
-      apiKey?: string;
+      apiKeys?: Record<string, string>;
       dimension?: number;
     }) => Promise<AppConfig>;
+    set_model_hub_config: (params: { hfEndpoint?: string }) => Promise<AppConfig>;
     set_reranker_config: (params: {
       mode?: "none" | "local";
       model?: string;
@@ -110,13 +115,23 @@ export async function setEmbeddingConfigInBun(input: {
   provider?: "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
   model?: string;
   endpoint?: string;
-  apiKey?: string;
+  apiKeys?: Record<string, string>;
   dimension?: number;
 }): Promise<void> {
   const channel = await getRpc();
   if (!channel) return;
   try {
     await channel.request.set_embedding_config(input);
+  } catch {
+    return;
+  }
+}
+
+export async function setModelHubConfigInBun(input: { hfEndpoint?: string }): Promise<void> {
+  const channel = await getRpc();
+  if (!channel) return;
+  try {
+    await channel.request.set_model_hub_config(input);
   } catch {
     return;
   }

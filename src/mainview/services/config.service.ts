@@ -4,6 +4,7 @@ import {
   getConfigFromBun,
   removeSourceInBun,
   setEmbeddingConfigInBun,
+  setModelHubConfigInBun,
   setMcpEnabledInBun,
   setRerankerConfigInBun,
   updateSourceInBun,
@@ -23,9 +24,10 @@ function getDefaultConfig(): AppConfig {
       provider: "local",
       model: "BAAI/bge-small-en-v1.5",
       endpoint: "",
-      apiKey: "",
+      apiKeys: {},
       dimension: 384,
     },
+    modelHub: { hfEndpoint: "https://hf-mirror.com" },
     reranker: { mode: "local", model: "BAAI/bge-reranker-base", topN: 5 },
   };
 }
@@ -35,6 +37,8 @@ function loadConfig(): AppConfig {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (!raw) return getDefaultConfig();
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
+    const legacyApiKey = (parsed.embedding as { apiKey?: string } | undefined)?.apiKey ?? "";
+    const legacyApiKeyMapKey = `${parsed.embedding?.provider ?? "local"}:${parsed.embedding?.model ?? "BAAI/bge-small-en-v1.5"}`;
     const normalizedSources = Array.isArray(parsed.sources)
       ? parsed.sources.map((item) =>
           typeof item === "string"
@@ -51,6 +55,15 @@ function loadConfig(): AppConfig {
       embedding: {
         ...getDefaultConfig().embedding,
         ...(parsed.embedding ?? {}),
+        apiKeys: {
+          ...getDefaultConfig().embedding.apiKeys,
+          ...(legacyApiKey ? { [legacyApiKeyMapKey]: legacyApiKey } : {}),
+          ...((parsed.embedding as Partial<AppConfig["embedding"]> | undefined)?.apiKeys ?? {}),
+        },
+      },
+      modelHub: {
+        ...getDefaultConfig().modelHub,
+        ...(parsed.modelHub ?? {}),
       },
       reranker: {
         ...getDefaultConfig().reranker,
@@ -117,9 +130,26 @@ export const defaultMainviewConfigService: ConfigService = {
   },
   updateEmbedding(input) {
     const current = loadConfig();
-    const next = { ...current, embedding: { ...current.embedding, ...input } };
+    const next = {
+      ...current,
+      embedding: {
+        ...current.embedding,
+        ...input,
+        apiKeys: {
+          ...current.embedding.apiKeys,
+          ...(input.apiKeys ?? {}),
+        },
+      },
+    };
     saveConfig(next);
     void setEmbeddingConfigInBun(input);
+    return next;
+  },
+  updateModelHub(input) {
+    const current = loadConfig();
+    const next = { ...current, modelHub: { ...current.modelHub, ...input } };
+    saveConfig(next);
+    void setModelHubConfigInBun(input);
     return next;
   },
   updateReranker(input) {

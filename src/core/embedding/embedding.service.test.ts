@@ -6,7 +6,7 @@ test("uses configured local provider", async () => {
     mode: "local",
     provider: "local",
     model: "BAAI/bge-small-en-v1.5",
-    apiKey: "",
+    apiKeys: {},
     endpoint: "",
     dimension: 16,
   });
@@ -20,7 +20,7 @@ test("changes vector output for different model", async () => {
     mode: "local",
     provider: "local",
     model: "BAAI/bge-small-en-v1.5",
-    apiKey: "",
+    apiKeys: {},
     endpoint: "",
     dimension: 8,
   });
@@ -28,7 +28,7 @@ test("changes vector output for different model", async () => {
     mode: "local",
     provider: "local",
     model: "BAAI/bge-base-en-v1.5",
-    apiKey: "",
+    apiKeys: {},
     endpoint: "",
     dimension: 8,
   });
@@ -43,7 +43,7 @@ test("uses openai dense embedding when cloud provider is configured", async () =
       provider: "openai_dense",
       model: "text-embedding-3-small",
       endpoint: "https://api.openai.com/v1/embeddings",
-      apiKey: "sk-test",
+      apiKeys: { "openai_dense:text-embedding-3-small": "sk-test" },
       dimension: 3,
     },
     {
@@ -67,7 +67,7 @@ test("supports qwen sparse embedding response", async () => {
       provider: "qwen_sparse",
       model: "text-embedding-v4",
       endpoint: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/embeddings",
-      apiKey: "sk-test",
+      apiKeys: { "qwen_sparse:text-embedding-v4": "sk-test" },
       dimension: 4,
     },
     {
