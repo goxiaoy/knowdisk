@@ -59,6 +59,9 @@ test("scheduled reconcile repairs missing chunk", async () => {
     async upsert(_rows: unknown[]) {
       return;
     },
+    async deleteBySourcePath(_sourcePath: string) {
+      return;
+    },
   };
 
   const svc = createSourceIndexingService(configService, embedding, vectorRepo);
@@ -84,6 +87,9 @@ test("index status store is subscribable", async () => {
   };
   const vectorRepo = {
     async upsert(_rows: unknown[]) {
+      return;
+    },
+    async deleteBySourcePath(_sourcePath: string) {
       return;
     },
   };
@@ -123,9 +129,16 @@ test("index status includes current file while indexing", async () => {
       return [0.1, 0.2, 0.3];
     },
   };
+  const seenChunkIds: string[] = [];
   const vectorRepo = {
-    async upsert(_rows: unknown[]) {
+    async upsert(rows: Array<{ chunkId: string }>) {
+      for (const row of rows) {
+        seenChunkIds.push(row.chunkId);
+      }
       await Promise.resolve();
+    },
+    async deleteBySourcePath(_sourcePath: string) {
+      return;
     },
   };
 
@@ -140,4 +153,9 @@ test("index status includes current file while indexing", async () => {
 
   expect(seenCurrentFiles.includes(filePath)).toBe(true);
   expect(seenCurrentFiles[seenCurrentFiles.length - 1]).toBeNull();
+  expect(seenChunkIds.length).toBeGreaterThan(0);
+  for (const chunkId of seenChunkIds) {
+    expect(chunkId.startsWith("doc_")).toBe(true);
+    expect(chunkId.includes("/")).toBe(false);
+  }
 });

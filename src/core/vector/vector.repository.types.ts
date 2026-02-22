@@ -22,6 +22,6 @@ export type VectorSearchRow = {
 
 export type VectorRepository = {
   upsert: (input: VectorRow[]) => Promise<void>;
+  deleteBySourcePath: (sourcePath: string) => Promise<void>;
   search: (query: number[], opts: { topK: number }) => Promise<VectorSearchRow[]>;
 };
-

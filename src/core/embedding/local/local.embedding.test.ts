@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { embedWithLocalProvider } from "./local.embedding";
+import {
+  createDefaultLocalExtractor,
+  embedWithLocalProvider,
+  initLocalExtractor,
+  resolveLocalExtractorFactory,
+} from "./local.embedding";
 import type { EmbeddingConfig } from "../embedding.types";
 
 function makeLocalConfig(overrides?: Partial<EmbeddingConfig["local"]>): EmbeddingConfig {
@@ -20,10 +25,13 @@ function makeLocalConfig(overrides?: Partial<EmbeddingConfig["local"]>): Embeddi
 
 test("embeds using local extractor output", async () => {
   const cfg = makeLocalConfig({ cacheDir: "build/cache/embedding/local-a", model: "model-a" });
-  const vector = await embedWithLocalProvider(
+  const extractor = await initLocalExtractor(
     cfg,
-    "hello",
     async () => async () => ({ data: new Float32Array([0.1, 0.2, 0.3]) }),
+  );
+  const vector = await embedWithLocalProvider(
+    "hello",
+    extractor,
   );
   expect(vector).toHaveLength(3);
   expect(vector[0]).toBeCloseTo(0.1, 6);
@@ -33,11 +41,26 @@ test("embeds using local extractor output", async () => {
 
 test("throws when local extractor returns missing data", async () => {
   const cfg = makeLocalConfig({ cacheDir: "build/cache/embedding/local-b", model: "model-b" });
+  const extractor = await initLocalExtractor(
+    cfg,
+    async () => async () => ({}),
+  );
   await expect(
-    embedWithLocalProvider(
-      cfg,
-      "hello",
-      async () => async () => ({}),
-    ),
+    embedWithLocalProvider("hello", extractor),
   ).rejects.toThrow("local embedding output missing data");
+});
+
+test("uses default local extractor factory when none is provided", () => {
+  const factory = resolveLocalExtractorFactory();
+  expect(factory).toBe(createDefaultLocalExtractor);
+});
+
+test("initLocalExtractor creates provider-local cache directory", async () => {
+  const cfg = makeLocalConfig({ cacheDir: "build/cache/embedding/local-c", model: "model-c" });
+  const extractor = await initLocalExtractor(
+    cfg,
+    async () => async () => ({ data: new Float32Array([0.1]) }),
+  );
+  const vector = await embedWithLocalProvider("x", extractor);
+  expect(vector).toHaveLength(1);
 });

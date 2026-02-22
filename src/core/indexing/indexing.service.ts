@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { ConfigService } from "../config/config.types";
@@ -12,7 +13,7 @@ import type { VectorRepository } from "../vector/vector.repository.types";
 export function createSourceIndexingService(
   configService: ConfigService,
   embedding: EmbeddingProvider,
-  vector: Pick<VectorRepository, "upsert">,
+  vector: Pick<VectorRepository, "upsert" | "deleteBySourcePath">,
   logger?: LoggerService,
 ): IndexingService {
   const log = logger?.child({ subsystem: "indexing" }) ?? {
@@ -79,6 +80,8 @@ export function createSourceIndexingService(
             log.debug({ filePath }, "skipping unsupported file");
             continue;
           }
+          await vector.deleteBySourcePath(filePath);
+          log.debug({ filePath }, "deleted previous chunks for file");
           const fileStats = await stat(filePath);
           if (fileStats.size > STREAM_THRESHOLD_BYTES) {
             const added = await indexLargeFile(
@@ -146,7 +149,7 @@ async function indexSmallFile(
   filePath: string,
   parser: Parser,
   embedding: EmbeddingProvider,
-  vector: Pick<VectorRepository, "upsert">,
+  vector: Pick<VectorRepository, "upsert" | "deleteBySourcePath">,
 ) {
   const content = await readFile(filePath, "utf8");
   const parsed = parser.parse(content);
@@ -154,9 +157,10 @@ async function indexSmallFile(
     return 0;
   }
   const vectorValue = await embedding.embed(parsed.text);
+  const chunkId = createChunkId(filePath);
   await vector.upsert([
     {
-      chunkId: filePath,
+      chunkId,
       vector: vectorValue,
       metadata: {
         sourcePath: filePath,
@@ -172,7 +176,7 @@ async function indexLargeFile(
   filePath: string,
   parser: Parser,
   embedding: EmbeddingProvider,
-  vector: Pick<VectorRepository, "upsert">,
+  vector: Pick<VectorRepository, "upsert" | "deleteBySourcePath">,
 ) {
   const stream = createReadStream(filePath, { encoding: "utf8" });
   let indexedChunks = 0;
@@ -181,9 +185,14 @@ async function indexLargeFile(
       continue;
     }
     const vectorValue = await embedding.embed(parsed.text);
+    const chunkId = createChunkId(
+      filePath,
+      parsed.startOffset,
+      parsed.endOffset,
+    );
     await vector.upsert([
       {
-        chunkId: `${filePath}#${parsed.startOffset}-${parsed.endOffset}`,
+        chunkId,
         vector: vectorValue,
         metadata: {
           sourcePath: filePath,
@@ -198,6 +207,15 @@ async function indexLargeFile(
     indexedChunks += 1;
   }
   return indexedChunks;
+}
+
+function createChunkId(
+  sourcePath: string,
+  startOffset?: number,
+  endOffset?: number,
+) {
+  const key = `${sourcePath}#${startOffset ?? ""}#${endOffset ?? ""}`;
+  return `doc_${createHash("sha256").update(key).digest("hex").slice(0, 32)}`;
 }
 
 async function collectIndexableFiles(sourcePath: string): Promise<string[]> {

@@ -12,14 +12,10 @@ export type LocalExtractorFactory = (
   opts: { hfEndpoint: string; cacheDir: string },
 ) => Promise<LocalExtractor>;
 
-const localExtractorCache = new Map<string, Promise<LocalExtractor>>();
-
 export async function embedWithLocalProvider(
-  cfg: EmbeddingConfig,
   text: string,
-  createExtractor: LocalExtractorFactory,
+  extractor: LocalExtractor,
 ): Promise<number[]> {
-  const extractor = await getLocalExtractor(cfg, createExtractor);
   const output = (await extractor(text, {
     pooling: "mean",
     normalize: true,
@@ -30,22 +26,23 @@ export async function embedWithLocalProvider(
   return Array.from(output.data);
 }
 
-async function getLocalExtractor(
+export function resolveLocalExtractorFactory(
+  createExtractor?: LocalExtractorFactory,
+): LocalExtractorFactory {
+  return createExtractor ?? createDefaultLocalExtractor;
+}
+
+export async function initLocalExtractor(
   cfg: EmbeddingConfig,
-  createExtractor: LocalExtractorFactory,
-) {
+  createExtractor?: LocalExtractorFactory,
+): Promise<LocalExtractor> {
   const providerDir = join(cfg.local.cacheDir, "provider-local");
   mkdirSync(providerDir, { recursive: true });
-  const key = `${cfg.local.model}|${cfg.local.hfEndpoint}|${providerDir}`;
-  let extractor = localExtractorCache.get(key);
-  if (!extractor) {
-    extractor = createExtractor(cfg.local.model, {
-      hfEndpoint: cfg.local.hfEndpoint,
-      cacheDir: providerDir,
-    });
-    localExtractorCache.set(key, extractor);
-  }
-  return extractor;
+  const factory = resolveLocalExtractorFactory(createExtractor);
+  return factory(cfg.local.model, {
+    hfEndpoint: cfg.local.hfEndpoint,
+    cacheDir: providerDir,
+  });
 }
 
 export async function createDefaultLocalExtractor(
@@ -67,14 +64,16 @@ export async function createDefaultLocalExtractor(
   if (env) {
     env.allowRemoteModels = true;
     env.remoteHost = opts.hfEndpoint.replace(/\/+$/, "") + "/";
-    env.remotePathTemplate = "{model}/resolve/{revision}/{file}";
+    // env.remotePathTemplate = "{model}/resolve/{revision}/";
     env.cacheDir = opts.cacheDir;
   }
 
-  return (transformers as unknown as {
-    pipeline: (
-      task: "feature-extraction",
-      model: string,
-    ) => Promise<LocalExtractor>;
-  }).pipeline("feature-extraction", model);
+  return (
+    transformers as unknown as {
+      pipeline: (
+        task: "feature-extraction",
+        model: string,
+      ) => Promise<LocalExtractor>;
+    }
+  ).pipeline("feature-extraction", model);
 }

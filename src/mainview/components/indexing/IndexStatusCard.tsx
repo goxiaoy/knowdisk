@@ -72,7 +72,17 @@ export function IndexStatusCard({ pollMs = 1000 }: { pollMs?: number }) {
         <div className="md:col-span-2">
           <dt className="text-slate-500">Errors</dt>
           <dd data-testid="index-status-errors" className="font-medium text-rose-700">
-            {status.errors.length}
+            {status.errors.length === 0 ? (
+              <span>0</span>
+            ) : (
+              <ul className="list-disc space-y-1 pl-5">
+                {status.errors.map((error, index) => (
+                  <li key={`${index}-${error}`} className="break-all">
+                    {error}
+                  </li>
+                ))}
+              </ul>
+            )}
           </dd>
         </div>
       </dl>

@@ -71,6 +71,10 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
       );
     },
 
+    async deleteBySourcePath(sourcePath: string) {
+      collection.deleteByFilterSync(`sourcePath = '${escapeFilterValue(sourcePath)}'`);
+    },
+
     async search(query: number[], opts: { topK: number }) {
       const docs = collection.querySync({
         fieldName: VECTOR_FIELD,
@@ -100,6 +104,10 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
       }));
     },
   };
+}
+
+function escapeFilterValue(input: string) {
+  return input.replaceAll("'", "''");
 }
 
 function parseOptionalNumber(input: unknown): number | undefined {

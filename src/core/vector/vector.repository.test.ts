@@ -17,3 +17,25 @@ test("upserts and searches top-k", async () => {
   expect(results[0]?.chunkId).toBe("a");
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("deleteBySourcePath removes all chunks for a file", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "knowdisk-zvec-"));
+  const repo = createVectorRepository({
+    collectionPath: join(dir, "vectors.zvec"),
+    dimension: 2,
+    indexType: "flat",
+    metric: "ip",
+  });
+  await repo.upsert([
+    { chunkId: "doc_a1", vector: [1, 0], metadata: { sourcePath: "a.md", chunkText: "hello 1" } },
+    { chunkId: "doc_a2", vector: [1, 0], metadata: { sourcePath: "a.md", chunkText: "hello 2" } },
+    { chunkId: "doc_b1", vector: [0, 1], metadata: { sourcePath: "b.md", chunkText: "world" } },
+  ]);
+
+  await repo.deleteBySourcePath("a.md");
+
+  const results = await repo.search([1, 0], { topK: 5 });
+  expect(results.some((row) => row.metadata.sourcePath === "a.md")).toBe(false);
+  expect(results.some((row) => row.metadata.sourcePath === "b.md")).toBe(true);
+  rmSync(dir, { recursive: true, force: true });
+});

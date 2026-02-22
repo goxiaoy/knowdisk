@@ -109,21 +109,38 @@ export function SettingsPage({
 
   const addSource = async () => {
     const path = await pickSourceDirectory();
-    console.log(path)
-    if (!path) return;
+    console.info("[settings:addSource] pick result", { path });
+    if (!path) {
+      console.info("[settings:addSource] cancelled by user");
+      return;
+    }
     const remoteSources = await addSourceInBun(path);
+    console.info("[settings:addSource] remote response", {
+      path,
+      sourceCount: remoteSources?.length ?? null,
+    });
     const next = configService.updateConfig((source) => {
       if (remoteSources) {
+        console.info("[settings:addSource] using remote sources", {
+          path,
+          sourceCount: remoteSources.length,
+        });
         return { ...source, sources: remoteSources };
       }
       if (source.sources.some((item) => item.path === path)) {
+        console.info("[settings:addSource] source already exists", { path });
         return source;
       }
+      console.info("[settings:addSource] using local fallback add", { path });
       return { ...source, sources: [...source.sources, { path, enabled: true }] };
     });
     setConfig(next);
     setSources(next.sources);
     setActivity("Source added. Indexing started.");
+    console.info("[settings:addSource] completed", {
+      path,
+      sourceCount: next.sources.length,
+    });
   };
 
   const setSourceEnabled = (path: string, enabled: boolean) => {
