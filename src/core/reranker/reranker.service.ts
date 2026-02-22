@@ -1,18 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../config/config.types";
+import type { RerankRow, RerankerService } from "./reranker.types";
 
-type RetrievalRow = {
-  chunkId: string;
-  score: number;
-  metadata: {
-    chunkText: string;
-    sourcePath: string;
-    updatedAt: string;
-  };
-};
-
-export function createReranker(config: AppConfig["reranker"]) {
+export function createReranker(config: AppConfig["reranker"]): RerankerService | null {
   if (!config.enabled) {
     return null;
   }
@@ -22,7 +13,7 @@ export function createReranker(config: AppConfig["reranker"]) {
   mkdirSync(providerDir, { recursive: true });
 
   return {
-    async rerank(query: string, rows: RetrievalRow[], opts: { topK: number }) {
+    async rerank(query: string, rows: RerankRow[], opts: { topK: number }) {
       const queryTerms = tokenize(query);
       const rescored = rows.map((row) => {
         const overlap = countOverlap(queryTerms, tokenize(row.metadata.chunkText));

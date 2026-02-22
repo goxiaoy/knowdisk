@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ConfigService } from "../../../core/config/config.types";
-import {
-  createHealthService,
-  type AppHealth,
-  type ComponentHealth,
-} from "../../../core/health/health.service";
+import { createHealthService } from "../../../core/health/health.service";
+import type { AppHealth, ComponentHealth } from "../../../core/health/health.service.types";
 import { defaultMainviewConfigService } from "../../services/config.service";
 import {
   addSourceInBun,

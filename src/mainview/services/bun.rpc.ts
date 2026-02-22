@@ -1,5 +1,5 @@
 import type { AppConfig, SourceConfig } from "../../core/config/config.types";
-import type { ComponentHealth } from "../../core/health/health.service";
+import type { ComponentHealth } from "../../core/health/health.service.types";
 
 type AppBridgeSchema = {
   bun: {

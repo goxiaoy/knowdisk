@@ -1,54 +1,6 @@
-export type RetrievalDeps = {
-  embedding: {
-    embed: (query: string) => Promise<number[]>;
-  };
-  vector: {
-    search: (
-      queryVector: number[],
-      opts: { topK: number },
-    ) => Promise<
-      Array<{
-        chunkId: string;
-        score: number;
-        metadata: {
-          chunkText: string;
-          sourcePath: string;
-          updatedAt: string;
-        };
-      }>
-    >;
-  };
-  defaults: {
-    topK: number;
-  };
-  reranker?: {
-    rerank: (
-      query: string,
-      rows: Array<{
-        chunkId: string;
-        score: number;
-        metadata: {
-          chunkText: string;
-          sourcePath: string;
-          updatedAt: string;
-        };
-      }>,
-      opts: { topK: number },
-    ) => Promise<
-      Array<{
-        chunkId: string;
-        score: number;
-        metadata: {
-          chunkText: string;
-          sourcePath: string;
-          updatedAt: string;
-        };
-      }>
-    >;
-  };
-};
+import type { RetrievalDeps, RetrievalService } from "./retrieval.service.types";
 
-export function createRetrievalService(deps: RetrievalDeps) {
+export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
   return {
     async search(query: string, opts: { topK?: number }) {
       const queryVector = await deps.embedding.embed(query);
@@ -65,6 +17,9 @@ export function createRetrievalService(deps: RetrievalDeps) {
         sourcePath: row.metadata.sourcePath,
         score: row.score,
         updatedAt: row.metadata.updatedAt,
+        startOffset: row.metadata.startOffset,
+        endOffset: row.metadata.endOffset,
+        tokenEstimate: row.metadata.tokenEstimate,
       }));
     },
   };

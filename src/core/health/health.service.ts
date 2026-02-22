@@ -1,7 +1,6 @@
-export type ComponentHealth = "healthy" | "degraded" | "failed";
-export type AppHealth = "healthy" | "degraded" | "failed";
+import type { ComponentHealth, HealthService } from "./health.service.types";
 
-export function createHealthService() {
+export function createHealthService(): HealthService {
   const states: Record<string, ComponentHealth> = {
     fs: "healthy",
     watch: "healthy",

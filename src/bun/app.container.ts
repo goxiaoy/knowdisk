@@ -6,19 +6,15 @@ import type { SourceConfig } from "../core/config/config.types";
 import { makeEmbeddingProvider } from "../core/embedding/embedding.service";
 import type { EmbeddingProvider } from "../core/embedding/embedding.types";
 import { createHealthService } from "../core/health/health.service";
+import type { HealthService } from "../core/health/health.service.types";
 import { createSourceIndexingService } from "../core/indexing/indexing.service";
+import type { IndexingService } from "../core/indexing/indexing.service.types";
 import { createMcpServer } from "../core/mcp/mcp.server";
 import { createReranker } from "../core/reranker/reranker.service";
 import { createRetrievalService } from "../core/retrieval/retrieval.service";
+import type { RetrievalService } from "../core/retrieval/retrieval.service.types";
 import { createVectorRepository } from "../core/vector/vector.repository";
-
-type RetrievalService = {
-  search: (query: string, opts: { topK?: number }) => Promise<unknown[]>;
-};
-
-type HealthService = ReturnType<typeof createHealthService>;
-type VectorRepository = ReturnType<typeof createVectorRepository>;
-type IndexingService = ReturnType<typeof createSourceIndexingService>;
+import type { VectorRepository } from "../core/vector/vector.repository.types";
 
 export type AppContainer = {
   configService: ConfigService;
@@ -114,6 +110,9 @@ function registerDependencies(
                 sourcePath: row.metadata.sourcePath,
                 chunkText: row.metadata.chunkText ?? "",
                 updatedAt: row.metadata.updatedAt ?? "",
+                startOffset: row.metadata.startOffset,
+                endOffset: row.metadata.endOffset,
+                tokenEstimate: row.metadata.tokenEstimate,
               },
             }));
           },

@@ -3,21 +3,17 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { ConfigService } from "../config/config.types";
 import type { EmbeddingProvider } from "../embedding/embedding.types";
+import type { FileChange, IndexingService } from "./indexing.service.types";
 import { resolveParser } from "../parser/parser.registry";
 import type { Parser } from "../parser/parser.types";
-import type { VectorRow } from "../vector/vector.repository";
-
-export type FileChange = {
-  path: string;
-  type: string;
-};
+import type { VectorRepository, VectorRow } from "../vector/vector.repository.types";
 
 export function createIndexingService(
   rebuild: (reason: string) => Promise<unknown>,
   incremental: (changes: FileChange[]) => Promise<unknown>,
   reconcile: () => Promise<{ repaired: number }>,
   status: () => unknown,
-) {
+): IndexingService {
   return {
     async runFullRebuild(reason: string) {
       return rebuild(reason);
@@ -37,8 +33,8 @@ export function createIndexingService(
 export function createSourceIndexingService(
   configService: ConfigService,
   embedding: EmbeddingProvider,
-  vector: { upsert: (rows: VectorRow[]) => Promise<void> },
-) {
+  vector: Pick<VectorRepository, "upsert">,
+): IndexingService {
   const STREAM_THRESHOLD_BYTES = 10 * 1024 * 1024;
   const indexingState = {
     running: false,
@@ -93,7 +89,7 @@ async function indexSmallFile(
   filePath: string,
   parser: Parser,
   embedding: EmbeddingProvider,
-  vector: { upsert: (rows: VectorRow[]) => Promise<void> },
+  vector: Pick<VectorRepository, "upsert">,
 ) {
   const content = await readFile(filePath, "utf8");
   const parsed = parser.parse(content);
@@ -119,7 +115,7 @@ async function indexLargeFile(
   filePath: string,
   parser: Parser,
   embedding: EmbeddingProvider,
-  vector: { upsert: (rows: VectorRow[]) => Promise<void> },
+  vector: Pick<VectorRepository, "upsert">,
 ) {
   const stream = createReadStream(filePath, { encoding: "utf8" });
   let indexedChunks = 0;

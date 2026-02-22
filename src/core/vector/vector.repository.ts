@@ -8,19 +8,7 @@ import {
   ZVecMetricType,
   ZVecOpen,
 } from "@zvec/zvec";
-
-export type VectorRow = {
-  chunkId: string;
-  vector: number[];
-  metadata: {
-    sourcePath: string;
-    chunkText?: string;
-    startOffset?: number;
-    endOffset?: number;
-    tokenEstimate?: number;
-    updatedAt?: string;
-  };
-};
+import type { VectorRepository, VectorRow } from "./vector.repository.types";
 
 type VectorRepositoryOptions = {
   collectionPath: string;
@@ -31,7 +19,7 @@ type VectorRepositoryOptions = {
 
 const VECTOR_FIELD = "embedding";
 
-export function createVectorRepository(opts: VectorRepositoryOptions) {
+export function createVectorRepository(opts: VectorRepositoryOptions): VectorRepository {
   const collectionPath = resolve(opts.collectionPath);
   mkdirSync(dirname(collectionPath), { recursive: true });
   const schema = new ZVecCollectionSchema({
