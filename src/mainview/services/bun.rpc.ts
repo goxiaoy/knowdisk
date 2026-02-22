@@ -1,6 +1,7 @@
 import type { AppConfig, SourceConfig } from "../../core/config/config.types";
 import type { ComponentHealth } from "../../core/health/health.service.types";
 import type { IndexingStatus } from "../../core/indexing/indexing.service.types";
+import type { RetrievalResult } from "../../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
 
 type AppBridgeSchema = {
@@ -17,6 +18,7 @@ type AppBridgeSchema = {
       get_health: { params: void; response: Record<string, ComponentHealth> };
       get_index_status: { params: void; response: IndexingStatus };
       get_vector_stats: { params: void; response: VectorCollectionInspect };
+      search_retrieval: { params: { query: string; topK: number }; response: RetrievalResult[] };
       force_resync: { params: void; response: { ok: boolean; error?: string } };
       pick_source_directory_start: { params: void; response: { requestId: string } };
     };
@@ -43,6 +45,7 @@ type BridgeRpc = {
     get_health: () => Promise<Record<string, ComponentHealth>>;
     get_index_status: () => Promise<IndexingStatus>;
     get_vector_stats: () => Promise<VectorCollectionInspect>;
+    search_retrieval: (params: { query: string; topK: number }) => Promise<RetrievalResult[]>;
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
     pick_source_directory_start: () => Promise<{ requestId: string }>;
   };
@@ -193,6 +196,20 @@ export async function getVectorStatsFromBun(): Promise<VectorCollectionInspect |
   try {
     return await channel.request.get_vector_stats();
   } catch {
+    return null;
+  }
+}
+
+export async function searchRetrievalInBun(
+  query: string,
+  topK: number,
+): Promise<RetrievalResult[] | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.search_retrieval({ query, topK });
+  } catch (error) {
+    console.error("search_retrieval RPC failed:", error);
     return null;
   }
 }

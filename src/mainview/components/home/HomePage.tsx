@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { IndexStatusCard } from "../indexing/IndexStatusCard";
 import { forceResyncInBun } from "../../services/bun.rpc";
+import { RetrievalSearchCard } from "./RetrievalSearchCard";
 import { VectorStatsCard } from "./VectorStatsCard";
 
 export function HomePage({
@@ -50,9 +51,12 @@ export function HomePage({
           ) : null}
         </header>
 
-        <div className="grid gap-6 xl:grid-cols-2">
-          <VectorStatsCard />
-          <IndexStatusCard />
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
+          <div className="space-y-6">
+            <VectorStatsCard />
+            <IndexStatusCard />
+          </div>
+          <RetrievalSearchCard />
         </div>
       </div>
     </section>

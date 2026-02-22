@@ -4,6 +4,7 @@ import { createAppContainer } from "./app.container";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 import type { IndexingStatus } from "../core/indexing/indexing.service.types";
+import type { RetrievalResult } from "../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../core/vector/vector.repository.types";
 
 const DEV_SERVER_PORT = 5173;
@@ -90,6 +91,9 @@ const rpc = BrowserView.defineRPC({
       },
       get_vector_stats(): Promise<VectorCollectionInspect> {
         return container.vectorRepository.inspect();
+      },
+      search_retrieval({ query, topK }: { query: string; topK: number }): Promise<RetrievalResult[]> {
+        return container.retrievalService.search(query, { topK });
       },
       force_resync() {
         return container.forceResync();
