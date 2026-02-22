@@ -24,6 +24,9 @@ function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
     : "build/cache/reranker/local";
   return {
     version: 1,
+    onboarding: {
+      completed: false,
+    },
     sources: [],
     mcp: {
       enabled: true,
@@ -210,6 +213,11 @@ function migrateConfigWithDefaults(
     return {
       ...defaults,
       ...next,
+      onboarding: {
+        completed:
+          next.onboarding?.completed ??
+          (migratedSources.length > 0 ? true : defaults.onboarding.completed),
+      },
       sources: migratedSources,
       mcp: {
         enabled: next.mcp?.enabled ?? true,
@@ -224,9 +232,7 @@ function migrateConfigWithDefaults(
   return {
     ...defaults,
     version: 1,
-    sources: normalizeSources(
-      Array.isArray(legacy.sources) ? legacy.sources : [],
-    ),
+    sources: normalizeSources(Array.isArray(legacy.sources) ? legacy.sources : []),
   };
 }
 

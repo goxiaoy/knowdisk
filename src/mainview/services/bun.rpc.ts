@@ -17,6 +17,7 @@ type AppBridgeSchema = {
       get_health: { params: void; response: Record<string, ComponentHealth> };
       get_index_status: { params: void; response: IndexingStatus };
       get_vector_stats: { params: void; response: VectorCollectionInspect };
+      force_resync: { params: void; response: { ok: boolean; error?: string } };
       pick_source_directory_start: { params: void; response: { requestId: string } };
     };
     messages: {};
@@ -42,6 +43,7 @@ type BridgeRpc = {
     get_health: () => Promise<Record<string, ComponentHealth>>;
     get_index_status: () => Promise<IndexingStatus>;
     get_vector_stats: () => Promise<VectorCollectionInspect>;
+    force_resync: () => Promise<{ ok: boolean; error?: string }>;
     pick_source_directory_start: () => Promise<{ requestId: string }>;
   };
 };
@@ -190,6 +192,16 @@ export async function getVectorStatsFromBun(): Promise<VectorCollectionInspect |
   if (!channel) return null;
   try {
     return await channel.request.get_vector_stats();
+  } catch {
+    return null;
+  }
+}
+
+export async function forceResyncInBun(): Promise<{ ok: boolean; error?: string } | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.force_resync();
   } catch {
     return null;
   }

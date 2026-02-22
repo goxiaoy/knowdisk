@@ -60,3 +60,23 @@ test("inspect returns schema and stats", async () => {
   expect(inspect.schema.fields.some((field) => field.name === "sourcePath")).toBe(true);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("destroy clears collection data", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "knowdisk-zvec-"));
+  const repo = createVectorRepository({
+    collectionPath: join(dir, "vectors.zvec"),
+    dimension: 2,
+    indexType: "flat",
+    metric: "ip",
+  });
+
+  await repo.upsert([{ chunkId: "doc_a1", vector: [1, 0], metadata: { sourcePath: "a.md" } }]);
+  const before = await repo.inspect();
+  expect(before.stats.docCount).toBe(1);
+
+  await repo.destroy();
+  const after = await repo.inspect();
+  expect(after.stats.docCount).toBe(0);
+
+  rmSync(dir, { recursive: true, force: true });
+});

@@ -35,6 +35,9 @@ export type CloudRerankerConfig = {
 
 export interface AppConfig {
   version: 1;
+  onboarding: {
+    completed: boolean;
+  };
   sources: SourceConfig[];
   mcp: {
     enabled: boolean;

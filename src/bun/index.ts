@@ -91,6 +91,9 @@ const rpc = BrowserView.defineRPC({
       get_vector_stats(): Promise<VectorCollectionInspect> {
         return container.vectorRepository.inspect();
       },
+      force_resync() {
+        return container.forceResync();
+      },
       pick_source_directory_start() {
         const requestId = globalThis.crypto.randomUUID();
         void (async () => {

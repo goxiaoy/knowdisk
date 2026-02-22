@@ -26,6 +26,7 @@ export type AppContainer = {
   retrievalService: RetrievalService;
   indexingService: IndexingService;
   addSourceAndReindex: (path: string) => Promise<SourceConfig[]>;
+  forceResync: () => Promise<{ ok: boolean; error?: string }>;
   mcpServer: ReturnType<typeof createMcpServer> | null;
 };
 
@@ -160,6 +161,16 @@ function registerDependencies(
         void indexingService.runFullRebuild("source_added");
         return next.sources;
       };
+      const forceResync = async () => {
+        try {
+          await vectorRepository.destroy();
+          await indexingService.runFullRebuild("force_resync");
+          return { ok: true };
+        } catch (error) {
+          loggerService.error({ subsystem: "indexing", error: String(error) }, "force resync failed");
+          return { ok: false, error: String(error) };
+        }
+      };
 
       if (!configService.getConfig().mcp.enabled) {
         return {
@@ -170,6 +181,7 @@ function registerDependencies(
           retrievalService,
           indexingService,
           addSourceAndReindex,
+          forceResync,
           mcpServer: null,
         } satisfies AppContainer;
       }
@@ -187,6 +199,7 @@ function registerDependencies(
         retrievalService,
         indexingService,
         addSourceAndReindex,
+        forceResync,
         mcpServer,
       } satisfies AppContainer;
     },

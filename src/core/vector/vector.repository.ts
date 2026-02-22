@@ -67,6 +67,12 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
   );
 
   return {
+    async destroy() {
+      logger.debug({ subsystem: "vector", collectionPath }, "vector.destroy: start");
+      collection = recreateCollection(collection, collectionPath, schema, logger);
+      logger.debug({ subsystem: "vector", collectionPath }, "vector.destroy: done");
+    },
+
     async upsert(input: VectorRow[]) {
       logger.debug(
         { subsystem: "vector", collectionPath, chunkCount: input.length },

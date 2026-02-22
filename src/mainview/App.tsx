@@ -1,9 +1,25 @@
 import { useState } from "react";
 import { HomePage } from "./components/home/HomePage";
+import { OnboardingPage } from "./components/onboarding/OnboardingPage";
 import { SettingsPage } from "./components/settings/SettingsPage";
+import { defaultMainviewConfigService } from "./services/config.service";
+import type { ConfigService } from "../core/config/config.types";
 
-function App() {
+function App({ configService = defaultMainviewConfigService }: { configService?: ConfigService }) {
+  const [config, setConfig] = useState(() => configService.getConfig());
   const [tab, setTab] = useState<"home" | "settings">("home");
+
+  if (!config.onboarding.completed) {
+    return (
+      <OnboardingPage
+        configService={configService}
+        onFinished={() => {
+          setConfig(configService.getConfig());
+          setTab("home");
+        }}
+      />
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-100">

@@ -8,6 +8,7 @@ import { createSourceIndexingService } from "./indexing.service";
 function makeConfig(): AppConfig {
   return {
     version: 1,
+    onboarding: { completed: true },
     sources: [],
     mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },

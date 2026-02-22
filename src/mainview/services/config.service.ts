@@ -9,6 +9,9 @@ const STORAGE_KEY = "knowdisk-app-config";
 function getDefaultConfig(): AppConfig {
   return {
     version: 1,
+    onboarding: {
+      completed: false,
+    },
     sources: [],
     mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
@@ -77,6 +80,9 @@ function loadConfig(): AppConfig {
     return {
       ...defaults,
       ...parsed,
+      onboarding: {
+        completed: parsed.onboarding?.completed ?? defaults.onboarding.completed,
+      },
       sources: normalizedSources.filter((item) => item.path.length > 0),
       mcp: {
         enabled: parsed.mcp?.enabled ?? true,

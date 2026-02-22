@@ -37,6 +37,7 @@ function makeConfigService(enabled: boolean): ConfigService {
     getConfig() {
       return {
         version: 1,
+        onboarding: { completed: true },
         sources,
         mcp: { enabled: mcpEnabled, port: 3467 },
         ui: { mode: "safe" as const },
@@ -106,6 +107,29 @@ test("addSourceAndReindex triggers indexing task", async () => {
   await container.addSourceAndReindex("/tmp/docs");
 
   expect(calls).toEqual(["source_added"]);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("forceResync destroys vector store and triggers full rebuild", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "knowdisk-app-container-"));
+  const container = createAppContainer({
+    configService: makeConfigService(true),
+    vectorCollectionPath: join(dir, "v.zvec"),
+  });
+
+  const calls: string[] = [];
+  container.vectorRepository.destroy = async () => {
+    calls.push("destroy");
+  };
+  container.indexingService.runFullRebuild = async (reason: string) => {
+    calls.push(reason);
+    return { indexedFiles: 0, errors: [] };
+  };
+
+  const result = await container.forceResync();
+
+  expect(result.ok).toBe(true);
+  expect(calls).toEqual(["destroy", "force_resync"]);
   rmSync(dir, { recursive: true, force: true });
 });
 

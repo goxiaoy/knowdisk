@@ -12,6 +12,7 @@ import {
 describe("getDefaultConfig", () => {
   test("returns safe-preset defaults", () => {
     const cfg = getDefaultConfig();
+    expect(cfg.onboarding.completed).toBe(false);
     expect(cfg.ui.mode).toBe("safe");
     expect(cfg.indexing.watch.enabled).toBe(true);
     expect(cfg.mcp.enabled).toBe(true);
@@ -47,8 +48,17 @@ describe("getDefaultConfig", () => {
   test("migrates v0 config to v1", () => {
     const migrated = migrateConfig({ version: 0, sources: ["docs"] });
     expect(migrated.version).toBe(1);
+    expect(migrated.onboarding.completed).toBe(false);
     expect(migrated.mcp.enabled).toBe(true);
     expect(migrated.sources).toEqual([{ path: "docs", enabled: true }]);
+  });
+
+  test("migrates v1 config and marks onboarding completed when sources exist", () => {
+    const migrated = migrateConfig({
+      version: 1,
+      sources: [{ path: "/docs", enabled: true }],
+    });
+    expect(migrated.onboarding.completed).toBe(true);
   });
 
   test("persists mcp enabled flag across service instances", () => {

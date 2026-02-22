@@ -6,6 +6,7 @@ import type { AppConfig, ConfigService } from "../../../core/config/config.types
 function makeInitialConfig(): AppConfig {
   return {
     version: 1,
+    onboarding: { completed: true },
     sources: [],
     mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
