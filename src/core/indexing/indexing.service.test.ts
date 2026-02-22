@@ -9,7 +9,7 @@ function makeConfig(): AppConfig {
   return {
     version: 1,
     sources: [],
-    mcp: { enabled: true },
+    mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
     embedding: {

@@ -38,7 +38,7 @@ function makeConfigService(enabled: boolean): ConfigService {
       return {
         version: 1,
         sources,
-        mcp: { enabled: mcpEnabled },
+        mcp: { enabled: mcpEnabled, port: 3467 },
         ui: { mode: "safe" as const },
         indexing: { watch: { enabled: true } },
         embedding,

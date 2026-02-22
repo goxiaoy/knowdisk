@@ -27,6 +27,7 @@ function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
     sources: [],
     mcp: {
       enabled: true,
+      port: 3467,
     },
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
@@ -81,6 +82,11 @@ export function validateConfig(cfg: AppConfig): {
   ok: boolean;
   errors: string[];
 } {
+  const mcpErrors = validateMcp(cfg.mcp);
+  if (mcpErrors.length > 0) {
+    return { ok: false, errors: mcpErrors };
+  }
+
   const embeddingErrors = validateEmbedding(cfg.embedding);
   if (embeddingErrors.length > 0) {
     return { ok: false, errors: embeddingErrors };
@@ -92,6 +98,14 @@ export function validateConfig(cfg: AppConfig): {
   }
 
   return { ok: true, errors: [] };
+}
+
+function validateMcp(mcp: AppConfig["mcp"]): string[] {
+  const errors: string[] = [];
+  if (!Number.isInteger(mcp.port) || mcp.port < 1 || mcp.port > 65535) {
+    errors.push("mcp.port must be an integer between 1 and 65535");
+  }
+  return errors;
 }
 
 function validateEmbedding(embedding: AppConfig["embedding"]): string[] {
@@ -199,6 +213,7 @@ function migrateConfigWithDefaults(
       sources: migratedSources,
       mcp: {
         enabled: next.mcp?.enabled ?? true,
+        port: normalizePort(next.mcp?.port, defaults.mcp.port),
       },
       embedding,
       reranker,
@@ -371,6 +386,14 @@ function normalizeLegacyApiKeys(
     result[provider] = apiKey;
   }
   return result;
+}
+
+function normalizePort(port: unknown, fallback: number) {
+  const value = Number(port);
+  if (!Number.isInteger(value) || value < 1 || value > 65535) {
+    return fallback;
+  }
+  return value;
 }
 
 function normalizeSources(input: unknown[]): SourceConfig[] {

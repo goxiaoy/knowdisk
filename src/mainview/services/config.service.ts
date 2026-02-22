@@ -10,7 +10,7 @@ function getDefaultConfig(): AppConfig {
   return {
     version: 1,
     sources: [],
-    mcp: { enabled: true },
+    mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
     embedding: {
@@ -78,7 +78,13 @@ function loadConfig(): AppConfig {
       ...defaults,
       ...parsed,
       sources: normalizedSources.filter((item) => item.path.length > 0),
-      mcp: { enabled: parsed.mcp?.enabled ?? true },
+      mcp: {
+        enabled: parsed.mcp?.enabled ?? true,
+        port:
+          Number.isInteger(parsed.mcp?.port) && (parsed.mcp?.port ?? 0) > 0 && (parsed.mcp?.port ?? 0) <= 65535
+            ? (parsed.mcp?.port as number)
+            : defaults.mcp.port,
+      },
       embedding: {
         ...defaults.embedding,
         ...(parsed.embedding ?? {}),

@@ -38,6 +38,7 @@ export interface AppConfig {
   sources: SourceConfig[];
   mcp: {
     enabled: boolean;
+    port: number;
   };
   ui: {
     mode: UiMode;

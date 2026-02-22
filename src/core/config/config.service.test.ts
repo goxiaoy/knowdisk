@@ -15,6 +15,7 @@ describe("getDefaultConfig", () => {
     expect(cfg.ui.mode).toBe("safe");
     expect(cfg.indexing.watch.enabled).toBe(true);
     expect(cfg.mcp.enabled).toBe(true);
+    expect(cfg.mcp.port).toBe(3467);
     expect(cfg.embedding.local.dimension).toBe(384);
     expect(cfg.embedding.local.hfEndpoint).toBe("https://hf-mirror.com");
     expect(cfg.reranker.local.topN).toBe(5);
@@ -35,6 +36,14 @@ describe("getDefaultConfig", () => {
     expect(result.ok).toBe(false);
   });
 
+  test("rejects invalid mcp port", () => {
+    const result = validateConfig({
+      ...getDefaultConfig(),
+      mcp: { enabled: true, port: 70000 },
+    });
+    expect(result.ok).toBe(false);
+  });
+
   test("migrates v0 config to v1", () => {
     const migrated = migrateConfig({ version: 0, sources: ["docs"] });
     expect(migrated.version).toBe(1);
@@ -48,7 +57,10 @@ describe("getDefaultConfig", () => {
 
     const first = createConfigService({ configPath });
     expect(first.getConfig().mcp.enabled).toBe(true);
-    first.updateConfig((source) => ({ ...source, mcp: { enabled: false } }));
+    first.updateConfig((source) => ({
+      ...source,
+      mcp: { enabled: false, port: source.mcp.port },
+    }));
 
     const second = createConfigService({ configPath });
     expect(second.getConfig().mcp.enabled).toBe(false);

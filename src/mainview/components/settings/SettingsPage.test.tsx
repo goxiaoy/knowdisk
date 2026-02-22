@@ -7,7 +7,7 @@ function makeInitialConfig(): AppConfig {
   return {
     version: 1,
     sources: [],
-    mcp: { enabled: true },
+    mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
     indexing: { watch: { enabled: true } },
     embedding: {
@@ -69,6 +69,7 @@ describe("SettingsPage", () => {
 
   it("toggles mcp server setting", () => {
     let enabled = true;
+    let port = 3467;
     const renderer = create(
       <SettingsPage
         pickSourceDirectory={async () => null}
@@ -76,13 +77,16 @@ describe("SettingsPage", () => {
           getConfig() {
             const cfg = makeInitialConfig();
             cfg.mcp.enabled = enabled;
+            cfg.mcp.port = port;
             return cfg;
           },
           updateConfig(updater) {
             const cfg = makeInitialConfig();
             cfg.mcp.enabled = enabled;
+            cfg.mcp.port = port;
             const next = updater(cfg);
             enabled = next.mcp.enabled;
+            port = next.mcp.port;
             return next;
           },
         })}
@@ -102,6 +106,16 @@ describe("SettingsPage", () => {
     });
     expect(hasText("MCP Server: Disabled")).toBe(true);
     expect(enabled).toBe(false);
+
+    const mcpPort = root.findByProps({ "data-testid": "mcp-port" });
+    act(() => {
+      mcpPort.props.onChange({ target: { value: "4567" } });
+    });
+    const saveMcp = root.findByProps({ "data-testid": "save-mcp" });
+    act(() => {
+      saveMcp.props.onClick();
+    });
+    expect(port).toBe(4567);
   });
 
   it("shows and edits sources", async () => {
