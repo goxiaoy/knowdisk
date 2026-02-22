@@ -1,8 +1,10 @@
+import { createReadStream } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { ConfigService } from "../config/config.types";
 import type { EmbeddingProvider } from "../embedding/embedding.types";
 import { resolveParser } from "../parser/parser.registry";
+import type { Parser } from "../parser/parser.types";
 import type { VectorRow } from "../vector/vector.repository";
 
 export type FileChange = {
@@ -37,6 +39,7 @@ export function createSourceIndexingService(
   embedding: EmbeddingProvider,
   vector: { upsert: (rows: VectorRow[]) => Promise<void> },
 ) {
+  const STREAM_THRESHOLD_BYTES = 10 * 1024 * 1024;
   const indexingState = {
     running: false,
     lastReason: "",
@@ -61,23 +64,12 @@ export function createSourceIndexingService(
           if (parser.id === "unsupported") {
             continue;
           }
-          const content = await readFile(filePath, "utf8");
-          const parsed = parser.parse(content);
-          if (parsed.skipped || !parsed.text.trim()) {
+          const fileStats = await stat(filePath);
+          if (fileStats.size > STREAM_THRESHOLD_BYTES) {
+            indexedFiles += await indexLargeFile(filePath, parser, embedding, vector);
             continue;
           }
-          const vectorValue = await embedding.embed(parsed.text);
-          const row: VectorRow = {
-            chunkId: filePath,
-            vector: vectorValue,
-            metadata: {
-              sourcePath: filePath,
-              chunkText: parsed.text.slice(0, 1000),
-              updatedAt: new Date().toISOString(),
-            },
-          };
-          await vector.upsert([row]);
-          indexedFiles += 1;
+          indexedFiles += await indexSmallFile(filePath, parser, embedding, vector);
         }
       } catch (error) {
         indexingState.errors.push(`${source.path}: ${String(error)}`);
@@ -95,6 +87,64 @@ export function createSourceIndexingService(
     async () => ({ repaired: 0 }),
     () => ({ ...indexingState }),
   );
+}
+
+async function indexSmallFile(
+  filePath: string,
+  parser: Parser,
+  embedding: EmbeddingProvider,
+  vector: { upsert: (rows: VectorRow[]) => Promise<void> },
+) {
+  const content = await readFile(filePath, "utf8");
+  const parsed = parser.parse(content);
+  if (parsed.skipped || !parsed.text.trim()) {
+    return 0;
+  }
+  const vectorValue = await embedding.embed(parsed.text);
+  await vector.upsert([
+    {
+      chunkId: filePath,
+      vector: vectorValue,
+      metadata: {
+        sourcePath: filePath,
+        chunkText: parsed.text.slice(0, 1000),
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  ]);
+  return 1;
+}
+
+async function indexLargeFile(
+  filePath: string,
+  parser: Parser,
+  embedding: EmbeddingProvider,
+  vector: { upsert: (rows: VectorRow[]) => Promise<void> },
+) {
+  const stream = createReadStream(filePath, { encoding: "utf8" });
+  let indexedChunks = 0;
+  for await (const parsed of parser.parseStream(stream)) {
+    if (parsed.skipped || !parsed.text.trim()) {
+      continue;
+    }
+    const vectorValue = await embedding.embed(parsed.text);
+    await vector.upsert([
+      {
+        chunkId: `${filePath}#${parsed.startOffset}-${parsed.endOffset}`,
+        vector: vectorValue,
+        metadata: {
+          sourcePath: filePath,
+          chunkText: parsed.text.slice(0, 1000),
+          startOffset: parsed.startOffset,
+          endOffset: parsed.endOffset,
+          tokenEstimate: parsed.tokenEstimate,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    ]);
+    indexedChunks += 1;
+  }
+  return indexedChunks;
 }
 
 async function collectIndexableFiles(sourcePath: string): Promise<string[]> {

@@ -5,9 +5,18 @@ export type ParseResult = {
   skipped?: SkipReason;
 };
 
+export type ParseChunk = {
+  text: string;
+  startOffset: number;
+  endOffset: number;
+  tokenEstimate: number;
+  skipped?: SkipReason;
+};
+
 export type Parser = {
   id: "markdown" | "text" | "unsupported";
   parse: (input: string) => ParseResult;
+  parseStream: (input: AsyncIterable<string>) => AsyncIterable<ParseChunk>;
 };
 
 export type ParserMeta = {

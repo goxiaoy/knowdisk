@@ -12,7 +12,14 @@ import {
 export type VectorRow = {
   chunkId: string;
   vector: number[];
-  metadata: { sourcePath: string; chunkText?: string; updatedAt?: string };
+  metadata: {
+    sourcePath: string;
+    chunkText?: string;
+    startOffset?: number;
+    endOffset?: number;
+    tokenEstimate?: number;
+    updatedAt?: string;
+  };
 };
 
 type VectorRepositoryOptions = {
@@ -41,6 +48,9 @@ export function createVectorRepository(opts: VectorRepositoryOptions) {
     fields: [
       { name: "sourcePath", dataType: ZVecDataType.STRING },
       { name: "chunkText", dataType: ZVecDataType.STRING },
+      { name: "startOffset", dataType: ZVecDataType.STRING },
+      { name: "endOffset", dataType: ZVecDataType.STRING },
+      { name: "tokenEstimate", dataType: ZVecDataType.STRING },
       { name: "updatedAt", dataType: ZVecDataType.STRING },
     ],
   });
@@ -60,6 +70,13 @@ export function createVectorRepository(opts: VectorRepositoryOptions) {
           fields: {
             sourcePath: row.metadata.sourcePath,
             chunkText: row.metadata.chunkText ?? "",
+            startOffset:
+              row.metadata.startOffset !== undefined ? String(row.metadata.startOffset) : "",
+            endOffset: row.metadata.endOffset !== undefined ? String(row.metadata.endOffset) : "",
+            tokenEstimate:
+              row.metadata.tokenEstimate !== undefined
+                ? String(row.metadata.tokenEstimate)
+                : "",
             updatedAt: row.metadata.updatedAt ?? "",
           },
         })),
@@ -71,7 +88,14 @@ export function createVectorRepository(opts: VectorRepositoryOptions) {
         fieldName: VECTOR_FIELD,
         vector: query,
         topk: opts.topK,
-        outputFields: ["sourcePath", "chunkText", "updatedAt"],
+        outputFields: [
+          "sourcePath",
+          "chunkText",
+          "startOffset",
+          "endOffset",
+          "tokenEstimate",
+          "updatedAt",
+        ],
       });
       return docs.map((doc) => ({
         chunkId: doc.id,
@@ -80,11 +104,23 @@ export function createVectorRepository(opts: VectorRepositoryOptions) {
         metadata: {
           sourcePath: String(doc.fields.sourcePath ?? ""),
           chunkText: String(doc.fields.chunkText ?? ""),
+          startOffset: parseOptionalNumber(doc.fields.startOffset),
+          endOffset: parseOptionalNumber(doc.fields.endOffset),
+          tokenEstimate: parseOptionalNumber(doc.fields.tokenEstimate),
           updatedAt: String(doc.fields.updatedAt ?? ""),
         },
       }));
     },
   };
+}
+
+function parseOptionalNumber(input: unknown): number | undefined {
+  const text = String(input ?? "").trim();
+  if (!text) {
+    return undefined;
+  }
+  const value = Number(text);
+  return Number.isFinite(value) ? value : undefined;
 }
 
 function mapMetric(metric: VectorRepositoryOptions["metric"]) {

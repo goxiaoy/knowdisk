@@ -6,12 +6,24 @@ const markdownParser: Parser = {
   parse(input: string) {
     return { text: input };
   },
+  parseStream(input) {
+    return textParser.parseStream(input);
+  },
 };
 
 const unsupportedParser: Parser = {
   id: "unsupported",
   parse() {
     return { text: "", skipped: "UNSUPPORTED_TYPE" };
+  },
+  async *parseStream() {
+    yield {
+      text: "",
+      startOffset: 0,
+      endOffset: 0,
+      tokenEstimate: 0,
+      skipped: "UNSUPPORTED_TYPE",
+    };
   },
 };
 
