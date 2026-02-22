@@ -106,38 +106,41 @@ export function SettingsPage({
   const addSource = async () => {
     const path = await pickSourceDirectory();
     if (!path) return;
+    const remoteSources = await addSourceInBun(path);
     const next = configService.updateConfig((source) => {
+      if (remoteSources) {
+        return { ...source, sources: remoteSources };
+      }
       if (source.sources.some((item) => item.path === path)) {
         return source;
       }
-      return {
-        ...source,
-        sources: [...source.sources, { path, enabled: true }],
-      };
+      return { ...source, sources: [...source.sources, { path, enabled: true }] };
     });
+    setConfig(next);
     setSources(next.sources);
-    void addSourceInBun(path);
     setActivity("Source added. Indexing started.");
   };
 
   const setSourceEnabled = (path: string, enabled: boolean) => {
-    const next = configService.updateConfig((source) => ({
-      ...source,
-      sources: source.sources.map((item) =>
-        item.path === path ? { ...item, enabled } : item,
-      ),
-    }));
-    setSources(next.sources);
-    void updateSourceInBun(path, enabled);
+    void updateSourceInBun(path, enabled).then((remoteSources) => {
+      const next = configService.updateConfig((source) => ({
+        ...source,
+        sources:
+          remoteSources ??
+          source.sources.map((item) => (item.path === path ? { ...item, enabled } : item)),
+      }));
+      setSources(next.sources);
+    });
   };
 
   const removeSource = (path: string) => {
-    const next = configService.updateConfig((source) => ({
-      ...source,
-      sources: source.sources.filter((item) => item.path !== path),
-    }));
-    setSources(next.sources);
-    void removeSourceInBun(path);
+    void removeSourceInBun(path).then((remoteSources) => {
+      const next = configService.updateConfig((source) => ({
+        ...source,
+        sources: remoteSources ?? source.sources.filter((item) => item.path !== path),
+      }));
+      setSources(next.sources);
+    });
   };
 
   const saveEmbeddingConfig = () => {

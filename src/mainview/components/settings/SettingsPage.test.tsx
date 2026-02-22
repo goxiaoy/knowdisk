@@ -134,8 +134,9 @@ describe("SettingsPage", () => {
     expect(root.findByProps({ children: "/archive" })).toBeDefined();
 
     const archiveToggle = root.findByProps({ "data-testid": "toggle-/archive" });
-    act(() => {
+    await act(async () => {
       archiveToggle.props.onChange({ target: { checked: true } });
+      await Promise.resolve();
     });
     expect(sources.find((item) => item.path === "/archive")?.enabled).toBe(true);
 
@@ -147,8 +148,9 @@ describe("SettingsPage", () => {
     expect(root.findByProps({ children: "Source added. Indexing started." })).toBeDefined();
 
     const removeButton = root.findByProps({ "data-testid": "remove-/notes" });
-    act(() => {
+    await act(async () => {
       removeButton.props.onClick();
+      await Promise.resolve();
     });
     expect(sources.find((item) => item.path === "/notes")).toBeUndefined();
   });

@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
   ZVecCollectionSchema,
@@ -6,6 +6,7 @@ import {
   ZVecDataType,
   ZVecIndexType,
   ZVecMetricType,
+  ZVecOpen,
 } from "@zvec/zvec";
 
 export type VectorRow = {
@@ -43,7 +44,9 @@ export function createVectorRepository(opts: VectorRepositoryOptions) {
       { name: "updatedAt", dataType: ZVecDataType.STRING },
     ],
   });
-  const collection = ZVecCreateAndOpen(collectionPath, schema);
+  const collection = existsSync(collectionPath)
+    ? ZVecOpen(collectionPath)
+    : ZVecCreateAndOpen(collectionPath, schema);
 
   return {
     async upsert(input: VectorRow[]) {

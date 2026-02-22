@@ -6,15 +6,6 @@ type AppBridgeSchema = {
     requests: {
       get_config: { params: void; response: AppConfig };
       update_config: { params: { config: AppConfig }; response: AppConfig };
-      set_mcp_enabled: { params: { enabled: boolean }; response: AppConfig };
-      set_embedding_config: {
-        params: Partial<AppConfig["embedding"]>;
-        response: AppConfig;
-      };
-      set_reranker_config: {
-        params: Partial<AppConfig["reranker"]>;
-        response: AppConfig;
-      };
       add_source: { params: { path: string }; response: SourceConfig[] };
       update_source: { params: { path: string; enabled: boolean }; response: SourceConfig[] };
       remove_source: { params: { path: string }; response: SourceConfig[] };
@@ -33,9 +24,6 @@ type BridgeRpc = {
   request: {
     get_config: () => Promise<AppConfig>;
     update_config: (params: { config: AppConfig }) => Promise<AppConfig>;
-    set_mcp_enabled: (params: { enabled: boolean }) => Promise<AppConfig>;
-    set_embedding_config: (params: Partial<AppConfig["embedding"]>) => Promise<AppConfig>;
-    set_reranker_config: (params: Partial<AppConfig["reranker"]>) => Promise<AppConfig>;
     add_source: (params: { path: string }) => Promise<SourceConfig[]>;
     update_source: (params: { path: string; enabled: boolean }) => Promise<SourceConfig[]>;
     remove_source: (params: { path: string }) => Promise<SourceConfig[]>;
@@ -69,16 +57,6 @@ export async function getConfigFromBun(): Promise<AppConfig | null> {
   }
 }
 
-export async function setMcpEnabledInBun(enabled: boolean): Promise<void> {
-  const channel = await getRpc();
-  if (!channel) return;
-  try {
-    await channel.request.set_mcp_enabled({ enabled });
-  } catch {
-    return;
-  }
-}
-
 export async function updateConfigInBun(config: AppConfig): Promise<void> {
   const channel = await getRpc();
   if (!channel) return;
@@ -89,53 +67,36 @@ export async function updateConfigInBun(config: AppConfig): Promise<void> {
   }
 }
 
-export async function addSourceInBun(path: string): Promise<void> {
+export async function addSourceInBun(path: string): Promise<SourceConfig[] | null> {
   const channel = await getRpc();
-  if (!channel) return;
+  if (!channel) return null;
   try {
-    await channel.request.add_source({ path });
-  } catch {
-    return;
+    return await channel.request.add_source({ path });
+  } catch (error) {
+    console.error("add_source RPC failed:", error);
+    return null;
   }
 }
 
-export async function setEmbeddingConfigInBun(input: Partial<AppConfig["embedding"]>): Promise<void> {
+export async function updateSourceInBun(path: string, enabled: boolean): Promise<SourceConfig[] | null> {
   const channel = await getRpc();
-  if (!channel) return;
+  if (!channel) return null;
   try {
-    await channel.request.set_embedding_config(input);
-  } catch {
-    return;
+    return await channel.request.update_source({ path, enabled });
+  } catch (error) {
+    console.error("update_source RPC failed:", error);
+    return null;
   }
 }
 
-export async function setRerankerConfigInBun(input: Partial<AppConfig["reranker"]>): Promise<void> {
+export async function removeSourceInBun(path: string): Promise<SourceConfig[] | null> {
   const channel = await getRpc();
-  if (!channel) return;
+  if (!channel) return null;
   try {
-    await channel.request.set_reranker_config(input);
-  } catch {
-    return;
-  }
-}
-
-export async function updateSourceInBun(path: string, enabled: boolean): Promise<void> {
-  const channel = await getRpc();
-  if (!channel) return;
-  try {
-    await channel.request.update_source({ path, enabled });
-  } catch {
-    return;
-  }
-}
-
-export async function removeSourceInBun(path: string): Promise<void> {
-  const channel = await getRpc();
-  if (!channel) return;
-  try {
-    await channel.request.remove_source({ path });
-  } catch {
-    return;
+    return await channel.request.remove_source({ path });
+  } catch (error) {
+    console.error("remove_source RPC failed:", error);
+    return null;
   }
 }
 

@@ -1,7 +1,6 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { join } from "node:path";
 import { createAppContainer } from "./app.container";
-import { downloadModelFromHub } from "../core/model/model-download.service";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 
@@ -23,41 +22,9 @@ async function getMainViewUrl(): Promise<string> {
 }
 
 const userDataDir = join(Utils.paths.home, ".knowdisk");
-const vectorBaseDir = userDataDir;
 const configService = createConfigService({ userDataDir });
-const container = createAppContainer({ configService, userDataDir, vectorBaseDir });
-const startupConfig = container.configService.getConfig();
-console.log("App startup config:", JSON.stringify(startupConfig, null, 2));
-
-if (!container.mcpServer) {
-  console.log("MCP server disabled in settings.");
-}
-
-function maybeDownloadEmbeddingModel(config: AppConfig) {
-  if (config.embedding.provider !== "local") {
-    return;
-  }
-  void downloadModelFromHub({
-    hfEndpoint: config.embedding.local.hfEndpoint,
-    model: config.embedding.local.model,
-    targetRoot: join(userDataDir, "models", "embedding", "provider-local"),
-  }).catch((error) => {
-    console.error(`Embedding model download failed for ${config.embedding.local.model}:`, error);
-  });
-}
-
-function maybeDownloadRerankerModel(config: AppConfig) {
-  if (!config.reranker.enabled || config.reranker.provider !== "local") {
-    return;
-  }
-  void downloadModelFromHub({
-    hfEndpoint: config.reranker.local.hfEndpoint,
-    model: config.reranker.local.model,
-    targetRoot: join(userDataDir, "models", "reranker", "provider-local"),
-  }).catch((error) => {
-    console.error(`Reranker model download failed for ${config.reranker.local.model}:`, error);
-  });
-}
+const container = createAppContainer({ configService, userDataDir });
+console.log("App startup config:", JSON.stringify(container.configService.getConfig(), null, 2));
 
 const rpc = BrowserView.defineRPC({
   handlers: {
@@ -67,62 +34,6 @@ const rpc = BrowserView.defineRPC({
       },
       update_config({ config }: { config: AppConfig }) {
         return container.configService.updateConfig(() => config);
-      },
-      set_mcp_enabled({ enabled }: { enabled: boolean }) {
-        return container.configService.updateConfig((source) => ({
-          ...source,
-          mcp: { enabled },
-        }));
-      },
-      set_embedding_config(input: Partial<AppConfig["embedding"]>) {
-        const updated = container.configService.updateConfig((source) => ({
-          ...source,
-          embedding: {
-            ...source.embedding,
-            ...input,
-            local: {
-              ...source.embedding.local,
-              ...(input.local ?? {}),
-            },
-            qwen_dense: {
-              ...source.embedding.qwen_dense,
-              ...(input.qwen_dense ?? {}),
-            },
-            qwen_sparse: {
-              ...source.embedding.qwen_sparse,
-              ...(input.qwen_sparse ?? {}),
-            },
-            openai_dense: {
-              ...source.embedding.openai_dense,
-              ...(input.openai_dense ?? {}),
-            },
-          },
-        }));
-        maybeDownloadEmbeddingModel(updated);
-        return updated;
-      },
-      set_reranker_config(input: Partial<AppConfig["reranker"]>) {
-        const updated = container.configService.updateConfig((source) => ({
-          ...source,
-          reranker: {
-            ...source.reranker,
-            ...input,
-            local: {
-              ...source.reranker.local,
-              ...(input.local ?? {}),
-            },
-            qwen: {
-              ...source.reranker.qwen,
-              ...(input.qwen ?? {}),
-            },
-            openai: {
-              ...source.reranker.openai,
-              ...(input.openai ?? {}),
-            },
-          },
-        }));
-        maybeDownloadRerankerModel(updated);
-        return updated;
       },
       add_source({ path }: { path: string }) {
         return container.addSourceAndReindex(path);
@@ -150,7 +61,8 @@ const rpc = BrowserView.defineRPC({
           canChooseDirectory: true,
           allowsMultipleSelection: false,
         });
-        return paths[0] ?? null;
+        const [firstPath] = paths;
+        return firstPath ?? null;
       },
     },
     messages: {},

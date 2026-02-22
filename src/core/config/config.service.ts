@@ -77,7 +77,10 @@ function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
   };
 }
 
-export function validateConfig(cfg: AppConfig): { ok: boolean; errors: string[] } {
+export function validateConfig(cfg: AppConfig): {
+  ok: boolean;
+  errors: string[];
+} {
   const embeddingErrors = validateEmbedding(cfg.embedding);
   if (embeddingErrors.length > 0) {
     return { ok: false, errors: embeddingErrors };
@@ -151,7 +154,10 @@ export function migrateConfig(input: unknown): AppConfig {
   return migrateConfigWithDefaults(input, getDefaultConfig());
 }
 
-function migrateConfigWithDefaults(input: unknown, defaults: AppConfig): AppConfig {
+function migrateConfigWithDefaults(
+  input: unknown,
+  defaults: AppConfig,
+): AppConfig {
   const version = (input as { version?: number })?.version ?? 0;
   if (version === 1) {
     const next = input as Partial<AppConfig> & {
@@ -176,8 +182,16 @@ function migrateConfigWithDefaults(input: unknown, defaults: AppConfig): AppConf
         ? normalizeSources(next.sources as unknown[])
         : [];
 
-    const embedding = mergeEmbedding(defaults.embedding, next.embedding, next.modelHub?.hfEndpoint);
-    const reranker = mergeReranker(defaults.reranker, next.reranker, next.modelHub?.hfEndpoint);
+    const embedding = mergeEmbedding(
+      defaults.embedding,
+      next.embedding,
+      next.modelHub?.hfEndpoint,
+    );
+    const reranker = mergeReranker(
+      defaults.reranker,
+      next.reranker,
+      next.modelHub?.hfEndpoint,
+    );
 
     return {
       ...defaults,
@@ -195,84 +209,131 @@ function migrateConfigWithDefaults(input: unknown, defaults: AppConfig): AppConf
   return {
     ...defaults,
     version: 1,
-    sources: normalizeSources(Array.isArray(legacy.sources) ? legacy.sources : []),
+    sources: normalizeSources(
+      Array.isArray(legacy.sources) ? legacy.sources : [],
+    ),
   };
 }
 
 function mergeEmbedding(
   defaults: AppConfig["embedding"],
-  legacy: {
-    provider?: AppConfig["embedding"]["provider"];
-    endpoint?: string;
-    apiKey?: string;
-    apiKeys?: Record<string, string>;
-    model?: string;
-    dimension?: number;
-    local?: Partial<LocalEmbeddingConfig>;
-    qwen_dense?: Partial<CloudEmbeddingConfig>;
-    qwen_sparse?: Partial<CloudEmbeddingConfig>;
-    openai_dense?: Partial<CloudEmbeddingConfig>;
-  } | undefined,
+  legacy:
+    | {
+        provider?: AppConfig["embedding"]["provider"];
+        endpoint?: string;
+        apiKey?: string;
+        apiKeys?: Record<string, string>;
+        model?: string;
+        dimension?: number;
+        local?: Partial<LocalEmbeddingConfig>;
+        qwen_dense?: Partial<CloudEmbeddingConfig>;
+        qwen_sparse?: Partial<CloudEmbeddingConfig>;
+        openai_dense?: Partial<CloudEmbeddingConfig>;
+      }
+    | undefined,
   legacyHfEndpoint?: string,
 ): AppConfig["embedding"] {
   const provider = legacy?.provider ?? defaults.provider;
-  const normalizedApiKeys = normalizeLegacyApiKeys(legacy?.provider, legacy?.apiKey, legacy?.apiKeys);
+  const normalizedApiKeys = normalizeLegacyApiKeys(
+    legacy?.provider,
+    legacy?.apiKey,
+    legacy?.apiKeys,
+  );
 
   return {
     provider,
     local: {
       ...defaults.local,
       ...(legacy?.local ?? {}),
-      hfEndpoint: legacy?.local?.hfEndpoint ?? legacyHfEndpoint ?? defaults.local.hfEndpoint,
+      hfEndpoint:
+        legacy?.local?.hfEndpoint ??
+        legacyHfEndpoint ??
+        defaults.local.hfEndpoint,
       model: legacy?.local?.model ?? legacy?.model ?? defaults.local.model,
-      dimension: legacy?.local?.dimension ?? legacy?.dimension ?? defaults.local.dimension,
+      dimension:
+        legacy?.local?.dimension ??
+        legacy?.dimension ??
+        defaults.local.dimension,
     },
     qwen_dense: {
       ...defaults.qwen_dense,
       ...(legacy?.qwen_dense ?? {}),
-      apiKey: legacy?.qwen_dense?.apiKey ?? normalizedApiKeys.qwen_dense ?? defaults.qwen_dense.apiKey,
-      model: legacy?.qwen_dense?.model ?? legacy?.model ?? defaults.qwen_dense.model,
-      dimension: legacy?.qwen_dense?.dimension ?? legacy?.dimension ?? defaults.qwen_dense.dimension,
+      apiKey:
+        legacy?.qwen_dense?.apiKey ??
+        normalizedApiKeys.qwen_dense ??
+        defaults.qwen_dense.apiKey,
+      model:
+        legacy?.qwen_dense?.model ?? legacy?.model ?? defaults.qwen_dense.model,
+      dimension:
+        legacy?.qwen_dense?.dimension ??
+        legacy?.dimension ??
+        defaults.qwen_dense.dimension,
     },
     qwen_sparse: {
       ...defaults.qwen_sparse,
       ...(legacy?.qwen_sparse ?? {}),
-      apiKey: legacy?.qwen_sparse?.apiKey ?? normalizedApiKeys.qwen_sparse ?? defaults.qwen_sparse.apiKey,
-      model: legacy?.qwen_sparse?.model ?? legacy?.model ?? defaults.qwen_sparse.model,
-      dimension: legacy?.qwen_sparse?.dimension ?? legacy?.dimension ?? defaults.qwen_sparse.dimension,
+      apiKey:
+        legacy?.qwen_sparse?.apiKey ??
+        normalizedApiKeys.qwen_sparse ??
+        defaults.qwen_sparse.apiKey,
+      model:
+        legacy?.qwen_sparse?.model ??
+        legacy?.model ??
+        defaults.qwen_sparse.model,
+      dimension:
+        legacy?.qwen_sparse?.dimension ??
+        legacy?.dimension ??
+        defaults.qwen_sparse.dimension,
     },
     openai_dense: {
       ...defaults.openai_dense,
       ...(legacy?.openai_dense ?? {}),
-      apiKey: legacy?.openai_dense?.apiKey ?? normalizedApiKeys.openai_dense ?? defaults.openai_dense.apiKey,
-      model: legacy?.openai_dense?.model ?? legacy?.model ?? defaults.openai_dense.model,
-      dimension: legacy?.openai_dense?.dimension ?? legacy?.dimension ?? defaults.openai_dense.dimension,
+      apiKey:
+        legacy?.openai_dense?.apiKey ??
+        normalizedApiKeys.openai_dense ??
+        defaults.openai_dense.apiKey,
+      model:
+        legacy?.openai_dense?.model ??
+        legacy?.model ??
+        defaults.openai_dense.model,
+      dimension:
+        legacy?.openai_dense?.dimension ??
+        legacy?.dimension ??
+        defaults.openai_dense.dimension,
     },
   };
 }
 
 function mergeReranker(
   defaults: AppConfig["reranker"],
-  legacy: {
-    enabled?: boolean;
-    provider?: AppConfig["reranker"]["provider"];
-    mode?: "none" | "local";
-    model?: string;
-    topN?: number;
-    local?: Partial<LocalRerankerConfig>;
-    qwen?: Partial<CloudRerankerConfig>;
-    openai?: Partial<CloudRerankerConfig>;
-  } | undefined,
+  legacy:
+    | {
+        enabled?: boolean;
+        provider?: AppConfig["reranker"]["provider"];
+        mode?: "none" | "local";
+        model?: string;
+        topN?: number;
+        local?: Partial<LocalRerankerConfig>;
+        qwen?: Partial<CloudRerankerConfig>;
+        openai?: Partial<CloudRerankerConfig>;
+      }
+    | undefined,
   legacyHfEndpoint?: string,
 ): AppConfig["reranker"] {
-  const provider = legacy?.provider ?? (legacy?.mode === "none" ? "local" : defaults.provider);
+  const provider =
+    legacy?.provider ?? (legacy?.mode === "none" ? "local" : defaults.provider);
   return {
-    enabled: legacy?.enabled ?? (legacy?.mode ? legacy.mode !== "none" : defaults.enabled),
+    enabled:
+      legacy?.enabled ??
+      (legacy?.mode ? legacy.mode !== "none" : defaults.enabled),
     provider,
     local: {
       ...defaults.local,
       ...(legacy?.local ?? {}),
-      hfEndpoint: legacy?.local?.hfEndpoint ?? legacyHfEndpoint ?? defaults.local.hfEndpoint,
+      hfEndpoint:
+        legacy?.local?.hfEndpoint ??
+        legacyHfEndpoint ??
+        defaults.local.hfEndpoint,
       model: legacy?.local?.model ?? legacy?.model ?? defaults.local.model,
       topN: legacy?.local?.topN ?? legacy?.topN ?? defaults.local.topN,
     },
@@ -327,10 +388,18 @@ function normalizeSources(input: unknown[]): SourceConfig[] {
     .filter((item): item is SourceConfig => item !== null);
 }
 
-export function createConfigService(opts?: { configPath?: string; userDataDir?: string }): ConfigService {
-  const defaults = getDefaultConfigWithPaths({ userDataDir: opts?.userDataDir });
+export function createConfigService(opts?: {
+  configPath?: string;
+  userDataDir?: string;
+}): ConfigService {
+  const defaults = getDefaultConfigWithPaths({
+    userDataDir: opts?.userDataDir,
+  });
   const configPath =
-    opts?.configPath ?? (opts?.userDataDir ? join(opts.userDataDir, "app-config.json") : "build/app-config.json");
+    opts?.configPath ??
+    (opts?.userDataDir
+      ? join(opts.userDataDir, "app-config.json")
+      : "build/app-config.json");
   let cache: AppConfig | null = null;
 
   function persist(config: AppConfig) {
