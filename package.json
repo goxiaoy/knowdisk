@@ -3,8 +3,8 @@
 	"version": "1.0.0",
 	"description": "Know Disk desktop app",
 	"scripts": {
-		"dev": "bun run build && electrobun dev",
-		"dev:hmr": "concurrently \"bun run hmr\" \"bun run dev\"",
+		"dev": "LOG_LEVEL=debug bun run build && LOG_LEVEL=debug electrobun dev",
+		"dev:hmr": "LOG_LEVEL=debug concurrently \"LOG_LEVEL=debug bun run hmr\" \"LOG_LEVEL=debug bun run dev\"",
 		"hmr": "vite --port 5173",
 		"build": "vite build && electrobun build",
 		"build:prod": "vite build && electrobun build --channel prod",

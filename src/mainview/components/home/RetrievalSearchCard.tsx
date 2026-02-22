@@ -169,7 +169,7 @@ export function RetrievalSearchCard({
               <p className="mt-1 text-xs text-slate-500">
                 offset: {row.startOffset ?? "-"} - {row.endOffset ?? "-"}, tokens: {row.tokenEstimate ?? "-"}
               </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{row.chunkText.slice(0, 500)}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{row.chunkText}</p>
             </div>
           ))
         )}

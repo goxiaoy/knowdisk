@@ -10,7 +10,11 @@ import {
 } from "@zvec/zvec";
 import { createLoggerService } from "../logger/logger.service";
 import type { LoggerService } from "../logger/logger.service.types";
-import type { VectorCollectionInspect, VectorRepository, VectorRow } from "./vector.repository.types";
+import type {
+  VectorCollectionInspect,
+  VectorRepository,
+  VectorRow,
+} from "./vector.repository.types";
 
 type VectorRepositoryOptions = {
   collectionPath: string;
@@ -22,8 +26,15 @@ type VectorRepositoryOptions = {
 
 const VECTOR_FIELD = "embedding";
 
-export function createVectorRepository(opts: VectorRepositoryOptions): VectorRepository {
-  const logger = opts.logger ?? createLoggerService({ name: "knowdisk", level: process.env.LOG_LEVEL ?? "info" });
+export function createVectorRepository(
+  opts: VectorRepositoryOptions,
+): VectorRepository {
+  const logger =
+    opts.logger ??
+    createLoggerService({
+      name: "knowdisk",
+      level: process.env.LOG_LEVEL ?? "info",
+    });
   const collectionPath = resolve(opts.collectionPath);
   logger.debug(
     {
@@ -36,7 +47,10 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
     "createVectorRepository: initializing",
   );
   mkdirSync(dirname(collectionPath), { recursive: true });
-  logger.debug({ subsystem: "vector", collectionPath }, "createVectorRepository: ensured directory");
+  logger.debug(
+    { subsystem: "vector", collectionPath },
+    "createVectorRepository: ensured directory",
+  );
   const schema = new ZVecCollectionSchema({
     name: "knowdisk",
     vectors: {
@@ -44,7 +58,8 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
       dataType: ZVecDataType.VECTOR_FP32,
       dimension: opts.dimension,
       indexParams: {
-        indexType: opts.indexType === "flat" ? ZVecIndexType.FLAT : ZVecIndexType.HNSW,
+        indexType:
+          opts.indexType === "flat" ? ZVecIndexType.FLAT : ZVecIndexType.HNSW,
         metricType: mapMetric(opts.metric),
       },
     },
@@ -57,7 +72,10 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
       { name: "updatedAt", dataType: ZVecDataType.STRING },
     ],
   });
-  logger.debug({ subsystem: "vector", collectionPath }, "createVectorRepository: schema ready");
+  logger.debug(
+    { subsystem: "vector", collectionPath },
+    "createVectorRepository: schema ready",
+  );
   let collection = existsSync(collectionPath)
     ? ZVecOpen(collectionPath)
     : ZVecCreateAndOpen(collectionPath, schema);
@@ -68,9 +86,20 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
 
   return {
     async destroy() {
-      logger.debug({ subsystem: "vector", collectionPath }, "vector.destroy: start");
-      collection = recreateCollection(collection, collectionPath, schema, logger);
-      logger.debug({ subsystem: "vector", collectionPath }, "vector.destroy: done");
+      logger.debug(
+        { subsystem: "vector", collectionPath },
+        "vector.destroy: start",
+      );
+      collection = recreateCollection(
+        collection,
+        collectionPath,
+        schema,
+        logger,
+      );
+      logger.debug(
+        { subsystem: "vector", collectionPath },
+        "vector.destroy: done",
+      );
     },
 
     async upsert(input: VectorRow[]) {
@@ -79,7 +108,10 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
         "vector.upsert: start",
       );
       if (input.length === 0) {
-        logger.debug({ subsystem: "vector", collectionPath }, "vector.upsert: skipped empty input");
+        logger.debug(
+          { subsystem: "vector", collectionPath },
+          "vector.upsert: skipped empty input",
+        );
         return;
       }
       await withCollectionSelfHeal("upsert", async () => {
@@ -91,8 +123,13 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
               sourcePath: row.metadata.sourcePath,
               chunkText: row.metadata.chunkText ?? "",
               startOffset:
-                row.metadata.startOffset !== undefined ? String(row.metadata.startOffset) : "",
-              endOffset: row.metadata.endOffset !== undefined ? String(row.metadata.endOffset) : "",
+                row.metadata.startOffset !== undefined
+                  ? String(row.metadata.startOffset)
+                  : "",
+              endOffset:
+                row.metadata.endOffset !== undefined
+                  ? String(row.metadata.endOffset)
+                  : "",
               tokenEstimate:
                 row.metadata.tokenEstimate !== undefined
                   ? String(row.metadata.tokenEstimate)
@@ -114,7 +151,9 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
         "vector.deleteBySourcePath: start",
       );
       await withCollectionSelfHeal("deleteBySourcePath", async () => {
-        collection.deleteByFilterSync(`sourcePath = '${escapeFilterValue(sourcePath, logger)}'`);
+        collection.deleteByFilterSync(
+          `sourcePath = '${escapeFilterValue(sourcePath, logger)}'`,
+        );
       });
       logger.debug(
         { subsystem: "vector", collectionPath, sourcePath },
@@ -148,9 +187,21 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
           metadata: {
             sourcePath: String(doc.fields.sourcePath ?? ""),
             chunkText: String(doc.fields.chunkText ?? ""),
-            startOffset: parseOptionalNumber(doc.fields.startOffset, logger, "startOffset"),
-            endOffset: parseOptionalNumber(doc.fields.endOffset, logger, "endOffset"),
-            tokenEstimate: parseOptionalNumber(doc.fields.tokenEstimate, logger, "tokenEstimate"),
+            startOffset: parseOptionalNumber(
+              doc.fields.startOffset,
+              logger,
+              "startOffset",
+            ),
+            endOffset: parseOptionalNumber(
+              doc.fields.endOffset,
+              logger,
+              "endOffset",
+            ),
+            tokenEstimate: parseOptionalNumber(
+              doc.fields.tokenEstimate,
+              logger,
+              "tokenEstimate",
+            ),
             updatedAt: String(doc.fields.updatedAt ?? ""),
           },
         }))
@@ -163,7 +214,12 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
           return l - r;
         });
       logger.debug(
-        { subsystem: "vector", collectionPath, sourcePath, resultCount: rows.length },
+        {
+          subsystem: "vector",
+          collectionPath,
+          sourcePath,
+          resultCount: rows.length,
+        },
         "vector.listBySourcePath: done",
       );
       return rows;
@@ -171,7 +227,12 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
 
     async search(query: number[], opts: { topK: number }) {
       logger.debug(
-        { subsystem: "vector", collectionPath, topK: opts.topK, queryDimension: query.length },
+        {
+          subsystem: "vector",
+          collectionPath,
+          topK: opts.topK,
+          queryDimension: query.length,
+        },
         "vector.search: start",
       );
       const docs = await withCollectionSelfHeal("search", () =>
@@ -196,35 +257,47 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
         metadata: {
           sourcePath: String(doc.fields.sourcePath ?? ""),
           chunkText: String(doc.fields.chunkText ?? ""),
-          startOffset: parseOptionalNumber(doc.fields.startOffset, logger, "startOffset"),
-          endOffset: parseOptionalNumber(doc.fields.endOffset, logger, "endOffset"),
-          tokenEstimate: parseOptionalNumber(doc.fields.tokenEstimate, logger, "tokenEstimate"),
+          startOffset: parseOptionalNumber(
+            doc.fields.startOffset,
+            logger,
+            "startOffset",
+          ),
+          endOffset: parseOptionalNumber(
+            doc.fields.endOffset,
+            logger,
+            "endOffset",
+          ),
+          tokenEstimate: parseOptionalNumber(
+            doc.fields.tokenEstimate,
+            logger,
+            "tokenEstimate",
+          ),
           updatedAt: String(doc.fields.updatedAt ?? ""),
         },
       }));
       logger.debug(
-        { subsystem: "vector", collectionPath, topK: opts.topK, resultCount: rows.length },
+        {
+          subsystem: "vector",
+          collectionPath,
+          topK: opts.topK,
+          resultCount: rows.length,
+        },
         "vector.search: done",
       );
       return rows;
     },
 
     async inspect() {
-      logger.debug({ subsystem: "vector", collectionPath }, "vector.inspect: start");
-      const inspect = await withCollectionSelfHeal("inspect", () => mapInspect(collection, logger));
-      logger.debug(
-        { subsystem: "vector", collectionPath, docCount: inspect.stats.docCount },
-        "vector.inspect: done",
-      );
-      return inspect;
+      return withCollectionSelfHeal("inspect", () => mapInspect(collection));
     },
   };
 
-  async function withCollectionSelfHeal<T>(opName: string, op: () => T): Promise<T> {
-    logger.debug({ subsystem: "vector", collectionPath, opName }, "vector.withCollectionSelfHeal: try");
+  async function withCollectionSelfHeal<T>(
+    opName: string,
+    op: () => T,
+  ): Promise<T> {
     try {
       const result = op();
-      logger.debug({ subsystem: "vector", collectionPath, opName }, "vector.withCollectionSelfHeal: success");
       return result;
     } catch (error) {
       logger.error(
@@ -234,13 +307,18 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
       if (!isMissingVectorIndexerError(error)) {
         throw error;
       }
-      logger.debug(
+      logger.info(
         { subsystem: "vector", collectionPath, opName },
         "vector.withCollectionSelfHeal: missing indexer detected, recreating collection",
       );
-      collection = recreateCollection(collection, collectionPath, schema, logger);
+      collection = recreateCollection(
+        collection,
+        collectionPath,
+        schema,
+        logger,
+      );
       const result = op();
-      logger.debug(
+      logger.info(
         { subsystem: "vector", collectionPath, opName },
         "vector.withCollectionSelfHeal: success after self-heal",
       );
@@ -251,20 +329,18 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
 
 function mapInspect(
   collection: ReturnType<typeof ZVecOpen>,
-  logger: LoggerService,
 ): VectorCollectionInspect {
-  logger.debug({ subsystem: "vector", collectionPath: collection.path }, "vector.mapInspect: start");
   return {
     path: collection.path,
-    option: toRecord(collection.options, logger, "option"),
-    options: toRecord(collection.options, logger, "options"),
+    option: toRecord(collection.options),
+    options: toRecord(collection.options),
     schema: {
       name: collection.schema.name,
       vectors: collection.schema.vectors().map((vector) => ({
         name: vector.name,
         dataType: String(vector.dataType),
         dimension: vector.dimension,
-        indexParams: toRecord(vector.indexParams, logger, `vector:${vector.name}:indexParams`),
+        indexParams: toRecord(vector.indexParams),
       })),
       fields: collection.schema.fields().map((field) => ({
         name: field.name,
@@ -278,22 +354,11 @@ function mapInspect(
   };
 }
 
-function toRecord(
-  input: unknown,
-  logger: LoggerService,
-  label: string,
-): Record<string, unknown> {
-  logger.debug({ subsystem: "vector", label, hasValue: input !== undefined }, "vector.toRecord: start");
+function toRecord(input: unknown): Record<string, unknown> {
   if (typeof input !== "object" || input === null) {
-    logger.debug({ subsystem: "vector", label }, "vector.toRecord: fallback to empty record");
     return {};
   }
-  const record = JSON.parse(JSON.stringify(input)) as Record<string, unknown>;
-  logger.debug(
-    { subsystem: "vector", label, keyCount: Object.keys(record).length },
-    "vector.toRecord: done",
-  );
-  return record;
+  return JSON.parse(JSON.stringify(input)) as Record<string, unknown>;
 }
 
 function recreateCollection(
@@ -302,7 +367,10 @@ function recreateCollection(
   schema: ZVecCollectionSchema,
   logger: LoggerService,
 ) {
-  logger.debug({ subsystem: "vector", collectionPath }, "vector.recreateCollection: start");
+  logger.debug(
+    { subsystem: "vector", collectionPath },
+    "vector.recreateCollection: start",
+  );
   try {
     collection.destroySync();
     logger.debug(
@@ -328,7 +396,10 @@ function recreateCollection(
     }
   }
   const recreated = ZVecCreateAndOpen(collectionPath, schema);
-  logger.debug({ subsystem: "vector", collectionPath }, "vector.recreateCollection: done");
+  logger.debug(
+    { subsystem: "vector", collectionPath },
+    "vector.recreateCollection: done",
+  );
   return recreated;
 }
 
@@ -351,9 +422,15 @@ function parseOptionalNumber(
   fieldName: string,
 ): number | undefined {
   const text = String(input ?? "").trim();
-  logger.debug({ subsystem: "vector", fieldName, raw: text }, "vector.parseOptionalNumber: start");
+  logger.debug(
+    { subsystem: "vector", fieldName, raw: text },
+    "vector.parseOptionalNumber: start",
+  );
   if (!text) {
-    logger.debug({ subsystem: "vector", fieldName }, "vector.parseOptionalNumber: empty");
+    logger.debug(
+      { subsystem: "vector", fieldName },
+      "vector.parseOptionalNumber: empty",
+    );
     return undefined;
   }
   const value = Number(text);

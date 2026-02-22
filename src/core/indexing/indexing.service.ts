@@ -4,7 +4,11 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { ConfigService } from "../config/config.types";
 import type { EmbeddingProvider } from "../embedding/embedding.types";
-import type { FileChange, IndexingService, IndexingStatus } from "./indexing.service.types";
+import type {
+  FileChange,
+  IndexingService,
+  IndexingStatus,
+} from "./indexing.service.types";
 import type { LoggerService } from "../logger/logger.service.types";
 import { resolveParser } from "../parser/parser.registry";
 import type { Parser } from "../parser/parser.types";
@@ -68,7 +72,10 @@ export function createSourceIndexingService(
     for (const source of sources) {
       try {
         const files = await collectIndexableFiles(source.path);
-        log.info({ sourcePath: source.path, fileCount: files.length }, "source indexing started");
+        log.info(
+          { sourcePath: source.path, fileCount: files.length },
+          "source indexing started",
+        );
         for (const filePath of files) {
           indexingState.currentFile = filePath;
           notify();
@@ -92,7 +99,12 @@ export function createSourceIndexingService(
             );
             indexingState.indexedFiles += added;
             log.debug(
-              { filePath, chunksIndexed: added, bytes: fileStats.size, indexedFiles: indexingState.indexedFiles },
+              {
+                filePath,
+                chunksIndexed: added,
+                bytes: fileStats.size,
+                indexedFiles: indexingState.indexedFiles,
+              },
               "indexed large file",
             );
             notify();
@@ -106,7 +118,12 @@ export function createSourceIndexingService(
           );
           indexingState.indexedFiles += added;
           log.debug(
-            { filePath, chunksIndexed: added, bytes: fileStats.size, indexedFiles: indexingState.indexedFiles },
+            {
+              filePath,
+              chunksIndexed: added,
+              bytes: fileStats.size,
+              indexedFiles: indexingState.indexedFiles,
+            },
             "indexed small file",
           );
           notify();
@@ -114,7 +131,10 @@ export function createSourceIndexingService(
         log.info({ sourcePath: source.path }, "source indexing finished");
       } catch (error) {
         indexingState.errors.push(`${source.path}: ${String(error)}`);
-        log.error({ sourcePath: source.path, error: String(error) }, "source indexing failed");
+        log.error(
+          { sourcePath: source.path, error: String(error) },
+          "source indexing failed",
+        );
         notify();
       }
     }
@@ -122,11 +142,18 @@ export function createSourceIndexingService(
     indexingState.currentFile = null;
     indexingState.running = false;
     log.info(
-      { reason, indexedFiles: indexingState.indexedFiles, errorCount: indexingState.errors.length },
+      {
+        reason,
+        indexedFiles: indexingState.indexedFiles,
+        errorCount: indexingState.errors.length,
+      },
       "index rebuild finished",
     );
     notify();
-    return { indexedFiles: indexingState.indexedFiles, errors: indexingState.errors };
+    return {
+      indexedFiles: indexingState.indexedFiles,
+      errors: indexingState.errors,
+    };
   };
 
   return {
@@ -164,7 +191,7 @@ async function indexSmallFile(
       vector: vectorValue,
       metadata: {
         sourcePath: filePath,
-        chunkText: parsed.text.slice(0, 1000),
+        chunkText: parsed.text,
         updatedAt: new Date().toISOString(),
       },
     },
@@ -196,7 +223,7 @@ async function indexLargeFile(
         vector: vectorValue,
         metadata: {
           sourcePath: filePath,
-          chunkText: parsed.text.slice(0, 1000),
+          chunkText: parsed.text,
           startOffset: parsed.startOffset,
           endOffset: parsed.endOffset,
           tokenEstimate: parsed.tokenEstimate,
