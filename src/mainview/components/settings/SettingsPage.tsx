@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ConfigService } from "../../../core/config/config.types";
 import { createHealthService } from "../../../core/health/health.service";
 import type { AppHealth, ComponentHealth } from "../../../core/health/health.service.types";
+import { IndexStatusCard } from "../indexing/IndexStatusCard";
 import { defaultMainviewConfigService } from "../../services/config.service";
 import {
   addSourceInBun,
@@ -108,6 +109,7 @@ export function SettingsPage({
 
   const addSource = async () => {
     const path = await pickSourceDirectory();
+    console.log(path)
     if (!path) return;
     const remoteSources = await addSourceInBun(path);
     const next = configService.updateConfig((source) => {
@@ -259,6 +261,8 @@ export function SettingsPage({
                 ))}
               </ul>
             </article>
+
+            <IndexStatusCard />
 
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">

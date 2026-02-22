@@ -1,5 +1,6 @@
 import type { AppConfig, SourceConfig } from "../../core/config/config.types";
 import type { ComponentHealth } from "../../core/health/health.service.types";
+import type { IndexingStatus } from "../../core/indexing/indexing.service.types";
 
 type AppBridgeSchema = {
   bun: {
@@ -13,6 +14,7 @@ type AppBridgeSchema = {
       };
       remove_source: { params: { path: string }; response: SourceConfig[] };
       get_health: { params: void; response: Record<string, ComponentHealth> };
+      get_index_status: { params: void; response: IndexingStatus };
       pick_source_directory_start: { params: void; response: { requestId: string } };
     };
     messages: {};
@@ -36,6 +38,7 @@ type BridgeRpc = {
     }) => Promise<SourceConfig[]>;
     remove_source: (params: { path: string }) => Promise<SourceConfig[]>;
     get_health: () => Promise<Record<string, ComponentHealth>>;
+    get_index_status: () => Promise<IndexingStatus>;
     pick_source_directory_start: () => Promise<{ requestId: string }>;
   };
 };
@@ -164,6 +167,16 @@ export async function getHealthFromBun(): Promise<Record<
   if (!channel) return null;
   try {
     return await channel.request.get_health();
+  } catch {
+    return null;
+  }
+}
+
+export async function getIndexStatusFromBun(): Promise<IndexingStatus | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.get_index_status();
   } catch {
     return null;
   }

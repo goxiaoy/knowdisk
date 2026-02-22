@@ -3,32 +3,10 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { ConfigService } from "../config/config.types";
 import type { EmbeddingProvider } from "../embedding/embedding.types";
-import type { FileChange, IndexingService } from "./indexing.service.types";
+import type { FileChange, IndexingService, IndexingStatus } from "./indexing.service.types";
 import { resolveParser } from "../parser/parser.registry";
 import type { Parser } from "../parser/parser.types";
-import type { VectorRepository, VectorRow } from "../vector/vector.repository.types";
-
-export function createIndexingService(
-  rebuild: (reason: string) => Promise<unknown>,
-  incremental: (changes: FileChange[]) => Promise<unknown>,
-  reconcile: () => Promise<{ repaired: number }>,
-  status: () => unknown,
-): IndexingService {
-  return {
-    async runFullRebuild(reason: string) {
-      return rebuild(reason);
-    },
-    async runIncremental(changes: FileChange[]) {
-      return incremental(changes);
-    },
-    async runScheduledReconcile() {
-      return reconcile();
-    },
-    getIndexStatus() {
-      return status();
-    },
-  };
-}
+import type { VectorRepository } from "../vector/vector.repository.types";
 
 export function createSourceIndexingService(
   configService: ConfigService,
@@ -36,53 +14,106 @@ export function createSourceIndexingService(
   vector: Pick<VectorRepository, "upsert">,
 ): IndexingService {
   const STREAM_THRESHOLD_BYTES = 10 * 1024 * 1024;
-  const indexingState = {
+  const indexingState: IndexingStatus = {
     running: false,
     lastReason: "",
     lastRunAt: "",
+    currentFile: null,
     indexedFiles: 0,
-    errors: [] as string[],
+    errors: [],
+  };
+  const listeners = new Set<(status: IndexingStatus) => void>();
+  const notify = () => {
+    const snapshot = { ...indexingState, errors: [...indexingState.errors] };
+    for (const listener of listeners) {
+      listener(snapshot);
+    }
+  };
+
+  const statusStore = {
+    getSnapshot() {
+      return { ...indexingState, errors: [...indexingState.errors] };
+    },
+    subscribe(listener: (status: IndexingStatus) => void) {
+      listeners.add(listener);
+      listener({ ...indexingState, errors: [...indexingState.errors] });
+      return () => {
+        listeners.delete(listener);
+      };
+    },
   };
 
   const rebuild = async (reason: string) => {
     indexingState.running = true;
     indexingState.lastReason = reason;
     indexingState.lastRunAt = new Date().toISOString();
+    indexingState.currentFile = null;
+    indexingState.indexedFiles = 0;
     indexingState.errors = [];
-    let indexedFiles = 0;
+    notify();
 
-    const sources = configService.getConfig().sources.filter((source) => source.enabled);
+    const sources = configService
+      .getConfig()
+      .sources.filter((source) => source.enabled);
     for (const source of sources) {
       try {
         const files = await collectIndexableFiles(source.path);
         for (const filePath of files) {
-          const parser = resolveParser({ ext: extname(filePath).toLowerCase() });
+          indexingState.currentFile = filePath;
+          notify();
+          const parser = resolveParser({
+            ext: extname(filePath).toLowerCase(),
+          });
           if (parser.id === "unsupported") {
             continue;
           }
           const fileStats = await stat(filePath);
           if (fileStats.size > STREAM_THRESHOLD_BYTES) {
-            indexedFiles += await indexLargeFile(filePath, parser, embedding, vector);
+            const added = await indexLargeFile(
+              filePath,
+              parser,
+              embedding,
+              vector,
+            );
+            indexingState.indexedFiles += added;
+            notify();
             continue;
           }
-          indexedFiles += await indexSmallFile(filePath, parser, embedding, vector);
+          const added = await indexSmallFile(
+            filePath,
+            parser,
+            embedding,
+            vector,
+          );
+          indexingState.indexedFiles += added;
+          notify();
         }
       } catch (error) {
         indexingState.errors.push(`${source.path}: ${String(error)}`);
+        notify();
       }
     }
 
-    indexingState.indexedFiles = indexedFiles;
+    indexingState.currentFile = null;
     indexingState.running = false;
-    return { indexedFiles, errors: indexingState.errors };
+    notify();
+    return { indexedFiles: indexingState.indexedFiles, errors: indexingState.errors };
   };
 
-  return createIndexingService(
-    rebuild,
-    async () => rebuild("incremental"),
-    async () => ({ repaired: 0 }),
-    () => ({ ...indexingState }),
-  );
+  return {
+    async runFullRebuild(reason: string) {
+      return rebuild(reason);
+    },
+    async runIncremental(_changes: FileChange[]) {
+      return rebuild("incremental");
+    },
+    async runScheduledReconcile() {
+      return { repaired: 0 };
+    },
+    getIndexStatus() {
+      return statusStore;
+    },
+  };
 }
 
 async function indexSmallFile(

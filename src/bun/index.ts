@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createAppContainer } from "./app.container";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
+import type { IndexingStatus } from "../core/indexing/indexing.service.types";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -59,6 +60,9 @@ const rpc = BrowserView.defineRPC({
       },
       get_health() {
         return container.healthService.getComponentHealth();
+      },
+      get_index_status(): IndexingStatus {
+        return container.indexingService.getIndexStatus().getSnapshot();
       },
       pick_source_directory_start() {
         const requestId = globalThis.crypto.randomUUID();
