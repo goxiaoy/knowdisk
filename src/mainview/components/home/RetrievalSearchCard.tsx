@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { RetrievalResult } from "../../../core/retrieval/retrieval.service.types";
 import {
+  listSourceFilesInBun,
   pickFilePathFromBun,
   retrieveSourceChunksInBun,
   searchRetrievalInBun,
@@ -11,11 +12,13 @@ const DEFAULT_TOP_K = 10;
 export function RetrievalSearchCard({
   search = searchRetrievalInBun,
   retrieveBySourcePath = retrieveSourceChunksInBun,
+  listSourceFiles = listSourceFilesInBun,
   pickFilePath = pickFilePathFromBun,
   topK = DEFAULT_TOP_K,
 }: {
   search?: (query: string, topK: number) => Promise<RetrievalResult[] | null>;
   retrieveBySourcePath?: (sourcePath: string) => Promise<RetrievalResult[] | null>;
+  listSourceFiles?: () => Promise<string[] | null>;
   pickFilePath?: () => Promise<string | null>;
   topK?: number;
 }) {
@@ -26,6 +29,21 @@ export function RetrievalSearchCard({
   const [pickingFile, setPickingFile] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<RetrievalResult[]>([]);
+  const [sourceFileOptions, setSourceFileOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const rows = await listSourceFiles();
+      if (!active || !rows) {
+        return;
+      }
+      setSourceFileOptions(rows);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [listSourceFiles]);
 
   const runSearch = async () => {
     const trimmed = query.trim();
@@ -106,8 +124,14 @@ export function RetrievalSearchCard({
           value={sourcePath}
           onChange={(event) => setSourcePath(event.target.value)}
           placeholder="/absolute/path/to/file.md"
+          list="retrieval-source-file-options"
           className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
         />
+        <datalist id="retrieval-source-file-options">
+          {sourceFileOptions.map((filePath) => (
+            <option key={filePath} value={filePath} />
+          ))}
+        </datalist>
         <button
           data-testid="retrieval-pick-file"
           type="button"

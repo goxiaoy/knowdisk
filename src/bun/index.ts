@@ -1,4 +1,5 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
+import { opendir } from "node:fs/promises";
 import { join } from "node:path";
 import { createAppContainer } from "./app.container";
 import type { AppConfig } from "../core/config/config.types";
@@ -98,6 +99,11 @@ const rpc = BrowserView.defineRPC({
       retrieve_source_chunks({ sourcePath }: { sourcePath: string }): Promise<RetrievalResult[]> {
         return container.retrievalService.retrieveBySourcePath(sourcePath);
       },
+      async list_source_files(): Promise<string[]> {
+        const cfg = container.configService.getConfig();
+        const sourceDirs = cfg.sources.filter((source) => source.enabled).map((source) => source.path);
+        return listFilesFromSourceDirs(sourceDirs, 5000);
+      },
       force_resync() {
         return container.forceResync();
       },
@@ -175,3 +181,39 @@ mainWindow.on("close", () => {
 });
 
 container.loggerService.info("Know Disk app started");
+
+async function listFilesFromSourceDirs(sourceDirs: string[], maxFiles: number): Promise<string[]> {
+  const files: string[] = [];
+  for (const dir of sourceDirs) {
+    await walkDirectory(dir, files, maxFiles);
+    if (files.length >= maxFiles) {
+      break;
+    }
+  }
+  return files;
+}
+
+async function walkDirectory(dirPath: string, files: string[], maxFiles: number): Promise<void> {
+  if (files.length >= maxFiles) {
+    return;
+  }
+  let dir;
+  try {
+    dir = await opendir(dirPath);
+  } catch {
+    return;
+  }
+  for await (const entry of dir) {
+    if (files.length >= maxFiles) {
+      break;
+    }
+    const fullPath = join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      await walkDirectory(fullPath, files, maxFiles);
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(fullPath);
+    }
+  }
+}

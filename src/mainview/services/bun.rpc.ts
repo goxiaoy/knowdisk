@@ -20,6 +20,7 @@ type AppBridgeSchema = {
       get_vector_stats: { params: void; response: VectorCollectionInspect };
       search_retrieval: { params: { query: string; topK: number }; response: RetrievalResult[] };
       retrieve_source_chunks: { params: { sourcePath: string }; response: RetrievalResult[] };
+      list_source_files: { params: void; response: string[] };
       force_resync: { params: void; response: { ok: boolean; error?: string } };
       pick_source_directory_start: { params: void; response: { requestId: string } };
       pick_file_path_start: { params: void; response: { requestId: string } };
@@ -50,6 +51,7 @@ type BridgeRpc = {
     get_vector_stats: () => Promise<VectorCollectionInspect>;
     search_retrieval: (params: { query: string; topK: number }) => Promise<RetrievalResult[]>;
     retrieve_source_chunks: (params: { sourcePath: string }) => Promise<RetrievalResult[]>;
+    list_source_files: () => Promise<string[]>;
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
     pick_source_directory_start: () => Promise<{ requestId: string }>;
     pick_file_path_start: () => Promise<{ requestId: string }>;
@@ -254,6 +256,17 @@ export async function retrieveSourceChunksInBun(
     return await channel.request.retrieve_source_chunks({ sourcePath });
   } catch (error) {
     console.error("retrieve_source_chunks RPC failed:", error);
+    return null;
+  }
+}
+
+export async function listSourceFilesInBun(): Promise<string[] | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.list_source_files();
+  } catch (error) {
+    console.error("list_source_files RPC failed:", error);
     return null;
   }
 }

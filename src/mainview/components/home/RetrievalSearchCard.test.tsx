@@ -105,6 +105,7 @@ describe("RetrievalSearchCard", () => {
       <RetrievalSearchCard
         search={async () => []}
         retrieveBySourcePath={async () => []}
+        listSourceFiles={async () => []}
         pickFilePath={async () => "/picked/path/readme.md"}
       />,
     );
@@ -116,5 +117,24 @@ describe("RetrievalSearchCard", () => {
 
     const input = root.findByProps({ "data-testid": "retrieval-source-path" });
     expect(input.props.value).toBe("/picked/path/readme.md");
+  });
+
+  it("loads source file options for autocomplete", async () => {
+    let renderer: ReturnType<typeof create>;
+    await act(async () => {
+      renderer = create(
+        <RetrievalSearchCard
+          search={async () => []}
+          retrieveBySourcePath={async () => []}
+          listSourceFiles={async () => ["/docs/a.md", "/docs/b.md"]}
+          pickFilePath={async () => null}
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const root = renderer!.root;
+    const options = root.findAllByType("option").map((node) => node.props.value);
+    expect(options).toEqual(["/docs/a.md", "/docs/b.md"]);
   });
 });
