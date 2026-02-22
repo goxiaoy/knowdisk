@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import type { RetrievalService } from "../retrieval/retrieval.service.types";
 
@@ -13,6 +13,7 @@ export function createMcpServer(deps: McpServerDeps) {
     name: "knowdisk-mcp",
     version: "1.0.0",
   });
+  let requestQueue: Promise<void> = Promise.resolve();
 
   const runSearch = async (args: { query: string; top_k?: number }) => {
     if (!(deps.isEnabled?.() ?? true)) {
@@ -24,7 +25,8 @@ export function createMcpServer(deps: McpServerDeps) {
     return { results };
   };
 
-  server.registerTool(
+  const registerSearchTool = (server: McpServer) =>
+    server.registerTool(
     "search_local_knowledge",
     {
       description: "Search local indexed knowledge chunks by semantic similarity.",
@@ -49,12 +51,28 @@ export function createMcpServer(deps: McpServerDeps) {
     },
   );
 
+  registerSearchTool(server);
+
   return {
-    server,
-    async connectStdio() {
-      const transport = new StdioServerTransport();
-      await server.connect(transport);
-      return transport;
+    async handleHttpRequest(request: Request) {
+      const run = async () => {
+        await server.close().catch(() => undefined);
+        const transport = new WebStandardStreamableHTTPServerTransport({
+          // transport is request-scoped in stateless mode
+          sessionIdGenerator: undefined,
+          enableJsonResponse: true,
+        });
+        await server.connect(transport);
+        const response = await transport.handleRequest(request);
+        await server.close().catch(() => undefined);
+        return response;
+      };
+      const task = requestQueue.then(run, run);
+      requestQueue = task.then(
+        () => undefined,
+        () => undefined,
+      );
+      return task;
     },
     async close() {
       await server.close();
