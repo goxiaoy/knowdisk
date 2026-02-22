@@ -1,8 +1,8 @@
 import "reflect-metadata";
 import { join } from "node:path";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
-import { defaultConfigService, type ConfigService } from "../core/config/config.service";
-import type { SourceConfig } from "../core/config/config.types";
+import { defaultConfigService } from "../core/config/config.service";
+import type { ConfigService, SourceConfig } from "../core/config/config.types";
 import { makeEmbeddingProvider } from "../core/embedding/embedding.service";
 import type { EmbeddingProvider } from "../core/embedding/embedding.types";
 import { createHealthService } from "../core/health/health.service";
@@ -22,6 +22,7 @@ export type AppContainer = {
   loggerService: LoggerService;
   configService: ConfigService;
   healthService: HealthService;
+  vectorRepository: VectorRepository;
   retrievalService: RetrievalService;
   indexingService: IndexingService;
   addSourceAndReindex: (path: string) => Promise<SourceConfig[]>;
@@ -143,6 +144,7 @@ function registerDependencies(
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
       const loggerService = c.resolve<LoggerService>(TOKENS.LoggerService);
       const healthService = c.resolve<HealthService>(TOKENS.HealthService);
+      const vectorRepository = c.resolve<VectorRepository>(TOKENS.VectorRepository);
       const retrievalService = c.resolve<RetrievalService>(TOKENS.RetrievalService);
       const indexingService = c.resolve<IndexingService>(TOKENS.IndexingService);
       const addSourceAndReindex = async (path: string) => {
@@ -164,6 +166,7 @@ function registerDependencies(
           configService,
           loggerService,
           healthService,
+          vectorRepository,
           retrievalService,
           indexingService,
           addSourceAndReindex,
@@ -180,6 +183,7 @@ function registerDependencies(
         configService,
         loggerService,
         healthService,
+        vectorRepository,
         retrievalService,
         indexingService,
         addSourceAndReindex,

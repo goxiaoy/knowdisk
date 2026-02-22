@@ -39,3 +39,24 @@ test("deleteBySourcePath removes all chunks for a file", async () => {
   expect(results.some((row) => row.metadata.sourcePath === "b.md")).toBe(true);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("inspect returns schema and stats", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "knowdisk-zvec-"));
+  const collectionPath = join(dir, "vectors.zvec");
+  const repo = createVectorRepository({
+    collectionPath,
+    dimension: 2,
+    indexType: "flat",
+    metric: "ip",
+  });
+  await repo.upsert([{ chunkId: "doc_a1", vector: [1, 0], metadata: { sourcePath: "a.md" } }]);
+
+  const inspect = await repo.inspect();
+
+  expect(inspect.path).toBe(collectionPath);
+  expect(inspect.stats.docCount).toBe(1);
+  expect(inspect.schema.name).toBe("knowdisk");
+  expect(inspect.schema.vectors[0]?.dimension).toBe(2);
+  expect(inspect.schema.fields.some((field) => field.name === "sourcePath")).toBe(true);
+  rmSync(dir, { recursive: true, force: true });
+});

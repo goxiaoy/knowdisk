@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { ConfigService } from "../../../core/config/config.types";
 import { createHealthService } from "../../../core/health/health.service";
 import type { AppHealth, ComponentHealth } from "../../../core/health/health.service.types";
-import { IndexStatusCard } from "../indexing/IndexStatusCard";
 import { defaultMainviewConfigService } from "../../services/config.service";
 import {
   addSourceInBun,
@@ -28,6 +27,7 @@ export function SettingsPage({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [config, setConfig] = useState(configService.getConfig());
   const [mcpEnabled, setMcpEnabled] = useState(config.mcp.enabled);
+  const [mcpPort, setMcpPort] = useState(String(config.mcp.port));
   const [sources, setSources] = useState(config.sources);
   const [activity, setActivity] = useState("");
   const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
@@ -101,10 +101,32 @@ export function SettingsPage({
     const next = !mcpEnabled;
     const updated = configService.updateConfig((source) => ({
       ...source,
-      mcp: { enabled: next },
+      mcp: {
+        enabled: next,
+        port: source.mcp.port,
+      },
     }));
     setConfig(updated);
     setMcpEnabled(next);
+    setMcpPort(String(updated.mcp.port));
+  };
+
+  const saveMcpConfig = () => {
+    const parsedPort = Number.parseInt(mcpPort, 10);
+    const nextPort = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535
+      ? parsedPort
+      : config.mcp.port;
+    const updated = configService.updateConfig((source) => ({
+      ...source,
+      mcp: {
+        enabled: mcpEnabled,
+        port: nextPort,
+      },
+    }));
+    setConfig(updated);
+    setMcpEnabled(updated.mcp.enabled);
+    setMcpPort(String(updated.mcp.port));
+    setActivity("MCP settings saved. Restart app to apply new endpoint port.");
   };
 
   const addSource = async () => {
@@ -278,9 +300,6 @@ export function SettingsPage({
                 ))}
               </ul>
             </article>
-
-            <IndexStatusCard />
-
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -358,12 +377,29 @@ export function SettingsPage({
               <p className="mt-3 text-sm font-medium text-slate-800">
                 MCP Server: {mcpEnabled ? "Enabled" : "Disabled"}
               </p>
+              <label className="mt-3 grid gap-1 text-sm text-slate-700">
+                MCP Port
+                <input
+                  data-testid="mcp-port"
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                  value={mcpPort}
+                  onChange={(event) => setMcpPort(event.target.value)}
+                />
+              </label>
               <button
                 type="button"
                 onClick={toggleMcp}
                 className="mt-3 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
               >
                 {mcpEnabled ? "Turn MCP Off" : "Turn MCP On"}
+              </button>
+              <button
+                data-testid="save-mcp"
+                type="button"
+                onClick={saveMcpConfig}
+                className="mt-3 rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-800"
+              >
+                Save MCP
               </button>
             </article>
 

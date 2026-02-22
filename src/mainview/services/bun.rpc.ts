@@ -1,6 +1,7 @@
 import type { AppConfig, SourceConfig } from "../../core/config/config.types";
 import type { ComponentHealth } from "../../core/health/health.service.types";
 import type { IndexingStatus } from "../../core/indexing/indexing.service.types";
+import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
 
 type AppBridgeSchema = {
   bun: {
@@ -15,6 +16,7 @@ type AppBridgeSchema = {
       remove_source: { params: { path: string }; response: SourceConfig[] };
       get_health: { params: void; response: Record<string, ComponentHealth> };
       get_index_status: { params: void; response: IndexingStatus };
+      get_vector_stats: { params: void; response: VectorCollectionInspect };
       pick_source_directory_start: { params: void; response: { requestId: string } };
     };
     messages: {};
@@ -39,6 +41,7 @@ type BridgeRpc = {
     remove_source: (params: { path: string }) => Promise<SourceConfig[]>;
     get_health: () => Promise<Record<string, ComponentHealth>>;
     get_index_status: () => Promise<IndexingStatus>;
+    get_vector_stats: () => Promise<VectorCollectionInspect>;
     pick_source_directory_start: () => Promise<{ requestId: string }>;
   };
 };
@@ -177,6 +180,16 @@ export async function getIndexStatusFromBun(): Promise<IndexingStatus | null> {
   if (!channel) return null;
   try {
     return await channel.request.get_index_status();
+  } catch {
+    return null;
+  }
+}
+
+export async function getVectorStatsFromBun(): Promise<VectorCollectionInspect | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.get_vector_stats();
   } catch {
     return null;
   }

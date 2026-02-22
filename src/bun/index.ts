@@ -4,6 +4,7 @@ import { createAppContainer } from "./app.container";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 import type { IndexingStatus } from "../core/indexing/indexing.service.types";
+import type { VectorCollectionInspect } from "../core/vector/vector.repository.types";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -29,6 +30,31 @@ container.loggerService.info(
   { config: container.configService.getConfig() },
   "App startup config",
 );
+const startupConfig = container.configService.getConfig();
+let mcpHttpServer: ReturnType<typeof Bun.serve> | null = null;
+if (startupConfig.mcp.enabled && container.mcpServer) {
+  try {
+    mcpHttpServer = Bun.serve({
+      port: startupConfig.mcp.port,
+      async fetch(request: Request) {
+        const url = new URL(request.url);
+        if (url.pathname !== "/mcp") {
+          return new Response("Not Found", { status: 404 });
+        }
+        return container.mcpServer!.handleHttpRequest(request);
+      },
+    });
+    container.loggerService.info(
+      { endpoint: `http://127.0.0.1:${startupConfig.mcp.port}/mcp` },
+      "MCP HTTP endpoint exposed",
+    );
+  } catch (error) {
+    container.loggerService.error(
+      { port: startupConfig.mcp.port, error: String(error) },
+      "Failed to start MCP HTTP endpoint",
+    );
+  }
+}
 
 const rpc = BrowserView.defineRPC({
   handlers: {
@@ -61,6 +87,9 @@ const rpc = BrowserView.defineRPC({
       },
       get_index_status(): IndexingStatus {
         return container.indexingService.getIndexStatus().getSnapshot();
+      },
+      get_vector_stats(): Promise<VectorCollectionInspect> {
+        return container.vectorRepository.inspect();
       },
       pick_source_directory_start() {
         const requestId = globalThis.crypto.randomUUID();
@@ -106,6 +135,8 @@ const mainWindow = new BrowserWindow({
 });
 
 mainWindow.on("close", () => {
+  mcpHttpServer?.stop(true);
+  void container.mcpServer?.close();
   Utils.quit();
 });
 

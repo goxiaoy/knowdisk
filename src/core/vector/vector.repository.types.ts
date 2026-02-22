@@ -20,8 +20,32 @@ export type VectorSearchRow = {
   metadata: VectorMetadata;
 };
 
+export type VectorCollectionInspect = {
+  path: string;
+  option: Record<string, unknown>;
+  options: Record<string, unknown>;
+  schema: {
+    name: string;
+    vectors: Array<{
+      name: string;
+      dataType: string;
+      dimension?: number;
+      indexParams: Record<string, unknown>;
+    }>;
+    fields: Array<{
+      name: string;
+      dataType: string;
+    }>;
+  };
+  stats: {
+    docCount: number;
+    indexCompleteness: Record<string, number>;
+  };
+};
+
 export type VectorRepository = {
   upsert: (input: VectorRow[]) => Promise<void>;
   deleteBySourcePath: (sourcePath: string) => Promise<void>;
   search: (query: number[], opts: { topK: number }) => Promise<VectorSearchRow[]>;
+  inspect: () => Promise<VectorCollectionInspect>;
 };
