@@ -15,9 +15,9 @@ import {
 } from "../../services/bun.rpc";
 
 function healthClass(health: AppHealth) {
-  if (health === "failed") return "health health-failed";
-  if (health === "degraded") return "health health-degraded";
-  return "health health-healthy";
+  if (health === "failed") return "bg-red-100 text-red-700";
+  if (health === "degraded") return "bg-amber-100 text-amber-700";
+  return "bg-emerald-100 text-emerald-700";
 }
 
 export function SettingsPage({
@@ -216,233 +216,362 @@ export function SettingsPage({
   ) as Array<[string, ComponentHealth]>;
 
   return (
-    <section className="settings-page">
-      <h1>Settings</h1>
-      <p className={healthClass(health)}>App health: {health}</p>
-      <ul>
-        {subsystemList.map(([name, state]) => (
-          <li key={name}>
-            {name}: {state}
-          </li>
-        ))}
-      </ul>
-      <p>MCP Server: {mcpEnabled ? "Enabled" : "Disabled"}</p>
-      <button type="button" onClick={toggleMcp}>
-        {mcpEnabled ? "Turn MCP Off" : "Turn MCP On"}
-      </button>
-      <h2>Sources</h2>
-      <button data-testid="add-source" type="button" onClick={() => void addSource()}>
-        Add Source
-      </button>
-      {activity ? <p>{activity}</p> : null}
-      <ul>
-        {sources.map((source) => (
-          <li key={source.path}>
-            <span>{source.path}</span>
-            <label>
-              Enabled
-              <input
-                data-testid={`toggle-${source.path}`}
-                type="checkbox"
-                checked={source.enabled}
-                onChange={(event) => setSourceEnabled(source.path, event.target.checked)}
-              />
-            </label>
-            <button
-              data-testid={`remove-${source.path}`}
-              type="button"
-              onClick={() => removeSource(source.path)}
+    <section className="settings-page min-h-screen bg-[radial-gradient(circle_at_top,#eff6ff_0%,#f8fafc_45%,#eef2ff_100%)] p-4 md:p-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <header className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Settings</h1>
+              <p className="mt-1 text-sm text-slate-600">Know Disk runtime and retrieval configuration</p>
+            </div>
+            <p
+              className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-sm font-medium capitalize ${healthClass(health)}`}
             >
-              Remove
-            </button>
-          </li>
-        ))}
-      </ul>
+              App health: {health}
+            </p>
+          </div>
+          {activity ? (
+            <p className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+              {activity}
+            </p>
+          ) : null}
+        </header>
 
-      <h2>Embedding</h2>
-      <p>Current provider: {config.embedding.provider}</p>
-      <label>
-        Provider
-        <select
-          data-testid="embedding-provider"
-          value={embeddingProvider}
-          onChange={(event) =>
-            setEmbeddingProvider(
-              event.target.value as "local" | "qwen_dense" | "qwen_sparse" | "openai_dense",
-            )
-          }
-        >
-          <option value="local">local</option>
-          <option value="qwen_dense">Qwen Dense</option>
-          <option value="qwen_sparse">Qwen Sparse</option>
-          <option value="openai_dense">OpenAI Dense</option>
-        </select>
-      </label>
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
+          <div className="space-y-6">
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">System Health</h2>
+              <p className="mt-1 text-sm text-slate-500">All subsystem status</p>
+              <ul className="mt-4 space-y-2">
+                {subsystemList.map(([name, state]) => (
+                  <li
+                    key={name}
+                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
+                  >
+                    <span className="text-sm font-medium text-slate-700">{name}</span>
+                    <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold uppercase text-slate-600">
+                      {state}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </article>
 
-      {embeddingProvider === "local" ? (
-        <>
-          <label>
-            HF Endpoint
-            <input
-              data-testid="embedding-local-hf-endpoint"
-              value={embeddingLocalHfEndpoint}
-              onChange={(event) => setEmbeddingLocalHfEndpoint(event.target.value)}
-            />
-          </label>
-          <label>
-            Cache Dir
-            <input
-              data-testid="embedding-local-cache-dir"
-              value={embeddingLocalCacheDir}
-              onChange={(event) => setEmbeddingLocalCacheDir(event.target.value)}
-            />
-          </label>
-          <label>
-            Model
-            <input
-              data-testid="embedding-local-model"
-              value={embeddingLocalModel}
-              onChange={(event) => setEmbeddingLocalModel(event.target.value)}
-            />
-          </label>
-          <label>
-            Dimension
-            <input
-              data-testid="embedding-local-dimension"
-              value={embeddingLocalDimension}
-              onChange={(event) => setEmbeddingLocalDimension(event.target.value)}
-            />
-          </label>
-        </>
-      ) : (
-        <>
-          <label>
-            API Key
-            <input
-              data-testid="embedding-cloud-api-key"
-              value={embeddingCloudApiKey}
-              onChange={(event) => setEmbeddingCloudApiKey(event.target.value)}
-            />
-          </label>
-          <label>
-            Model
-            <input
-              data-testid="embedding-cloud-model"
-              value={embeddingCloudModel}
-              onChange={(event) => setEmbeddingCloudModel(event.target.value)}
-            />
-          </label>
-          <label>
-            Dimension
-            <input
-              data-testid="embedding-cloud-dimension"
-              value={embeddingCloudDimension}
-              onChange={(event) => setEmbeddingCloudDimension(event.target.value)}
-            />
-          </label>
-        </>
-      )}
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Sources</h2>
+                  <p className="mt-1 text-sm text-slate-500">Indexed folders and files</p>
+                </div>
+                <button
+                  data-testid="add-source"
+                  type="button"
+                  onClick={() => void addSource()}
+                  className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-800"
+                >
+                  Add Source
+                </button>
+              </div>
 
-      <button data-testid="save-embedding" type="button" onClick={saveEmbeddingConfig}>
-        Save Embedding
-      </button>
+              <div className="mt-4 space-y-3">
+                {sources.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-sm text-slate-500">
+                    No sources configured.
+                  </p>
+                ) : (
+                  sources.map((source) => (
+                    <div
+                      key={source.path}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3"
+                    >
+                      <div className="break-all text-sm font-medium text-slate-800">{source.path}</div>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                          <input
+                            data-testid={`toggle-${source.path}`}
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 text-cyan-700 focus:ring-cyan-500"
+                            checked={source.enabled}
+                            onChange={(event) => setSourceEnabled(source.path, event.target.checked)}
+                          />
+                          Enabled
+                        </label>
+                        <button
+                          data-testid={`remove-${source.path}`}
+                          type="button"
+                          onClick={() => removeSource(source.path)}
+                          className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </article>
 
-      <h2>Reranker</h2>
-      <p>Current provider: {config.reranker.provider}</p>
-      <label>
-        Enabled
-        <input
-          data-testid="reranker-enabled"
-          type="checkbox"
-          checked={rerankerEnabled}
-          onChange={(event) => setRerankerEnabled(event.target.checked)}
-        />
-      </label>
-      <label>
-        Provider
-        <select
-          data-testid="reranker-provider"
-          value={rerankerProvider}
-          onChange={(event) => setRerankerProvider(event.target.value as "local" | "qwen" | "openai")}
-        >
-          <option value="local">local</option>
-          <option value="qwen">qwen</option>
-          <option value="openai">openai</option>
-        </select>
-      </label>
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+              >
+                {showAdvanced ? "Hide Advanced" : "Show Advanced"}
+              </button>
+              {showAdvanced ? (
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  Advanced Settings
+                </div>
+              ) : null}
+            </article>
+          </div>
 
-      {rerankerProvider === "local" ? (
-        <>
-          <label>
-            HF Endpoint
-            <input
-              data-testid="reranker-local-hf-endpoint"
-              value={rerankerLocalHfEndpoint}
-              onChange={(event) => setRerankerLocalHfEndpoint(event.target.value)}
-            />
-          </label>
-          <label>
-            Cache Dir
-            <input
-              data-testid="reranker-local-cache-dir"
-              value={rerankerLocalCacheDir}
-              onChange={(event) => setRerankerLocalCacheDir(event.target.value)}
-            />
-          </label>
-          <label>
-            Model
-            <input
-              data-testid="reranker-local-model"
-              value={rerankerLocalModel}
-              onChange={(event) => setRerankerLocalModel(event.target.value)}
-            />
-          </label>
-          <label>
-            TopN
-            <input
-              data-testid="reranker-local-topn"
-              value={rerankerLocalTopN}
-              onChange={(event) => setRerankerLocalTopN(event.target.value)}
-            />
-          </label>
-        </>
-      ) : (
-        <>
-          <label>
-            API Key
-            <input
-              data-testid="reranker-cloud-api-key"
-              value={rerankerCloudApiKey}
-              onChange={(event) => setRerankerCloudApiKey(event.target.value)}
-            />
-          </label>
-          <label>
-            Model
-            <input
-              data-testid="reranker-cloud-model"
-              value={rerankerCloudModel}
-              onChange={(event) => setRerankerCloudModel(event.target.value)}
-            />
-          </label>
-          <label>
-            TopN
-            <input
-              data-testid="reranker-cloud-topn"
-              value={rerankerCloudTopN}
-              onChange={(event) => setRerankerCloudTopN(event.target.value)}
-            />
-          </label>
-        </>
-      )}
+          <div className="space-y-6">
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">MCP</h2>
+              <p className="mt-1 text-sm text-slate-500">Tool server integration</p>
+              <p className="mt-3 text-sm font-medium text-slate-800">
+                MCP Server: {mcpEnabled ? "Enabled" : "Disabled"}
+              </p>
+              <button
+                type="button"
+                onClick={toggleMcp}
+                className="mt-3 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+              >
+                {mcpEnabled ? "Turn MCP Off" : "Turn MCP On"}
+              </button>
+            </article>
 
-      <button data-testid="save-reranker" type="button" onClick={saveRerankerConfig}>
-        Save Reranker
-      </button>
+            {showAdvanced ? (
+              <>
+                <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">Embedding</h2>
+              <p className="mt-1 text-sm text-slate-500">Current provider: {config.embedding.provider}</p>
 
-      <button type="button" onClick={() => setShowAdvanced((v) => !v)}>
-        {showAdvanced ? "Hide Advanced" : "Show Advanced"}
-      </button>
-      {showAdvanced ? <div>Advanced Settings</div> : null}
+              <div className="mt-4 grid gap-4">
+                <label className="grid gap-1 text-sm text-slate-700">
+                  Provider
+                  <select
+                    data-testid="embedding-provider"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                    value={embeddingProvider}
+                    onChange={(event) =>
+                      setEmbeddingProvider(
+                        event.target.value as "local" | "qwen_dense" | "qwen_sparse" | "openai_dense",
+                      )
+                    }
+                  >
+                    <option value="local">local</option>
+                    <option value="qwen_dense">Qwen Dense</option>
+                    <option value="qwen_sparse">Qwen Sparse</option>
+                    <option value="openai_dense">OpenAI Dense</option>
+                  </select>
+                </label>
+
+                {embeddingProvider === "local" ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
+                      HF Endpoint
+                      <input
+                        data-testid="embedding-local-hf-endpoint"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={embeddingLocalHfEndpoint}
+                        onChange={(event) => setEmbeddingLocalHfEndpoint(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
+                      Cache Dir
+                      <input
+                        data-testid="embedding-local-cache-dir"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={embeddingLocalCacheDir}
+                        onChange={(event) => setEmbeddingLocalCacheDir(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      Model
+                      <input
+                        data-testid="embedding-local-model"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={embeddingLocalModel}
+                        onChange={(event) => setEmbeddingLocalModel(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      Dimension
+                      <input
+                        data-testid="embedding-local-dimension"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={embeddingLocalDimension}
+                        onChange={(event) => setEmbeddingLocalDimension(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
+                      API Key
+                      <input
+                        data-testid="embedding-cloud-api-key"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={embeddingCloudApiKey}
+                        onChange={(event) => setEmbeddingCloudApiKey(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      Model
+                      <input
+                        data-testid="embedding-cloud-model"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={embeddingCloudModel}
+                        onChange={(event) => setEmbeddingCloudModel(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      Dimension
+                      <input
+                        data-testid="embedding-cloud-dimension"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={embeddingCloudDimension}
+                        onChange={(event) => setEmbeddingCloudDimension(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <button
+                data-testid="save-embedding"
+                type="button"
+                onClick={saveEmbeddingConfig}
+                className="mt-4 rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-800"
+              >
+                Save Embedding
+              </button>
+                </article>
+
+                <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">Reranker</h2>
+              <p className="mt-1 text-sm text-slate-500">Current provider: {config.reranker.provider}</p>
+
+              <div className="mt-4 grid gap-4">
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    data-testid="reranker-enabled"
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300 text-cyan-700 focus:ring-cyan-500"
+                    checked={rerankerEnabled}
+                    onChange={(event) => setRerankerEnabled(event.target.checked)}
+                  />
+                  Enabled
+                </label>
+                <label className="grid gap-1 text-sm text-slate-700">
+                  Provider
+                  <select
+                    data-testid="reranker-provider"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                    value={rerankerProvider}
+                    onChange={(event) => setRerankerProvider(event.target.value as "local" | "qwen" | "openai")}
+                  >
+                    <option value="local">local</option>
+                    <option value="qwen">qwen</option>
+                    <option value="openai">openai</option>
+                  </select>
+                </label>
+
+                {rerankerProvider === "local" ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
+                      HF Endpoint
+                      <input
+                        data-testid="reranker-local-hf-endpoint"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={rerankerLocalHfEndpoint}
+                        onChange={(event) => setRerankerLocalHfEndpoint(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
+                      Cache Dir
+                      <input
+                        data-testid="reranker-local-cache-dir"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={rerankerLocalCacheDir}
+                        onChange={(event) => setRerankerLocalCacheDir(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      Model
+                      <input
+                        data-testid="reranker-local-model"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={rerankerLocalModel}
+                        onChange={(event) => setRerankerLocalModel(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      TopN
+                      <input
+                        data-testid="reranker-local-topn"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={rerankerLocalTopN}
+                        onChange={(event) => setRerankerLocalTopN(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
+                      API Key
+                      <input
+                        data-testid="reranker-cloud-api-key"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={rerankerCloudApiKey}
+                        onChange={(event) => setRerankerCloudApiKey(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      Model
+                      <input
+                        data-testid="reranker-cloud-model"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={rerankerCloudModel}
+                        onChange={(event) => setRerankerCloudModel(event.target.value)}
+                      />
+                    </label>
+                    <label className="grid gap-1 text-sm text-slate-700">
+                      TopN
+                      <input
+                        data-testid="reranker-cloud-topn"
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                        value={rerankerCloudTopN}
+                        onChange={(event) => setRerankerCloudTopN(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <button
+                data-testid="save-reranker"
+                type="button"
+                onClick={saveRerankerConfig}
+                className="mt-4 rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-800"
+              >
+                Save Reranker
+              </button>
+                </article>
+              </>
+            ) : (
+              <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-sm text-slate-600">
+                  Embedding and reranker settings are in Advanced mode.
+                </p>
+              </article>
+            )}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

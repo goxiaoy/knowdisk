@@ -15,7 +15,9 @@ async function getMainViewUrl(): Promise<string> {
       console.log(`HMR enabled: Using Vite dev server at ${DEV_SERVER_URL}`);
       return DEV_SERVER_URL;
     } catch {
-      console.log("Vite dev server not running. Run 'bun run dev:hmr' for HMR support.");
+      console.log(
+        "Vite dev server not running. Run 'bun run dev:hmr' for HMR support.",
+      );
     }
   }
   return "views://mainview/index.html";
@@ -24,7 +26,10 @@ async function getMainViewUrl(): Promise<string> {
 const userDataDir = join(Utils.paths.home, ".knowdisk");
 const configService = createConfigService({ userDataDir });
 const container = createAppContainer({ configService, userDataDir });
-console.log("App startup config:", JSON.stringify(container.configService.getConfig(), null, 2));
+console.log(
+  "App startup config:",
+  JSON.stringify(container.configService.getConfig(), null, 2),
+);
 
 const rpc = BrowserView.defineRPC({
   handlers: {
@@ -55,14 +60,29 @@ const rpc = BrowserView.defineRPC({
       get_health() {
         return container.healthService.getComponentHealth();
       },
-      async pick_source_directory() {
-        const paths = await Utils.openFileDialog({
-          canChooseFiles: false,
-          canChooseDirectory: true,
-          allowsMultipleSelection: false,
-        });
-        const [firstPath] = paths;
-        return firstPath ?? null;
+      pick_source_directory_start() {
+        const requestId = globalThis.crypto.randomUUID();
+        void (async () => {
+          try {
+            const paths = await Utils.openFileDialog({
+              canChooseFiles: false,
+              canChooseDirectory: true,
+              allowsMultipleSelection: false,
+            });
+            const [firstPath] = paths;
+            rpc.send.pick_source_directory_result({
+              requestId,
+              path: firstPath ?? null,
+            });
+          } catch (error) {
+            rpc.send.pick_source_directory_result({
+              requestId,
+              path: null,
+              error: String(error),
+            });
+          }
+        })();
+        return { requestId };
       },
     },
     messages: {},

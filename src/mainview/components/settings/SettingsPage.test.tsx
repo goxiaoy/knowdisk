@@ -176,6 +176,10 @@ describe("SettingsPage", () => {
       />,
     );
     const root = renderer.root;
+    const advancedButton = root.findAllByType("button").find((item) => item.props.children === "Show Advanced");
+    act(() => {
+      advancedButton?.props.onClick();
+    });
 
     const embProvider = root.findByProps({ "data-testid": "embedding-provider" });
     act(() => {
