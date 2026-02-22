@@ -9,6 +9,8 @@ import { createHealthService } from "../core/health/health.service";
 import type { HealthService } from "../core/health/health.service.types";
 import { createSourceIndexingService } from "../core/indexing/indexing.service";
 import type { IndexingService } from "../core/indexing/indexing.service.types";
+import { createLoggerService } from "../core/logger/logger.service";
+import type { LoggerService } from "../core/logger/logger.service.types";
 import { createMcpServer } from "../core/mcp/mcp.server";
 import { createReranker } from "../core/reranker/reranker.service";
 import { createRetrievalService } from "../core/retrieval/retrieval.service";
@@ -17,6 +19,7 @@ import { createVectorRepository } from "../core/vector/vector.repository";
 import type { VectorRepository } from "../core/vector/vector.repository.types";
 
 export type AppContainer = {
+  loggerService: LoggerService;
   configService: ConfigService;
   healthService: HealthService;
   retrievalService: RetrievalService;
@@ -28,6 +31,7 @@ export type AppContainer = {
 const TOKENS = {
   ConfigService: Symbol("ConfigService"),
   HealthService: Symbol("HealthService"),
+  LoggerService: Symbol("LoggerService"),
   EmbeddingProvider: Symbol("EmbeddingProvider"),
   VectorRepository: Symbol("VectorRepository"),
   RetrievalService: Symbol("RetrievalService"),
@@ -57,6 +61,9 @@ function registerDependencies(
 ) {
   let vectorRepo: VectorRepository | null = null;
   di.registerInstance<ConfigService>(TOKENS.ConfigService, deps?.configService ?? defaultConfigService);
+  di.register(TOKENS.LoggerService, {
+    useFactory: () => createLoggerService({ name: "knowdisk" }),
+  });
   di.register(TOKENS.HealthService, {
     useFactory: () => createHealthService(),
   });
@@ -128,11 +135,13 @@ function registerDependencies(
         c.resolve<ConfigService>(TOKENS.ConfigService),
         c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
         c.resolve<VectorRepository>(TOKENS.VectorRepository),
+        c.resolve<LoggerService>(TOKENS.LoggerService),
       ),
   });
   di.register(TOKENS.AppContainer, {
     useFactory: (c) => {
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
+      const loggerService = c.resolve<LoggerService>(TOKENS.LoggerService);
       const healthService = c.resolve<HealthService>(TOKENS.HealthService);
       const retrievalService = c.resolve<RetrievalService>(TOKENS.RetrievalService);
       const indexingService = c.resolve<IndexingService>(TOKENS.IndexingService);
@@ -153,6 +162,7 @@ function registerDependencies(
       if (!configService.getConfig().mcp.enabled) {
         return {
           configService,
+          loggerService,
           healthService,
           retrievalService,
           indexingService,
@@ -168,6 +178,7 @@ function registerDependencies(
 
       return {
         configService,
+        loggerService,
         healthService,
         retrievalService,
         indexingService,

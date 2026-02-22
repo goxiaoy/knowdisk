@@ -4,6 +4,7 @@ import { extname, join } from "node:path";
 import type { ConfigService } from "../config/config.types";
 import type { EmbeddingProvider } from "../embedding/embedding.types";
 import type { FileChange, IndexingService, IndexingStatus } from "./indexing.service.types";
+import type { LoggerService } from "../logger/logger.service.types";
 import { resolveParser } from "../parser/parser.registry";
 import type { Parser } from "../parser/parser.types";
 import type { VectorRepository } from "../vector/vector.repository.types";
@@ -12,7 +13,14 @@ export function createSourceIndexingService(
   configService: ConfigService,
   embedding: EmbeddingProvider,
   vector: Pick<VectorRepository, "upsert">,
+  logger?: LoggerService,
 ): IndexingService {
+  const log = logger?.child({ subsystem: "indexing" }) ?? {
+    info: (_obj?: unknown, _msg?: string) => {},
+    warn: (_obj?: unknown, _msg?: string) => {},
+    error: (_obj?: unknown, _msg?: string) => {},
+    debug: (_obj?: unknown, _msg?: string) => {},
+  };
   const STREAM_THRESHOLD_BYTES = 10 * 1024 * 1024;
   const indexingState: IndexingStatus = {
     running: false,
@@ -55,16 +63,20 @@ export function createSourceIndexingService(
     const sources = configService
       .getConfig()
       .sources.filter((source) => source.enabled);
+    log.info({ reason, sourceCount: sources.length }, "index rebuild started");
     for (const source of sources) {
       try {
         const files = await collectIndexableFiles(source.path);
+        log.info({ sourcePath: source.path, fileCount: files.length }, "source indexing started");
         for (const filePath of files) {
           indexingState.currentFile = filePath;
           notify();
+          log.debug({ filePath }, "indexing file");
           const parser = resolveParser({
             ext: extname(filePath).toLowerCase(),
           });
           if (parser.id === "unsupported") {
+            log.debug({ filePath }, "skipping unsupported file");
             continue;
           }
           const fileStats = await stat(filePath);
@@ -76,6 +88,10 @@ export function createSourceIndexingService(
               vector,
             );
             indexingState.indexedFiles += added;
+            log.debug(
+              { filePath, chunksIndexed: added, bytes: fileStats.size, indexedFiles: indexingState.indexedFiles },
+              "indexed large file",
+            );
             notify();
             continue;
           }
@@ -86,16 +102,26 @@ export function createSourceIndexingService(
             vector,
           );
           indexingState.indexedFiles += added;
+          log.debug(
+            { filePath, chunksIndexed: added, bytes: fileStats.size, indexedFiles: indexingState.indexedFiles },
+            "indexed small file",
+          );
           notify();
         }
+        log.info({ sourcePath: source.path }, "source indexing finished");
       } catch (error) {
         indexingState.errors.push(`${source.path}: ${String(error)}`);
+        log.error({ sourcePath: source.path, error: String(error) }, "source indexing failed");
         notify();
       }
     }
 
     indexingState.currentFile = null;
     indexingState.running = false;
+    log.info(
+      { reason, indexedFiles: indexingState.indexedFiles, errorCount: indexingState.errors.length },
+      "index rebuild finished",
+    );
     notify();
     return { indexedFiles: indexingState.indexedFiles, errors: indexingState.errors };
   };

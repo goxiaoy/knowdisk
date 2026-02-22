@@ -13,12 +13,10 @@ async function getMainViewUrl(): Promise<string> {
   if (channel === "dev") {
     try {
       await fetch(DEV_SERVER_URL, { method: "HEAD" });
-      console.log(`HMR enabled: Using Vite dev server at ${DEV_SERVER_URL}`);
+      container.loggerService.info({ devServerUrl: DEV_SERVER_URL }, "HMR enabled: using Vite dev server");
       return DEV_SERVER_URL;
     } catch {
-      console.log(
-        "Vite dev server not running. Run 'bun run dev:hmr' for HMR support.",
-      );
+      container.loggerService.warn("Vite dev server not running. Run 'bun run dev:hmr' for HMR support.");
     }
   }
   return "views://mainview/index.html";
@@ -27,9 +25,9 @@ async function getMainViewUrl(): Promise<string> {
 const userDataDir = join(Utils.paths.home, ".knowdisk");
 const configService = createConfigService({ userDataDir });
 const container = createAppContainer({ configService, userDataDir });
-console.log(
-  "App startup config:",
-  JSON.stringify(container.configService.getConfig(), null, 2),
+container.loggerService.info(
+  { config: container.configService.getConfig() },
+  "App startup config",
 );
 
 const rpc = BrowserView.defineRPC({
@@ -111,4 +109,4 @@ mainWindow.on("close", () => {
   Utils.quit();
 });
 
-console.log("Know Disk app started!");
+container.loggerService.info("Know Disk app started");
