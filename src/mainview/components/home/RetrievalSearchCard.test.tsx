@@ -63,4 +63,58 @@ describe("RetrievalSearchCard", () => {
     const button = renderer.root.findByProps({ "data-testid": "retrieval-search" });
     expect(button.props.disabled).toBe(true);
   });
+
+  it("retrieves all chunks by source path", async () => {
+    const calls: string[] = [];
+    const renderer = create(
+      <RetrievalSearchCard
+        search={async () => []}
+        retrieveBySourcePath={async (sourcePath) => {
+          calls.push(sourcePath);
+          return [
+            {
+              chunkId: "c1",
+              sourcePath,
+              chunkText: "chunk from file",
+              score: 0,
+              startOffset: 0,
+              endOffset: 20,
+              tokenEstimate: 8,
+            },
+          ];
+        }}
+      />,
+    );
+
+    const root = renderer.root;
+    await act(async () => {
+      root.findByProps({ "data-testid": "retrieval-source-path" }).props.onChange({ target: { value: "/docs/a.md" } });
+    });
+
+    await act(async () => {
+      await root.findByProps({ "data-testid": "retrieval-by-source" }).props.onClick();
+    });
+
+    expect(calls).toEqual(["/docs/a.md"]);
+    expect(root.findByProps({ children: "/docs/a.md" })).toBeDefined();
+    expect(root.findByProps({ children: "chunk from file" })).toBeDefined();
+  });
+
+  it("fills source path from file picker", async () => {
+    const renderer = create(
+      <RetrievalSearchCard
+        search={async () => []}
+        retrieveBySourcePath={async () => []}
+        pickFilePath={async () => "/picked/path/readme.md"}
+      />,
+    );
+    const root = renderer.root;
+
+    await act(async () => {
+      await root.findByProps({ "data-testid": "retrieval-pick-file" }).props.onClick();
+    });
+
+    const input = root.findByProps({ "data-testid": "retrieval-source-path" });
+    expect(input.props.value).toBe("/picked/path/readme.md");
+  });
 });

@@ -80,3 +80,37 @@ test("destroy clears collection data", async () => {
 
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("listBySourcePath returns all chunks of a file ordered by startOffset", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "knowdisk-zvec-"));
+  const repo = createVectorRepository({
+    collectionPath: join(dir, "vectors.zvec"),
+    dimension: 2,
+    indexType: "flat",
+    metric: "ip",
+  });
+
+  await repo.upsert([
+    {
+      chunkId: "c2",
+      vector: [1, 0],
+      metadata: { sourcePath: "docs/a.md", chunkText: "two", startOffset: 10, endOffset: 20 },
+    },
+    {
+      chunkId: "c1",
+      vector: [1, 0],
+      metadata: { sourcePath: "docs/a.md", chunkText: "one", startOffset: 0, endOffset: 9 },
+    },
+    {
+      chunkId: "x1",
+      vector: [0, 1],
+      metadata: { sourcePath: "docs/b.md", chunkText: "other", startOffset: 0, endOffset: 3 },
+    },
+  ]);
+
+  const rows = await repo.listBySourcePath("docs/a.md");
+  expect(rows.map((row) => row.chunkId)).toEqual(["c1", "c2"]);
+  expect(rows.every((row) => row.metadata.sourcePath === "docs/a.md")).toBe(true);
+
+  rmSync(dir, { recursive: true, force: true });
+});

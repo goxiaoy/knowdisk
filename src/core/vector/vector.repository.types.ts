@@ -47,6 +47,7 @@ export type VectorRepository = {
   upsert: (input: VectorRow[]) => Promise<void>;
   destroy: () => Promise<void>;
   deleteBySourcePath: (sourcePath: string) => Promise<void>;
+  listBySourcePath: (sourcePath: string) => Promise<VectorSearchRow[]>;
   search: (query: number[], opts: { topK: number }) => Promise<VectorSearchRow[]>;
   inspect: () => Promise<VectorCollectionInspect>;
 };

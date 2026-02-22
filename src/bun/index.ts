@@ -95,6 +95,9 @@ const rpc = BrowserView.defineRPC({
       search_retrieval({ query, topK }: { query: string; topK: number }): Promise<RetrievalResult[]> {
         return container.retrievalService.search(query, { topK });
       },
+      retrieve_source_chunks({ sourcePath }: { sourcePath: string }): Promise<RetrievalResult[]> {
+        return container.retrievalService.retrieveBySourcePath(sourcePath);
+      },
       force_resync() {
         return container.forceResync();
       },
@@ -114,6 +117,30 @@ const rpc = BrowserView.defineRPC({
             });
           } catch (error) {
             rpc.send.pick_source_directory_result({
+              requestId,
+              path: null,
+              error: String(error),
+            });
+          }
+        })();
+        return { requestId };
+      },
+      pick_file_path_start() {
+        const requestId = globalThis.crypto.randomUUID();
+        void (async () => {
+          try {
+            const paths = await Utils.openFileDialog({
+              canChooseFiles: true,
+              canChooseDirectory: false,
+              allowsMultipleSelection: false,
+            });
+            const [firstPath] = paths;
+            rpc.send.pick_file_path_result({
+              requestId,
+              path: firstPath ?? null,
+            });
+          } catch (error) {
+            rpc.send.pick_file_path_result({
               requestId,
               path: null,
               error: String(error),

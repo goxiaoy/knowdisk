@@ -32,6 +32,9 @@ test("returns deterministic top-k with metadata", async () => {
         ];
         return rows.slice(0, opts.topK);
       },
+      async listBySourcePath() {
+        return [];
+      },
     },
     defaults: {
       topK: 5,
@@ -59,6 +62,9 @@ test("applies reranker when configured", async () => {
           },
         ];
       },
+      async listBySourcePath() {
+        return [];
+      },
     },
     reranker: {
       async rerank(_query, rows) {
@@ -71,4 +77,53 @@ test("applies reranker when configured", async () => {
 
   await svc.search("abc", {});
   expect(rerankCalled).toBe(true);
+});
+
+test("retrieves all chunks by source path and keeps ordering metadata", async () => {
+  const svc = createRetrievalService({
+    embedding: { async embed() { return [1, 0]; } },
+    vector: {
+      async search() {
+        return [];
+      },
+      async listBySourcePath(sourcePath: string) {
+        expect(sourcePath).toBe("docs/a.md");
+        return [
+          {
+            chunkId: "c1",
+            score: 0,
+            metadata: {
+              sourcePath: "docs/a.md",
+              chunkText: "chunk a",
+              startOffset: 0,
+              endOffset: 50,
+              tokenEstimate: 12,
+            },
+          },
+          {
+            chunkId: "c2",
+            score: 0,
+            metadata: {
+              sourcePath: "docs/a.md",
+              chunkText: "chunk b",
+              startOffset: 51,
+              endOffset: 99,
+              tokenEstimate: 14,
+            },
+          },
+        ];
+      },
+    },
+    defaults: { topK: 5 },
+  });
+
+  const rows = await svc.retrieveBySourcePath("docs/a.md");
+  expect(rows.length).toBe(2);
+  expect(rows[0]).toMatchObject({
+    chunkId: "c1",
+    sourcePath: "docs/a.md",
+    startOffset: 0,
+    endOffset: 50,
+    tokenEstimate: 12,
+  });
 });

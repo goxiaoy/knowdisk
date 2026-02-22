@@ -15,7 +15,7 @@ export type RetrievalResult = {
 
 export type RetrievalDeps = {
   embedding: EmbeddingProvider;
-  vector: Pick<VectorRepository, "search">;
+  vector: Pick<VectorRepository, "search" | "listBySourcePath">;
   defaults: {
     topK: number;
   };
@@ -24,4 +24,5 @@ export type RetrievalDeps = {
 
 export type RetrievalService = {
   search: (query: string, opts: { topK?: number }) => Promise<RetrievalResult[]>;
+  retrieveBySourcePath: (sourcePath: string) => Promise<RetrievalResult[]>;
 };

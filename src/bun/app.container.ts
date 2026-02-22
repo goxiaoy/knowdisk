@@ -125,6 +125,20 @@ function registerDependencies(
               },
             }));
           },
+          async listBySourcePath(sourcePath) {
+            const rows = await vector.listBySourcePath(sourcePath);
+            return rows.map((row) => ({
+              ...row,
+              metadata: {
+                sourcePath: row.metadata.sourcePath,
+                chunkText: row.metadata.chunkText ?? "",
+                updatedAt: row.metadata.updatedAt ?? "",
+                startOffset: row.metadata.startOffset,
+                endOffset: row.metadata.endOffset,
+                tokenEstimate: row.metadata.tokenEstimate,
+              },
+            }));
+          },
         },
         reranker: reranker ?? undefined,
         defaults: { topK: 5 },

@@ -1,18 +1,29 @@
 import { useState } from "react";
 import type { RetrievalResult } from "../../../core/retrieval/retrieval.service.types";
-import { searchRetrievalInBun } from "../../services/bun.rpc";
+import {
+  pickFilePathFromBun,
+  retrieveSourceChunksInBun,
+  searchRetrievalInBun,
+} from "../../services/bun.rpc";
 
 const DEFAULT_TOP_K = 10;
 
 export function RetrievalSearchCard({
   search = searchRetrievalInBun,
+  retrieveBySourcePath = retrieveSourceChunksInBun,
+  pickFilePath = pickFilePathFromBun,
   topK = DEFAULT_TOP_K,
 }: {
   search?: (query: string, topK: number) => Promise<RetrievalResult[] | null>;
+  retrieveBySourcePath?: (sourcePath: string) => Promise<RetrievalResult[] | null>;
+  pickFilePath?: () => Promise<string | null>;
   topK?: number;
 }) {
   const [query, setQuery] = useState("");
+  const [sourcePath, setSourcePath] = useState("");
   const [loading, setLoading] = useState(false);
+  const [retrieving, setRetrieving] = useState(false);
+  const [pickingFile, setPickingFile] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<RetrievalResult[]>([]);
 
@@ -32,6 +43,36 @@ export function RetrievalSearchCard({
     }
     setResults(rows);
     setLoading(false);
+  };
+
+  const runRetrieveBySourcePath = async () => {
+    const trimmed = sourcePath.trim();
+    if (!trimmed || retrieving) {
+      return;
+    }
+    setRetrieving(true);
+    setError("");
+    const rows = await retrieveBySourcePath(trimmed);
+    if (!rows) {
+      setError("Retrieve source chunks request failed.");
+      setResults([]);
+      setRetrieving(false);
+      return;
+    }
+    setResults(rows);
+    setRetrieving(false);
+  };
+
+  const pickSourceFilePath = async () => {
+    if (pickingFile) {
+      return;
+    }
+    setPickingFile(true);
+    const path = await pickFilePath();
+    if (path) {
+      setSourcePath(path);
+    }
+    setPickingFile(false);
   };
 
   return (
@@ -58,6 +99,35 @@ export function RetrievalSearchCard({
         </button>
       </div>
 
+      <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">or retrieve all chunks by file path</p>
+      <div className="mt-2 flex gap-2">
+        <input
+          data-testid="retrieval-source-path"
+          value={sourcePath}
+          onChange={(event) => setSourcePath(event.target.value)}
+          placeholder="/absolute/path/to/file.md"
+          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+        />
+        <button
+          data-testid="retrieval-pick-file"
+          type="button"
+          disabled={pickingFile}
+          onClick={() => void pickSourceFilePath()}
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {pickingFile ? "Picking..." : "Pick File"}
+        </button>
+        <button
+          data-testid="retrieval-by-source"
+          type="button"
+          disabled={retrieving || sourcePath.trim().length === 0}
+          onClick={() => void runRetrieveBySourcePath()}
+          className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {retrieving ? "Retrieving..." : "Retrieve Chunks"}
+        </button>
+      </div>
+
       {error ? (
         <p data-testid="retrieval-error" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {error}
@@ -72,6 +142,9 @@ export function RetrievalSearchCard({
             <div key={`${row.chunkId}-${row.sourcePath}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="break-all text-sm font-semibold text-slate-900">{row.sourcePath}</p>
               <p className="mt-1 text-xs font-medium text-cyan-700">score: {row.score.toFixed(3)}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                offset: {row.startOffset ?? "-"} - {row.endOffset ?? "-"}, tokens: {row.tokenEstimate ?? "-"}
+              </p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{row.chunkText.slice(0, 500)}</p>
             </div>
           ))

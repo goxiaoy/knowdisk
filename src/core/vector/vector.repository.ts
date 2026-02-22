@@ -122,6 +122,53 @@ export function createVectorRepository(opts: VectorRepositoryOptions): VectorRep
       );
     },
 
+    async listBySourcePath(sourcePath: string) {
+      logger.debug(
+        { subsystem: "vector", collectionPath, sourcePath },
+        "vector.listBySourcePath: start",
+      );
+      const docs = await withCollectionSelfHeal("listBySourcePath", () =>
+        collection.querySync({
+          filter: `sourcePath = '${escapeFilterValue(sourcePath, logger)}'`,
+          outputFields: [
+            "sourcePath",
+            "chunkText",
+            "startOffset",
+            "endOffset",
+            "tokenEstimate",
+            "updatedAt",
+          ],
+        }),
+      );
+      const rows = docs
+        .map((doc) => ({
+          chunkId: doc.id,
+          score: Number(doc.score ?? 0),
+          vector: [],
+          metadata: {
+            sourcePath: String(doc.fields.sourcePath ?? ""),
+            chunkText: String(doc.fields.chunkText ?? ""),
+            startOffset: parseOptionalNumber(doc.fields.startOffset, logger, "startOffset"),
+            endOffset: parseOptionalNumber(doc.fields.endOffset, logger, "endOffset"),
+            tokenEstimate: parseOptionalNumber(doc.fields.tokenEstimate, logger, "tokenEstimate"),
+            updatedAt: String(doc.fields.updatedAt ?? ""),
+          },
+        }))
+        .sort((left, right) => {
+          const l = left.metadata.startOffset ?? Number.MAX_SAFE_INTEGER;
+          const r = right.metadata.startOffset ?? Number.MAX_SAFE_INTEGER;
+          if (l === r) {
+            return left.chunkId.localeCompare(right.chunkId);
+          }
+          return l - r;
+        });
+      logger.debug(
+        { subsystem: "vector", collectionPath, sourcePath, resultCount: rows.length },
+        "vector.listBySourcePath: done",
+      );
+      return rows;
+    },
+
     async search(query: number[], opts: { topK: number }) {
       logger.debug(
         { subsystem: "vector", collectionPath, topK: opts.topK, queryDimension: query.length },
