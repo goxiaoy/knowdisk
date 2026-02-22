@@ -22,8 +22,8 @@ type AppBridgeSchema = {
       retrieve_source_chunks: { params: { sourcePath: string }; response: RetrievalResult[] };
       list_source_files: { params: void; response: string[] };
       force_resync: { params: void; response: { ok: boolean; error?: string } };
-      pick_source_directory_start: { params: void; response: { requestId: string } };
-      pick_file_path_start: { params: void; response: { requestId: string } };
+      pick_source_directory_start: { params: { requestId: string }; response: { ok: boolean } };
+      pick_file_path_start: { params: { requestId: string }; response: { ok: boolean } };
     };
     messages: {};
   };
@@ -53,8 +53,8 @@ type BridgeRpc = {
     retrieve_source_chunks: (params: { sourcePath: string }) => Promise<RetrievalResult[]>;
     list_source_files: () => Promise<string[]>;
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
-    pick_source_directory_start: () => Promise<{ requestId: string }>;
-    pick_file_path_start: () => Promise<{ requestId: string }>;
+    pick_source_directory_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
+    pick_file_path_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
   };
 };
 
@@ -101,6 +101,7 @@ async function getRpc() {
         pick_source_directory_result(payload) {
           const pending = pickSourcePending.get(payload.requestId);
           if (!pending) {
+            console.error("pick_source_directory async result dropped: unknown requestId", payload.requestId);
             return;
           }
           clearTimeout(pending.timeout);
@@ -113,6 +114,7 @@ async function getRpc() {
         pick_file_path_result(payload) {
           const pending = pickFilePending.get(payload.requestId);
           if (!pending) {
+            console.error("pick_file_path async result dropped: unknown requestId", payload.requestId);
             return;
           }
           clearTimeout(pending.timeout);
@@ -274,17 +276,25 @@ export async function listSourceFilesInBun(): Promise<string[] | null> {
 export async function pickSourceDirectoryFromBun(): Promise<string | null> {
   const channel = await getRpc();
   if (!channel) return null;
+  const requestId = globalThis.crypto.randomUUID();
+  const responsePromise = new Promise<string | null>((resolve) => {
+    const timeout = setTimeout(() => {
+      pickSourcePending.delete(requestId);
+      console.error("pick_source_directory async callback timed out");
+      resolve(null);
+    }, 10 * 60 * 1000);
+    pickSourcePending.set(requestId, { resolve, timeout });
+  });
   try {
-    const { requestId } = await channel.request.pick_source_directory_start();
-    return await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        pickSourcePending.delete(requestId);
-        console.error("pick_source_directory async callback timed out");
-        resolve(null);
-      }, 10 * 60 * 1000);
-      pickSourcePending.set(requestId, { resolve, timeout });
-    });
+    await channel.request.pick_source_directory_start({ requestId });
+    return await responsePromise;
   } catch (error) {
+    const pending = pickSourcePending.get(requestId);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      pickSourcePending.delete(requestId);
+      pending.resolve(null);
+    }
     console.error("pick_source_directory RPC failed:", error);
     return null;
   }
@@ -293,17 +303,25 @@ export async function pickSourceDirectoryFromBun(): Promise<string | null> {
 export async function pickFilePathFromBun(): Promise<string | null> {
   const channel = await getRpc();
   if (!channel) return null;
+  const requestId = globalThis.crypto.randomUUID();
+  const responsePromise = new Promise<string | null>((resolve) => {
+    const timeout = setTimeout(() => {
+      pickFilePending.delete(requestId);
+      console.error("pick_file_path async callback timed out");
+      resolve(null);
+    }, 10 * 60 * 1000);
+    pickFilePending.set(requestId, { resolve, timeout });
+  });
   try {
-    const { requestId } = await channel.request.pick_file_path_start();
-    return await new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        pickFilePending.delete(requestId);
-        console.error("pick_file_path async callback timed out");
-        resolve(null);
-      }, 10 * 60 * 1000);
-      pickFilePending.set(requestId, { resolve, timeout });
-    });
+    await channel.request.pick_file_path_start({ requestId });
+    return await responsePromise;
   } catch (error) {
+    const pending = pickFilePending.get(requestId);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      pickFilePending.delete(requestId);
+      pending.resolve(null);
+    }
     console.error("pick_file_path RPC failed:", error);
     return null;
   }

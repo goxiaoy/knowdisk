@@ -107,8 +107,7 @@ const rpc = BrowserView.defineRPC({
       force_resync() {
         return container.forceResync();
       },
-      pick_source_directory_start() {
-        const requestId = globalThis.crypto.randomUUID();
+      pick_source_directory_start({ requestId }: { requestId: string }) {
         void (async () => {
           try {
             const paths = await Utils.openFileDialog({
@@ -129,10 +128,9 @@ const rpc = BrowserView.defineRPC({
             });
           }
         })();
-        return { requestId };
+        return { ok: true };
       },
-      pick_file_path_start() {
-        const requestId = globalThis.crypto.randomUUID();
+      pick_file_path_start({ requestId }: { requestId: string }) {
         void (async () => {
           try {
             const paths = await Utils.openFileDialog({
@@ -153,7 +151,7 @@ const rpc = BrowserView.defineRPC({
             });
           }
         })();
-        return { requestId };
+        return { ok: true };
       },
     },
     messages: {},
