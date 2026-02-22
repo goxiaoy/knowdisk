@@ -214,4 +214,44 @@ describe("SettingsPage", () => {
     expect(embeddingApiKey).toBe("sk-live-1");
     expect(rerankerApiKey).toBe("rk-live-1");
   });
+
+  it("loads cloud embedding and reranker fields from config", () => {
+    const config = makeInitialConfig();
+    config.embedding.provider = "openai_dense";
+    config.embedding.openai_dense = {
+      apiKey: "sk-config",
+      model: "text-embedding-3-large",
+      dimension: 3072,
+    };
+    config.reranker.provider = "openai";
+    config.reranker.openai = {
+      apiKey: "rk-config",
+      model: "text-rerank-1",
+      topN: 9,
+    };
+
+    const renderer = create(
+      <SettingsPage
+        pickSourceDirectory={async () => null}
+        configService={makeConfigService({
+          getConfig() {
+            return config;
+          },
+        })}
+      />,
+    );
+    const root = renderer.root;
+    const advancedButton = root.findAllByType("button").find((item) => item.props.children === "Show Advanced");
+    act(() => {
+      advancedButton?.props.onClick();
+    });
+
+    expect(root.findByProps({ "data-testid": "embedding-cloud-api-key" }).props.value).toBe("sk-config");
+    expect(root.findByProps({ "data-testid": "embedding-cloud-model" }).props.value).toBe("text-embedding-3-large");
+    expect(root.findByProps({ "data-testid": "embedding-cloud-dimension" }).props.value).toBe("3072");
+
+    expect(root.findByProps({ "data-testid": "reranker-cloud-api-key" }).props.value).toBe("rk-config");
+    expect(root.findByProps({ "data-testid": "reranker-cloud-model" }).props.value).toBe("text-rerank-1");
+    expect(root.findByProps({ "data-testid": "reranker-cloud-topn" }).props.value).toBe("9");
+  });
 });

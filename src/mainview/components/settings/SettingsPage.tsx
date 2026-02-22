@@ -36,9 +36,13 @@ export function SettingsPage({
   const [embeddingLocalCacheDir, setEmbeddingLocalCacheDir] = useState(config.embedding.local.cacheDir);
   const [embeddingLocalModel, setEmbeddingLocalModel] = useState(config.embedding.local.model);
   const [embeddingLocalDimension, setEmbeddingLocalDimension] = useState(String(config.embedding.local.dimension));
-  const [embeddingCloudApiKey, setEmbeddingCloudApiKey] = useState("");
-  const [embeddingCloudModel, setEmbeddingCloudModel] = useState("");
-  const [embeddingCloudDimension, setEmbeddingCloudDimension] = useState("1024");
+  const initialEmbeddingCloud =
+    config.embedding.provider === "local"
+      ? config.embedding.openai_dense
+      : config.embedding[config.embedding.provider];
+  const [embeddingCloudApiKey, setEmbeddingCloudApiKey] = useState(initialEmbeddingCloud.apiKey);
+  const [embeddingCloudModel, setEmbeddingCloudModel] = useState(initialEmbeddingCloud.model);
+  const [embeddingCloudDimension, setEmbeddingCloudDimension] = useState(String(initialEmbeddingCloud.dimension));
 
   const [rerankerEnabled, setRerankerEnabled] = useState(config.reranker.enabled);
   const [rerankerProvider, setRerankerProvider] = useState(config.reranker.provider);
@@ -46,9 +50,11 @@ export function SettingsPage({
   const [rerankerLocalCacheDir, setRerankerLocalCacheDir] = useState(config.reranker.local.cacheDir);
   const [rerankerLocalModel, setRerankerLocalModel] = useState(config.reranker.local.model);
   const [rerankerLocalTopN, setRerankerLocalTopN] = useState(String(config.reranker.local.topN));
-  const [rerankerCloudApiKey, setRerankerCloudApiKey] = useState("");
-  const [rerankerCloudModel, setRerankerCloudModel] = useState("");
-  const [rerankerCloudTopN, setRerankerCloudTopN] = useState("5");
+  const initialRerankerCloud =
+    config.reranker.provider === "local" ? config.reranker.openai : config.reranker[config.reranker.provider];
+  const [rerankerCloudApiKey, setRerankerCloudApiKey] = useState(initialRerankerCloud.apiKey);
+  const [rerankerCloudModel, setRerankerCloudModel] = useState(initialRerankerCloud.model);
+  const [rerankerCloudTopN, setRerankerCloudTopN] = useState(String(initialRerankerCloud.topN));
 
   const { health, components } = useMemo(() => {
     const svc = createHealthService();
