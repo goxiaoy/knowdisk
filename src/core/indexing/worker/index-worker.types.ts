@@ -20,4 +20,7 @@ export type IndexWorkerDeps = {
   concurrency: number;
   maxAttempts: number;
   backoffMs: number[];
+  onJobStart?: (path: string) => void;
+  onJobDone?: (path: string) => void;
+  onJobError?: (path: string, error: string) => void;
 };

@@ -12,7 +12,15 @@ function makeConfig(): AppConfig {
     sources: [],
     mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
-    indexing: { watch: { enabled: true } },
+    indexing: {
+      watch: { enabled: true, debounceMs: 50 },
+      reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
+      worker: { concurrency: 2, batchSize: 64 },
+      retry: { maxAttempts: 3, backoffMs: [1000, 5000, 20000] },
+    },
+    retrieval: {
+      hybrid: { ftsTopN: 30, vectorTopK: 20, rerankTopN: 10 },
+    },
     embedding: {
       provider: "local",
       local: {
@@ -56,8 +64,10 @@ test("scheduled reconcile repairs missing chunk", async () => {
       return [0.1, 0.2, 0.3];
     },
   };
+  const upserts: unknown[][] = [];
   const vectorRepo = {
     async upsert(_rows: unknown[]) {
+      upserts.push(_rows);
       return;
     },
     async deleteBySourcePath(_sourcePath: string) {
@@ -70,6 +80,7 @@ test("scheduled reconcile repairs missing chunk", async () => {
   expect(full.indexedFiles).toBe(0);
   const report = await svc.runScheduledReconcile();
   expect(report.repaired).toBe(0);
+  expect(upserts.length).toBe(0);
 });
 
 test("index status store is subscribable", async () => {
@@ -156,7 +167,43 @@ test("index status includes current file while indexing", async () => {
   expect(seenCurrentFiles[seenCurrentFiles.length - 1]).toBeNull();
   expect(seenChunkIds.length).toBeGreaterThan(0);
   for (const chunkId of seenChunkIds) {
-    expect(chunkId.startsWith("doc_")).toBe(true);
+    expect(chunkId.startsWith("chunk_")).toBe(true);
     expect(chunkId.includes("/")).toBe(false);
   }
+});
+
+test("incremental run enqueues and processes change events", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "knowdisk-indexing-incremental-"));
+  const filePath = join(dir, "a.txt");
+  await writeFile(filePath, "first");
+  let cfg = makeConfig();
+  cfg.sources = [{ path: dir, enabled: true }];
+  const configService: ConfigService = {
+    getConfig() {
+      return cfg;
+    },
+    updateConfig(updater) {
+      cfg = updater(cfg);
+      return cfg;
+    },
+  };
+  const embedding = {
+    async embed(_input: string) {
+      return [0.1, 0.2];
+    },
+  };
+  const upserts: Array<{ chunkId: string }> = [];
+  const vectorRepo = {
+    async upsert(rows: Array<{ chunkId: string }>) {
+      upserts.push(...rows);
+    },
+    async deleteBySourcePath(_sourcePath: string) {
+      return;
+    },
+  };
+
+  const svc = createSourceIndexingService(configService, embedding, vectorRepo);
+  const result = await svc.runIncremental([{ path: filePath, type: "change" }]);
+  expect((result as { indexedFiles: number }).indexedFiles).toBeGreaterThan(0);
+  expect(upserts.length).toBeGreaterThan(0);
 });

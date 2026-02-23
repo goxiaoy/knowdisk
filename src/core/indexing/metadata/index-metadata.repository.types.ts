@@ -69,6 +69,7 @@ export type IndexMetadataRepository = {
 
   upsertFile: (row: IndexFileRow) => void;
   getFileByPath: (path: string) => IndexFileRow | null;
+  listFiles: () => IndexFileRow[];
 
   upsertChunks: (rows: IndexChunkRow[]) => void;
   listChunksByFileId: (fileId: string) => IndexChunkRow[];

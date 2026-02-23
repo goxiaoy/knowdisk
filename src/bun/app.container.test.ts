@@ -41,7 +41,15 @@ function makeConfigService(enabled: boolean): ConfigService {
         sources,
         mcp: { enabled: mcpEnabled, port: 3467 },
         ui: { mode: "safe" as const },
-        indexing: { watch: { enabled: true } },
+        indexing: {
+          watch: { enabled: true, debounceMs: 500 },
+          reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
+          worker: { concurrency: 2, batchSize: 64 },
+          retry: { maxAttempts: 3, backoffMs: [1000, 5000, 20000] },
+        },
+        retrieval: {
+          hybrid: { ftsTopN: 30, vectorTopK: 20, rerankTopN: 10 },
+        },
         embedding,
         reranker,
       };

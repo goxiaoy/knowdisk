@@ -38,6 +38,7 @@ describe("index metadata repository", () => {
     expect(row).not.toBeNull();
     expect(row?.fileId).toBe("f1");
     expect(row?.size).toBe(100);
+    expect(repo.listFiles()).toHaveLength(1);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

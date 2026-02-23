@@ -81,6 +81,25 @@ export function createIndexMetadataRepository(opts: {
       return row;
     },
 
+    listFiles() {
+      return db
+        .query(
+          `SELECT
+            file_id AS fileId,
+            path,
+            size,
+            mtime_ms AS mtimeMs,
+            inode,
+            status,
+            last_index_time_ms AS lastIndexTimeMs,
+            last_error AS lastError,
+            created_at_ms AS createdAtMs,
+            updated_at_ms AS updatedAtMs
+          FROM files`,
+        )
+        .all() as IndexFileRow[];
+    },
+
     upsertChunks(rows: IndexChunkRow[]) {
       if (rows.length === 0) {
         return;
