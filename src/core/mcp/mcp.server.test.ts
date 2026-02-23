@@ -6,8 +6,8 @@ import { createMcpServer } from "./mcp.server";
 test("search_local_knowledge returns retrieval payload", async () => {
   const server = createMcpServer({
     retrieval: {
-      async search(_query: string, opts: { topK: number }) {
-        return Array.from({ length: opts.topK }, (_, i) => ({
+      async search(_query: string, opts: { topK?: number }) {
+        return Array.from({ length: opts.topK ?? 5 }, (_, i) => ({
           chunkId: `c${i}`,
           sourcePath: `docs/${i}.md`,
           chunkText: `chunk ${i}`,
@@ -45,8 +45,8 @@ test("search_local_knowledge fails when mcp is disabled", async () => {
 test("http transport supports listTools and callTool", async () => {
   const mcp = createMcpServer({
     retrieval: {
-      async search(query: string, opts: { topK: number }) {
-        return Array.from({ length: opts.topK }, (_, i) => ({
+      async search(query: string, opts: { topK?: number }) {
+        return Array.from({ length: opts.topK ?? 5 }, (_, i) => ({
           chunkId: `c${i}`,
           sourcePath: `docs/${query}-${i}.md`,
           chunkText: `chunk ${i}`,
@@ -80,9 +80,9 @@ test("http transport supports listTools and callTool", async () => {
       3000,
     );
 
-    const firstContent = result.content[0];
+    const firstContent = (result as { content: Array<{ type: string; text?: string }> }).content[0];
     expect(firstContent?.type).toBe("text");
-    expect(firstContent && "text" in firstContent ? firstContent.text.includes("docs/setup-0.md") : false).toBe(
+    expect(firstContent && "text" in firstContent ? (firstContent.text ?? "").includes("docs/setup-0.md") : false).toBe(
       true,
     );
   } finally {

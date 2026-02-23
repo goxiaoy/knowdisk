@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { isCloudEmbeddingProvider, type EmbeddingConfig } from "../embedding.types";
+import type { CloudEmbeddingConfig } from "../../config/config.types";
 
 const EMBEDDING_ENDPOINTS = {
   openai_dense: "https://api.openai.com/v1/embeddings",
@@ -11,26 +12,27 @@ const EMBEDDING_ENDPOINTS = {
 export async function embedWithCloudProvider(
   cfg: EmbeddingConfig,
   text: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 ): Promise<number[]> {
   if (!isCloudEmbeddingProvider(cfg.provider)) {
     throw new Error("embedWithCloudProvider called with local provider");
   }
-  const providerCfg = cfg[cfg.provider];
+  const provider = cfg.provider;
+  const providerCfg = cfg[provider] as CloudEmbeddingConfig;
   const apiKey = providerCfg.apiKey;
   if (!apiKey) {
     throw new Error(`cloud embedding requires apiKey for provider ${cfg.provider}`);
   }
 
-  const providerDir = join("build", "cache", "embedding", cfg.provider);
+  const providerDir = join("build", "cache", "embedding", provider);
   mkdirSync(providerDir, { recursive: true });
 
-  const response = await fetchImpl(EMBEDDING_ENDPOINTS[cfg.provider], {
+  const response = await fetchImpl(EMBEDDING_ENDPOINTS[provider], {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
-      ...(cfg.provider === "qwen_dense" || cfg.provider === "qwen_sparse"
+      ...(provider === "qwen_dense" || provider === "qwen_sparse"
         ? { "X-DashScope-SSE": "disable" }
         : {}),
     },

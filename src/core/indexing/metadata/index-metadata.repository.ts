@@ -469,5 +469,5 @@ function migrate(db: Database) {
 }
 
 function escapeFtsToken(token: string) {
-  return token.replaceAll('"', '""');
+  return token.split('"').join('""');
 }

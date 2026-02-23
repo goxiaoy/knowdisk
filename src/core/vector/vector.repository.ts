@@ -430,7 +430,7 @@ function escapeFilterValue(input: string, logger: LoggerService) {
     { subsystem: "vector", inputLength: input.length },
     "vector.escapeFilterValue: start",
   );
-  return input.replaceAll("'", "''");
+  return input.split("'").join("''");
 }
 
 function parseOptionalNumber(

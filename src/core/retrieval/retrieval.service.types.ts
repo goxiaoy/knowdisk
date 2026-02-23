@@ -2,7 +2,14 @@ import type { EmbeddingProvider } from "../embedding/embedding.types";
 import type { FtsSearchRow } from "../indexing/metadata/index-metadata.repository.types";
 import type { LoggerService } from "../logger/logger.service.types";
 import type { RerankerService } from "../reranker/reranker.types";
-import type { VectorRepository } from "../vector/vector.repository.types";
+import type { VectorMetadata } from "../vector/vector.repository.types";
+
+export type RetrievalVectorRow = {
+  chunkId: string;
+  score: number;
+  vector?: number[];
+  metadata: VectorMetadata;
+};
 
 export type RetrievalResult = {
   chunkId: string;
@@ -17,7 +24,10 @@ export type RetrievalResult = {
 
 export type RetrievalDeps = {
   embedding: EmbeddingProvider;
-  vector: Pick<VectorRepository, "search" | "listBySourcePath">;
+  vector: {
+    search: (query: number[], opts: { topK: number }) => Promise<RetrievalVectorRow[]>;
+    listBySourcePath: (sourcePath: string) => Promise<RetrievalVectorRow[]>;
+  };
   sourceReader?: {
     readRange: (
       path: string,

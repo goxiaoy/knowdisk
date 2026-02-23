@@ -135,8 +135,9 @@ test("upsert truncates stored chunkText to avoid oversized metadata", async () =
 
   const rows = await repo.listBySourcePath("docs/long.md");
   expect(rows).toHaveLength(1);
-  expect(rows[0]?.metadata.chunkText.length).toBeLessThanOrEqual(123);
-  expect(rows[0]?.metadata.chunkText.endsWith("...")).toBe(true);
+  const chunkText = rows[0]?.metadata.chunkText ?? "";
+  expect(chunkText.length).toBeLessThanOrEqual(123);
+  expect(chunkText.endsWith("...")).toBe(true);
 
   rmSync(dir, { recursive: true, force: true });
 });

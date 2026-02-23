@@ -1,6 +1,8 @@
 import type { AppConfig, EmbeddingProviderId } from "../config/config.types";
 
-export function isCloudEmbeddingProvider(provider: EmbeddingProviderId): boolean {
+export function isCloudEmbeddingProvider(
+  provider: EmbeddingProviderId,
+): provider is Exclude<EmbeddingProviderId, "local"> {
   return provider !== "local";
 }
 

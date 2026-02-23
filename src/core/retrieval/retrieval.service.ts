@@ -1,5 +1,8 @@
-import type { RetrievalDeps, RetrievalService } from "./retrieval.service.types";
-import type { VectorSearchRow } from "../vector/vector.repository.types";
+import type {
+  RetrievalDeps,
+  RetrievalService,
+  RetrievalVectorRow,
+} from "./retrieval.service.types";
 
 export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
   const mapRow = (row: {
@@ -78,9 +81,13 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
         "retrieval.search: raw rows",
       );
       const mergedRows = mergeRows(vectorRows, ftsRows);
+      const rerankRows = mergedRows.map((row) => ({
+        ...row,
+        vector: row.vector ?? [],
+      }));
       const finalRows = deps.reranker
-        ? await deps.reranker.rerank(query, mergedRows, { topK })
-        : mergedRows;
+        ? await deps.reranker.rerank(query, rerankRows, { topK })
+        : rerankRows;
       deps.logger?.debug(
         {
           subsystem: "retrieval",
@@ -144,13 +151,16 @@ async function searchVector(
   deps: RetrievalDeps,
   query: string,
   topK: number,
-): Promise<VectorSearchRow[]> {
+): Promise<RetrievalVectorRow[]> {
   const queryVector = await deps.embedding.embed(query);
   return deps.vector.search(queryVector, { topK });
 }
 
-function mergeRows(vectorRows: VectorSearchRow[], ftsRows: FtsRankRow[]): VectorSearchRow[] {
-  const merged = new Map<string, VectorSearchRow>();
+function mergeRows(
+  vectorRows: RetrievalVectorRow[],
+  ftsRows: FtsRankRow[],
+): RetrievalVectorRow[] {
+  const merged = new Map<string, RetrievalVectorRow>();
   for (const row of vectorRows) {
     merged.set(row.chunkId, { ...row });
   }

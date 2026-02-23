@@ -16,7 +16,7 @@ export function createReranker(config: AppConfig["reranker"]): RerankerService |
     async rerank(query: string, rows: RerankRow[], opts: { topK: number }) {
       const queryTerms = tokenize(query);
       const rescored = rows.map((row) => {
-        const overlap = countOverlap(queryTerms, tokenize(row.metadata.chunkText));
+        const overlap = countOverlap(queryTerms, tokenize(row.metadata.chunkText ?? ""));
         const blend = row.score * 0.75 + overlap * 0.25;
         return { ...row, score: blend };
       });

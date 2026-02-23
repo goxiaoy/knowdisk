@@ -3,12 +3,12 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAppContainer } from "./app.container";
-import type { ConfigService } from "../core/config/config.types";
+import type { AppConfig, ConfigService } from "../core/config/config.types";
 
 function makeConfigService(enabled: boolean): ConfigService {
   let mcpEnabled = enabled;
   let sources: Array<{ path: string; enabled: boolean }> = [];
-  let embedding = {
+  let embedding: AppConfig["embedding"] = {
     provider: "local" as const,
     local: {
       hfEndpoint: "https://hf-mirror.com",
@@ -20,7 +20,7 @@ function makeConfigService(enabled: boolean): ConfigService {
     qwen_sparse: { apiKey: "", model: "text-embedding-v4", dimension: 1024 },
     openai_dense: { apiKey: "", model: "text-embedding-3-small", dimension: 1536 },
   };
-  let reranker = {
+  let reranker: AppConfig["reranker"] = {
     enabled: true,
     provider: "local" as const,
     local: {
@@ -93,7 +93,7 @@ test("mcp server delegates search to retrieval service", async () => {
   let called = false;
   container.retrievalService.search = async () => {
     called = true;
-    return [{ sourcePath: "docs/a.md", chunkText: "a" }];
+    return [{ chunkId: "c1", sourcePath: "docs/a.md", chunkText: "a", score: 1 }];
   };
 
   const result = await container.mcpServer!.callTool("search_local_knowledge", {

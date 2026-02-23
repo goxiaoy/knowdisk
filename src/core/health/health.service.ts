@@ -1,4 +1,4 @@
-import type { ComponentHealth, HealthService } from "./health.service.types";
+import type { AppHealth, ComponentHealth, HealthService } from "./health.service.types";
 
 export function createHealthService(): HealthService {
   const states: Record<string, ComponentHealth> = {

@@ -126,10 +126,12 @@ const rpc = BrowserView.defineRPC({
       get_config() {
         return container.configService.getConfig();
       },
-      update_config({ config }: { config: AppConfig }) {
+      update_config(params?: unknown) {
+        const { config } = params as { config: AppConfig };
         return container.configService.updateConfig(() => config);
       },
-      async add_source({ path }: { path: string }) {
+      async add_source(params?: unknown) {
+        const { path } = params as { path: string };
         const next = container.configService.updateConfig((source) => {
           if (source.sources.some((item) => item.path === path)) {
             return source;
@@ -143,7 +145,8 @@ const rpc = BrowserView.defineRPC({
         void container.indexingService.runFullRebuild("source_added");
         return next.sources;
       },
-      update_source({ path, enabled }: { path: string; enabled: boolean }) {
+      update_source(params?: unknown) {
+        const { path, enabled } = params as { path: string; enabled: boolean };
         const next = container.configService.updateConfig((source) => ({
           ...source,
           sources: source.sources.map((item) =>
@@ -158,7 +161,8 @@ const rpc = BrowserView.defineRPC({
         }
         return next.sources;
       },
-      remove_source({ path }: { path: string }) {
+      remove_source(params?: unknown) {
+        const { path } = params as { path: string };
         const next = container.configService.updateConfig((source) => ({
           ...source,
           sources: source.sources.filter((item) => item.path !== path),
@@ -183,11 +187,17 @@ const rpc = BrowserView.defineRPC({
         return container.vectorRepository.inspect();
       },
       search_retrieval(
-        { query, topK, titleOnly }: { query: string; topK: number; titleOnly?: boolean },
+        params?: unknown,
       ): Promise<RetrievalResult[]> {
+        const { query, topK, titleOnly } = params as {
+          query: string;
+          topK: number;
+          titleOnly?: boolean;
+        };
         return container.retrievalService.search(query, { topK, titleOnly });
       },
-      retrieve_source_chunks({ sourcePath }: { sourcePath: string }): Promise<RetrievalResult[]> {
+      retrieve_source_chunks(params?: unknown): Promise<RetrievalResult[]> {
+        const { sourcePath } = params as { sourcePath: string };
         return container.retrievalService.retrieveBySourcePath(sourcePath);
       },
       async list_source_files(): Promise<string[]> {
@@ -209,7 +219,8 @@ const rpc = BrowserView.defineRPC({
           return { ok: false, error: String(error) };
         }
       },
-      pick_source_directory_start({ requestId }: { requestId: string }) {
+      pick_source_directory_start(params?: unknown) {
+        const { requestId } = params as { requestId: string };
         void (async () => {
           try {
             const paths = await Utils.openFileDialog({
@@ -218,12 +229,12 @@ const rpc = BrowserView.defineRPC({
               allowsMultipleSelection: false,
             });
             const [firstPath] = paths;
-            rpc.send.pick_source_directory_result({
+            (rpc.send as any).pick_source_directory_result({
               requestId,
               path: firstPath ?? null,
             });
           } catch (error) {
-            rpc.send.pick_source_directory_result({
+            (rpc.send as any).pick_source_directory_result({
               requestId,
               path: null,
               error: String(error),
@@ -232,7 +243,8 @@ const rpc = BrowserView.defineRPC({
         })();
         return { ok: true };
       },
-      pick_file_path_start({ requestId }: { requestId: string }) {
+      pick_file_path_start(params?: unknown) {
+        const { requestId } = params as { requestId: string };
         void (async () => {
           try {
             const paths = await Utils.openFileDialog({
@@ -241,12 +253,12 @@ const rpc = BrowserView.defineRPC({
               allowsMultipleSelection: false,
             });
             const [firstPath] = paths;
-            rpc.send.pick_file_path_result({
+            (rpc.send as any).pick_file_path_result({
               requestId,
               path: firstPath ?? null,
             });
           } catch (error) {
-            rpc.send.pick_file_path_result({
+            (rpc.send as any).pick_file_path_result({
               requestId,
               path: null,
               error: String(error),

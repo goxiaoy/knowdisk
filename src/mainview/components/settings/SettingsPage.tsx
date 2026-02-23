@@ -82,18 +82,20 @@ export function SettingsPage({
   useEffect(() => {
     const next = config.embedding[embeddingProvider];
     if (embeddingProvider !== "local") {
-      setEmbeddingCloudApiKey(next.apiKey);
-      setEmbeddingCloudModel(next.model);
-      setEmbeddingCloudDimension(String(next.dimension));
+      const cloud = next as typeof config.embedding.openai_dense;
+      setEmbeddingCloudApiKey(cloud.apiKey);
+      setEmbeddingCloudModel(cloud.model);
+      setEmbeddingCloudDimension(String(cloud.dimension));
     }
   }, [config.embedding, embeddingProvider]);
 
   useEffect(() => {
     const next = config.reranker[rerankerProvider];
     if (rerankerProvider !== "local") {
-      setRerankerCloudApiKey(next.apiKey);
-      setRerankerCloudModel(next.model);
-      setRerankerCloudTopN(String(next.topN));
+      const cloud = next as typeof config.reranker.openai;
+      setRerankerCloudApiKey(cloud.apiKey);
+      setRerankerCloudModel(cloud.model);
+      setRerankerCloudTopN(String(cloud.topN));
     }
   }, [config.reranker, rerankerProvider]);
 

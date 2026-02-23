@@ -4,38 +4,6 @@ import type { IndexingStatus } from "../../core/indexing/indexing.service.types"
 import type { RetrievalResult } from "../../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
 
-type AppBridgeSchema = {
-  bun: {
-    requests: {
-      get_config: { params: void; response: AppConfig };
-      update_config: { params: { config: AppConfig }; response: AppConfig };
-      add_source: { params: { path: string }; response: SourceConfig[] };
-      update_source: {
-        params: { path: string; enabled: boolean };
-        response: SourceConfig[];
-      };
-      remove_source: { params: { path: string }; response: SourceConfig[] };
-      get_health: { params: void; response: Record<string, ComponentHealth> };
-      get_index_status: { params: void; response: IndexingStatus };
-      get_vector_stats: { params: void; response: VectorCollectionInspect };
-      search_retrieval: { params: { query: string; topK: number }; response: RetrievalResult[] };
-      retrieve_source_chunks: { params: { sourcePath: string }; response: RetrievalResult[] };
-      list_source_files: { params: void; response: string[] };
-      force_resync: { params: void; response: { ok: boolean; error?: string } };
-      pick_source_directory_start: { params: { requestId: string }; response: { ok: boolean } };
-      pick_file_path_start: { params: { requestId: string }; response: { ok: boolean } };
-    };
-    messages: {};
-  };
-  webview: {
-    requests: {};
-    messages: {
-      pick_source_directory_result: { requestId: string; path: string | null; error?: string };
-      pick_file_path_result: { requestId: string; path: string | null; error?: string };
-    };
-  };
-};
-
 type BridgeRpc = {
   request: {
     get_config: () => Promise<AppConfig>;
@@ -49,7 +17,11 @@ type BridgeRpc = {
     get_health: () => Promise<Record<string, ComponentHealth>>;
     get_index_status: () => Promise<IndexingStatus>;
     get_vector_stats: () => Promise<VectorCollectionInspect>;
-    search_retrieval: (params: { query: string; topK: number }) => Promise<RetrievalResult[]>;
+    search_retrieval: (params: {
+      query: string;
+      topK: number;
+      titleOnly?: boolean;
+    }) => Promise<RetrievalResult[]>;
     retrieve_source_chunks: (params: { sourcePath: string }) => Promise<RetrievalResult[]>;
     list_source_files: () => Promise<string[]>;
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
@@ -72,16 +44,22 @@ function resolveBridge() {
   if (typeof window === "undefined") {
     return null;
   }
-  if (window.__electrobunBunBridge) {
-    return window.__electrobunBunBridge;
+  const w = window as Window & {
+    __electrobunBunBridge?: unknown;
+    bunBridge?: unknown;
+    webkit?: { messageHandlers?: { bunBridge?: unknown } };
+    chrome?: { webview?: { hostObjects?: { bunBridge?: unknown } } };
+  };
+  if (w.__electrobunBunBridge) {
+    return w.__electrobunBunBridge;
   }
   const fallback =
-    window.webkit?.messageHandlers?.bunBridge ??
-    window.bunBridge ??
-    window.chrome?.webview?.hostObjects?.bunBridge ??
+    w.webkit?.messageHandlers?.bunBridge ??
+    w.bunBridge ??
+    w.chrome?.webview?.hostObjects?.bunBridge ??
     null;
   if (fallback) {
-    window.__electrobunBunBridge = fallback;
+    (w as any).__electrobunBunBridge = fallback;
   }
   return fallback;
 }
@@ -93,12 +71,16 @@ async function getRpc() {
   }
 
   const mod = await import("electrobun/view");
-  const next = mod.default.Electroview.defineRPC<AppBridgeSchema>({
+  const next = mod.default.Electroview.defineRPC({
     maxRequestTime: 120_000,
     handlers: {
       requests: {},
       messages: {
-        pick_source_directory_result(payload) {
+        pick_source_directory_result(payload: {
+          requestId: string;
+          path: string | null;
+          error?: string;
+        }) {
           const pending = pickSourcePending.get(payload.requestId);
           if (!pending) {
             console.error("pick_source_directory async result dropped: unknown requestId", payload.requestId);
@@ -111,7 +93,11 @@ async function getRpc() {
           }
           pending.resolve(payload.path ?? null);
         },
-        pick_file_path_result(payload) {
+        pick_file_path_result(payload: {
+          requestId: string;
+          path: string | null;
+          error?: string;
+        }) {
           const pending = pickFilePending.get(payload.requestId);
           if (!pending) {
             console.error("pick_file_path async result dropped: unknown requestId", payload.requestId);
