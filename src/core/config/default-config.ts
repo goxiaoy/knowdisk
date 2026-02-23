@@ -5,9 +5,9 @@ export function createDefaultConfig(opts?: {
   rerankerCacheDir?: string;
 }): AppConfig {
   const embeddingCacheDir =
-    opts?.embeddingCacheDir ?? "build/cache/embedding/local";
+    opts?.embeddingCacheDir ?? "build/models/embedding/local";
   const rerankerCacheDir =
-    opts?.rerankerCacheDir ?? "build/cache/reranker/local";
+    opts?.rerankerCacheDir ?? "build/models/reranker/local";
 
   return {
     version: 1,

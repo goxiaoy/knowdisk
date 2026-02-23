@@ -1,5 +1,6 @@
 import { IndexStatusCard } from "../indexing/IndexStatusCard";
 import { VectorStatsCard } from "../home/VectorStatsCard";
+import { ModelDownloadCard } from "./ModelDownloadCard";
 
 export function StatusPage() {
   return (
@@ -11,7 +12,10 @@ export function StatusPage() {
         </header>
         <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
           <IndexStatusCard />
-          <VectorStatsCard />
+          <div className="space-y-6">
+            <ModelDownloadCard />
+            <VectorStatsCard />
+          </div>
         </div>
       </div>
     </section>

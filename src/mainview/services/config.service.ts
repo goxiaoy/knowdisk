@@ -9,8 +9,8 @@ const listeners = new Set<
 
 function getDefaultConfig(): AppConfig {
   return createDefaultConfig({
-    embeddingCacheDir: "cache/embedding/local",
-    rerankerCacheDir: "cache/reranker/local",
+    embeddingCacheDir: "models/embedding/local",
+    rerankerCacheDir: "models/reranker/local",
   });
 }
 
@@ -142,6 +142,11 @@ function loadConfig(): AppConfig {
         local: {
           ...defaults.embedding.local,
           ...(parsed.embedding?.local ?? {}),
+          cacheDir: normalizeLegacyModelCacheDir(
+            parsed.embedding?.local?.cacheDir,
+            "embedding",
+            defaults.embedding.local.cacheDir,
+          ),
         },
         qwen_dense: {
           ...defaults.embedding.qwen_dense,
@@ -162,6 +167,11 @@ function loadConfig(): AppConfig {
         local: {
           ...defaults.reranker.local,
           ...(parsed.reranker?.local ?? {}),
+          cacheDir: normalizeLegacyModelCacheDir(
+            parsed.reranker?.local?.cacheDir,
+            "reranker",
+            defaults.reranker.local.cacheDir,
+          ),
         },
         qwen: {
           ...defaults.reranker.qwen,
@@ -225,6 +235,20 @@ function isSameOrParentPath(parent: string, child: string) {
     return true;
   }
   return child.startsWith(`${parent}/`);
+}
+
+function normalizeLegacyModelCacheDir(
+  cacheDir: string | undefined,
+  kind: "embedding" | "reranker",
+  fallback: string,
+) {
+  if (!cacheDir || cacheDir.trim().length === 0) {
+    return fallback;
+  }
+  if (cacheDir === `cache/${kind}/local`) {
+    return `models/${kind}/local`;
+  }
+  return cacheDir;
 }
 
 function saveConfig(cfg: AppConfig) {

@@ -1,6 +1,6 @@
 import type { AppConfig, SourceConfig } from "../../core/config/config.types";
-import type { ComponentHealth } from "../../core/health/health.service.types";
 import type { IndexingStatus } from "../../core/indexing/indexing.service.types";
+import type { ModelDownloadStatus } from "../../core/model/model-download.service.types";
 import type { RetrievalResult } from "../../core/retrieval/retrieval.service.types";
 import type { RetrievalDebugResult } from "../../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
@@ -15,9 +15,9 @@ type BridgeRpc = {
       enabled: boolean;
     }) => Promise<SourceConfig[]>;
     remove_source: (params: { path: string }) => Promise<SourceConfig[]>;
-    get_health: () => Promise<Record<string, ComponentHealth>>;
     get_index_status: () => Promise<IndexingStatus>;
     get_vector_stats: () => Promise<VectorCollectionInspect>;
+    get_model_download_status: () => Promise<ModelDownloadStatus>;
     search_retrieval: (params: {
       query: string;
       topK: number;
@@ -180,19 +180,6 @@ export async function removeSourceInBun(
   }
 }
 
-export async function getHealthFromBun(): Promise<Record<
-  string,
-  ComponentHealth
-> | null> {
-  const channel = await getRpc();
-  if (!channel) return null;
-  try {
-    return await channel.request.get_health();
-  } catch {
-    return null;
-  }
-}
-
 export async function getIndexStatusFromBun(): Promise<IndexingStatus | null> {
   const channel = await getRpc();
   if (!channel) return null;
@@ -208,6 +195,16 @@ export async function getVectorStatsFromBun(): Promise<VectorCollectionInspect |
   if (!channel) return null;
   try {
     return await channel.request.get_vector_stats();
+  } catch {
+    return null;
+  }
+}
+
+export async function getModelDownloadStatusFromBun(): Promise<ModelDownloadStatus | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.get_model_download_status();
   } catch {
     return null;
   }

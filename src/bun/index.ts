@@ -13,6 +13,7 @@ import { createIncrementalBatcher } from "./incremental-batcher";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 import type { IndexingStatus } from "../core/indexing/indexing.service.types";
+import type { ModelDownloadStatus } from "../core/model/model-download.service.types";
 import type { RetrievalDebugResult } from "../core/retrieval/retrieval.service.types";
 import type { RetrievalResult } from "../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../core/vector/vector.repository.types";
@@ -66,8 +67,24 @@ const incrementalBatcher = createIncrementalBatcher({
     );
   },
 });
-const stopConfigSubscription = container.configService.subscribe(({ next }) => {
+const stopConfigSubscription = container.configService.subscribe(({ prev, next }) => {
   syncSourceWatchers(next);
+  if (!next.onboarding.completed) {
+    return;
+  }
+  if (
+    !prev.onboarding.completed ||
+    hasLocalModelSettingsChanged(prev, next)
+  ) {
+    void container.modelDownloadService
+      .ensureRequiredModels(next, prev.onboarding.completed ? "config_changed" : "onboarding_completed")
+      .catch((error) => {
+        container.loggerService.error(
+          { subsystem: "models", error: String(error) },
+          "model download trigger failed",
+        );
+      });
+  }
 });
 
 const startupCleanup = await container.indexingService
@@ -138,6 +155,16 @@ if (startupConfig.indexing.reconcile.enabled) {
   );
 }
 syncSourceWatchers(startupConfig);
+if (startupConfig.onboarding.completed) {
+  void container.modelDownloadService
+    .ensureRequiredModels(startupConfig, "startup")
+    .catch((error) => {
+      container.loggerService.error(
+        { subsystem: "models", error: String(error) },
+        "startup model download failed",
+      );
+    });
+}
 
 const rpc = BrowserView.defineRPC({
   handlers: {
@@ -189,9 +216,6 @@ const rpc = BrowserView.defineRPC({
         container.indexingService.deferSourceDeletion(path);
         return next.sources;
       },
-      get_health() {
-        return container.healthService.getComponentHealth();
-      },
       get_index_status(): IndexingStatus {
         const snapshot = container.indexingService
           .getIndexStatus()
@@ -206,6 +230,9 @@ const rpc = BrowserView.defineRPC({
       },
       get_vector_stats(): Promise<VectorCollectionInspect> {
         return container.vectorRepository.inspect();
+      },
+      get_model_download_status(): ModelDownloadStatus {
+        return container.modelDownloadService.getStatus().getSnapshot();
       },
       search_retrieval(params?: unknown): Promise<RetrievalDebugResult> {
         const { query, topK, titleOnly } = params as {
@@ -462,4 +489,39 @@ function syncSourceWatchers(config: AppConfig) {
       );
     }
   }
+}
+
+function hasLocalModelSettingsChanged(prev: AppConfig, next: AppConfig) {
+  if (prev.embedding.provider !== next.embedding.provider) {
+    return true;
+  }
+  if (next.embedding.provider === "local") {
+    if (prev.embedding.local.model !== next.embedding.local.model) {
+      return true;
+    }
+    if (prev.embedding.local.hfEndpoint !== next.embedding.local.hfEndpoint) {
+      return true;
+    }
+    if (prev.embedding.local.cacheDir !== next.embedding.local.cacheDir) {
+      return true;
+    }
+  }
+  if (prev.reranker.enabled !== next.reranker.enabled) {
+    return true;
+  }
+  if (prev.reranker.provider !== next.reranker.provider) {
+    return true;
+  }
+  if (next.reranker.enabled && next.reranker.provider === "local") {
+    if (prev.reranker.local.model !== next.reranker.local.model) {
+      return true;
+    }
+    if (prev.reranker.local.hfEndpoint !== next.reranker.local.hfEndpoint) {
+      return true;
+    }
+    if (prev.reranker.local.cacheDir !== next.reranker.local.cacheDir) {
+      return true;
+    }
+  }
+  return false;
 }

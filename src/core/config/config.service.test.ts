@@ -241,8 +241,8 @@ describe("getDefaultConfig", () => {
     const config = service.getConfig();
 
     expect(existsSync(join(userDataDir, "app-config.json"))).toBe(true);
-    expect(config.embedding.local.cacheDir).toBe(join(userDataDir, "cache", "embedding", "local"));
-    expect(config.reranker.local.cacheDir).toBe(join(userDataDir, "cache", "reranker", "local"));
+    expect(config.embedding.local.cacheDir).toBe(join(userDataDir, "models", "embedding", "local"));
+    expect(config.reranker.local.cacheDir).toBe(join(userDataDir, "models", "reranker", "local"));
 
     rmSync(userDataDir, { recursive: true, force: true });
   });

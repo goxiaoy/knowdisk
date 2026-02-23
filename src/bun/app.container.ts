@@ -6,8 +6,6 @@ import { defaultConfigService } from "../core/config/config.service";
 import type { ConfigService } from "../core/config/config.types";
 import { makeEmbeddingProvider } from "../core/embedding/embedding.service";
 import type { EmbeddingProvider } from "../core/embedding/embedding.types";
-import { createHealthService } from "../core/health/health.service";
-import type { HealthService } from "../core/health/health.service.types";
 import { createSourceIndexingService } from "../core/indexing/indexing.service";
 import type { IndexingService } from "../core/indexing/indexing.service.types";
 import { createChunkingService } from "../core/indexing/chunker/chunker.service";
@@ -18,6 +16,8 @@ import { createLoggerService } from "../core/logger/logger.service";
 import type { LoggerService } from "../core/logger/logger.service.types";
 import { createMcpServer } from "../core/mcp/mcp.server";
 import type { McpServerService } from "../core/mcp/mcp.server.types";
+import { createModelDownloadService } from "../core/model/model-download.service";
+import type { ModelDownloadService } from "../core/model/model-download.service.types";
 import { createReranker } from "../core/reranker/reranker.service";
 import { createRetrievalService } from "../core/retrieval/retrieval.service";
 import type { RetrievalService } from "../core/retrieval/retrieval.service.types";
@@ -28,23 +28,23 @@ import { resolveParser } from "../core/parser/parser.registry";
 export type AppContainer = {
   loggerService: LoggerService;
   configService: ConfigService;
-  healthService: HealthService;
   vectorRepository: VectorRepository;
   retrievalService: RetrievalService;
   indexingService: IndexingService;
+  modelDownloadService: ModelDownloadService;
   close: () => void;
   mcpServer: McpServerService | null;
 };
 
 const TOKENS = {
   ConfigService: Symbol("ConfigService"),
-  HealthService: Symbol("HealthService"),
   LoggerService: Symbol("LoggerService"),
   EmbeddingProvider: Symbol("EmbeddingProvider"),
   ChunkingService: Symbol("ChunkingService"),
   VectorRepository: Symbol("VectorRepository"),
   RetrievalService: Symbol("RetrievalService"),
   IndexingService: Symbol("IndexingService"),
+  ModelDownloadService: Symbol("ModelDownloadService"),
   IndexMetadataRepository: Symbol("IndexMetadataRepository"),
   AppContainer: Symbol("AppContainer"),
 } as const;
@@ -77,9 +77,6 @@ function registerDependencies(
   );
   di.register(TOKENS.LoggerService, {
     useFactory: () => createLoggerService({ name: "knowdisk" }),
-  });
-  di.register(TOKENS.HealthService, {
-    useFactory: () => createHealthService(),
   });
   di.register(TOKENS.EmbeddingProvider, {
     useFactory: (c) => {
@@ -178,11 +175,14 @@ function registerDependencies(
         },
       ),
   });
+  di.register(TOKENS.ModelDownloadService, {
+    useFactory: (c) =>
+      createModelDownloadService(c.resolve<LoggerService>(TOKENS.LoggerService)),
+  });
   di.register(TOKENS.AppContainer, {
     useFactory: (c) => {
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
       const loggerService = c.resolve<LoggerService>(TOKENS.LoggerService);
-      const healthService = c.resolve<HealthService>(TOKENS.HealthService);
       const vectorRepository = c.resolve<VectorRepository>(
         TOKENS.VectorRepository,
       );
@@ -191,6 +191,9 @@ function registerDependencies(
       );
       const indexingService = c.resolve<IndexingService>(
         TOKENS.IndexingService,
+      );
+      const modelDownloadService = c.resolve<ModelDownloadService>(
+        TOKENS.ModelDownloadService,
       );
 
       const mcpServer = createMcpServer({
@@ -201,10 +204,10 @@ function registerDependencies(
       return {
         configService,
         loggerService,
-        healthService,
         vectorRepository,
         retrievalService,
         indexingService,
+        modelDownloadService,
         close: () => {
           metadataRepo?.close();
         },

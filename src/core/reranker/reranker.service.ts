@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { AppConfig } from "../config/config.types";
 import type { RerankRow, RerankerService } from "./reranker.types";
@@ -57,52 +57,78 @@ async function initLocalRerankerRuntime(
     env.cacheDir = providerDir;
   }
 
-  const tokenizer = await (
-    transformers as unknown as {
-      AutoTokenizer: {
-        from_pretrained: (model: string) => Promise<{
-          (
-            texts: string[],
-            opts: {
-              text_pair: string[];
-              padding: boolean;
-              truncation: boolean;
-            },
-          ): unknown;
-        }>;
-      };
-    }
-  ).AutoTokenizer.from_pretrained(config.local.model);
+  const loadRuntime = async () => {
+    const tokenizer = await (
+      transformers as unknown as {
+        AutoTokenizer: {
+          from_pretrained: (model: string) => Promise<{
+            (
+              texts: string[],
+              opts: {
+                text_pair: string[];
+                padding: boolean;
+                truncation: boolean;
+              },
+            ): unknown;
+          }>;
+        };
+      }
+    ).AutoTokenizer.from_pretrained(config.local.model);
 
-  const model = await (
-    transformers as unknown as {
-      AutoModelForSequenceClassification: {
-        from_pretrained: (model: string, opts: { quantized: boolean }) => Promise<{
-          (inputs: unknown): Promise<{ logits?: { data?: ArrayLike<number> } }>;
-        }>;
-      };
+    const model = await (
+      transformers as unknown as {
+        AutoModelForSequenceClassification: {
+          from_pretrained: (model: string, opts: { quantized: boolean }) => Promise<{
+            (inputs: unknown): Promise<{ logits?: { data?: ArrayLike<number> } }>;
+          }>;
+        };
+      }
+    ).AutoModelForSequenceClassification.from_pretrained(config.local.model, {
+      quantized: false,
+    });
+    return { tokenizer, model };
+  };
+
+  let runtime: Awaited<ReturnType<typeof loadRuntime>>;
+  try {
+    runtime = await loadRuntime();
+  } catch (error) {
+    if (!isCorruptedModelError(error)) {
+      throw error;
     }
-  ).AutoModelForSequenceClassification.from_pretrained(config.local.model, {
-    quantized: false,
-  });
+    rmSync(join(providerDir, config.local.model), {
+      recursive: true,
+      force: true,
+    });
+    runtime = await loadRuntime();
+  }
 
   return {
     async tokenizePairs(query: string, docs: string[]) {
       const queries = Array(docs.length).fill(query);
-      return tokenizer(queries, {
+      return runtime.tokenizer(queries, {
         text_pair: docs,
         padding: true,
         truncation: true,
       });
     },
     async score(inputs: unknown) {
-      const outputs = await model(inputs);
+      const outputs = await runtime.model(inputs);
       if (!outputs?.logits?.data) {
         return [];
       }
       return Array.from(outputs.logits.data);
     },
   };
+}
+
+function isCorruptedModelError(error: unknown) {
+  const message = String(error ?? "").toLowerCase();
+  return (
+    message.includes("protobuf parsing failed") ||
+    message.includes("could not locate file") ||
+    message.includes("unexpected end of json input")
+  );
 }
 
 async function rerankWithLocalModel(

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { IndexingStatus } from "../../../core/indexing/indexing.service.types";
-import { getIndexStatusFromBun } from "../../services/bun.rpc";
+import type { ModelDownloadStatus } from "../../../core/model/model-download.service.types";
+import {
+  getIndexStatusFromBun,
+  getModelDownloadStatusFromBun,
+} from "../../services/bun.rpc";
 
 const EMPTY_STATUS: IndexingStatus = {
   run: {
@@ -24,23 +28,43 @@ const EMPTY_STATUS: IndexingStatus = {
   },
 };
 
+const EMPTY_MODEL_STATUS: ModelDownloadStatus = {
+  phase: "idle",
+  triggeredBy: "",
+  lastStartedAt: "",
+  lastFinishedAt: "",
+  progressPct: 0,
+  error: "",
+  tasks: [],
+};
+
 export function IndexRunBadge({
   pollMs = 1000,
   onClick,
   loadStatus = getIndexStatusFromBun,
+  loadModelStatus = getModelDownloadStatusFromBun,
 }: {
   pollMs?: number;
   onClick?: () => void;
   loadStatus?: () => Promise<IndexingStatus | null>;
+  loadModelStatus?: () => Promise<ModelDownloadStatus | null>;
 }) {
   const [status, setStatus] = useState<IndexingStatus>(EMPTY_STATUS);
+  const [modelStatus, setModelStatus] =
+    useState<ModelDownloadStatus>(EMPTY_MODEL_STATUS);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const next = await loadStatus();
-      if (!cancelled && next) {
-        setStatus(next);
+      const [nextIndex, nextModel] = await Promise.all([
+        loadStatus(),
+        loadModelStatus(),
+      ]);
+      if (!cancelled && nextIndex) {
+        setStatus(nextIndex);
+      }
+      if (!cancelled && nextModel) {
+        setModelStatus(nextModel);
       }
     };
     void load();
@@ -51,9 +75,21 @@ export function IndexRunBadge({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [loadStatus, pollMs]);
+  }, [loadModelStatus, loadStatus, pollMs]);
 
   const { label, className } = useMemo(() => {
+    if (modelStatus.phase === "running") {
+      return {
+        label: `Model: ${modelStatus.progressPct}%`,
+        className: "bg-sky-100 text-sky-700",
+      };
+    }
+    if (modelStatus.phase === "failed") {
+      return {
+        label: "Model: Failed",
+        className: "bg-rose-100 text-rose-700",
+      };
+    }
     if (status.worker.phase === "failed" || status.run.errors.length > 0) {
       return {
         label: "Index: Failed",
@@ -70,7 +106,7 @@ export function IndexRunBadge({
       label: "Index: Idle",
       className: "bg-emerald-100 text-emerald-700",
     };
-  }, [status]);
+  }, [modelStatus, status]);
 
   return (
     <button

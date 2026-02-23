@@ -1,21 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ConfigService } from "../../../core/config/config.types";
-import { createHealthService } from "../../../core/health/health.service";
-import type { AppHealth, ComponentHealth } from "../../../core/health/health.service.types";
 import { defaultMainviewConfigService } from "../../services/config.service";
 import {
   addSourceInBun,
-  getHealthFromBun,
   pickSourceDirectoryFromBun,
   removeSourceInBun,
   updateSourceInBun,
 } from "../../services/bun.rpc";
-
-function healthClass(health: AppHealth) {
-  if (health === "failed") return "bg-red-100 text-red-700";
-  if (health === "degraded") return "bg-amber-100 text-amber-700";
-  return "bg-emerald-100 text-emerald-700";
-}
 
 export function SettingsPage({
   configService = defaultMainviewConfigService,
@@ -30,7 +21,6 @@ export function SettingsPage({
   const [mcpPort, setMcpPort] = useState(String(config.mcp.port));
   const [sources, setSources] = useState(config.sources);
   const [activity, setActivity] = useState("");
-  const [subsystems, setSubsystems] = useState<Record<string, ComponentHealth>>({});
 
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
   const [embeddingLocalHfEndpoint, setEmbeddingLocalHfEndpoint] = useState(config.embedding.local.hfEndpoint);
@@ -56,28 +46,6 @@ export function SettingsPage({
   const [rerankerCloudApiKey, setRerankerCloudApiKey] = useState(initialRerankerCloud.apiKey);
   const [rerankerCloudModel, setRerankerCloudModel] = useState(initialRerankerCloud.model);
   const [rerankerCloudTopN, setRerankerCloudTopN] = useState(String(initialRerankerCloud.topN));
-
-  const { health, components } = useMemo(() => {
-    const svc = createHealthService();
-    return {
-      health: svc.getAppHealth(),
-      components: svc.getComponentHealth(),
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadHealth() {
-      const fromBun = await getHealthFromBun();
-      if (!cancelled && fromBun) {
-        setSubsystems(fromBun);
-      }
-    }
-    void loadHealth();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const next = config.embedding[embeddingProvider];
@@ -262,10 +230,6 @@ export function SettingsPage({
     setActivity("Reranker settings saved.");
   };
 
-  const subsystemList = Object.entries(
-    Object.keys(subsystems).length > 0 ? subsystems : components,
-  ) as Array<[string, ComponentHealth]>;
-
   return (
     <section className="settings-page min-h-screen bg-[radial-gradient(circle_at_top,#eff6ff_0%,#f8fafc_45%,#eef2ff_100%)] p-4 md:p-8">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -275,11 +239,6 @@ export function SettingsPage({
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Settings</h1>
               <p className="mt-1 text-sm text-slate-600">Know Disk runtime and retrieval configuration</p>
             </div>
-            <p
-              className={`inline-flex w-fit items-center rounded-full px-3 py-1 text-sm font-medium capitalize ${healthClass(health)}`}
-            >
-              App health: {health}
-            </p>
           </div>
           {activity ? (
             <p className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
@@ -290,23 +249,6 @@ export function SettingsPage({
 
         <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
           <div className="space-y-6">
-            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">System Health</h2>
-              <p className="mt-1 text-sm text-slate-500">All subsystem status</p>
-              <ul className="mt-4 space-y-2">
-                {subsystemList.map(([name, state]) => (
-                  <li
-                    key={name}
-                    className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
-                  >
-                    <span className="text-sm font-medium text-slate-700">{name}</span>
-                    <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold uppercase text-slate-600">
-                      {state}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </article>
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
