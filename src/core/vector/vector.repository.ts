@@ -66,6 +66,7 @@ export function createVectorRepository(
     },
     fields: [
       { name: "sourcePath", dataType: ZVecDataType.STRING },
+      { name: "title", dataType: ZVecDataType.STRING },
       { name: "chunkText", dataType: ZVecDataType.STRING },
       { name: "startOffset", dataType: ZVecDataType.STRING },
       { name: "endOffset", dataType: ZVecDataType.STRING },
@@ -136,6 +137,7 @@ export function createVectorRepository(
                   ? String(row.metadata.tokenEstimate)
                   : "",
               updatedAt: row.metadata.updatedAt ?? "",
+              title: row.metadata.title ?? "",
             },
           })),
         );
@@ -172,6 +174,7 @@ export function createVectorRepository(
           filter: `sourcePath = '${escapeFilterValue(sourcePath, logger)}'`,
           outputFields: [
             "sourcePath",
+            "title",
             "chunkText",
             "startOffset",
             "endOffset",
@@ -187,6 +190,7 @@ export function createVectorRepository(
           vector: [],
           metadata: {
             sourcePath: String(doc.fields.sourcePath ?? ""),
+            title: String(doc.fields.title ?? ""),
             chunkText: String(doc.fields.chunkText ?? ""),
             startOffset: parseOptionalNumber(
               doc.fields.startOffset,
@@ -243,6 +247,7 @@ export function createVectorRepository(
           topk: opts.topK,
           outputFields: [
             "sourcePath",
+            "title",
             "chunkText",
             "startOffset",
             "endOffset",
@@ -255,9 +260,10 @@ export function createVectorRepository(
         chunkId: doc.id,
         score: doc.score,
         vector: [],
-        metadata: {
-          sourcePath: String(doc.fields.sourcePath ?? ""),
-          chunkText: String(doc.fields.chunkText ?? ""),
+          metadata: {
+            sourcePath: String(doc.fields.sourcePath ?? ""),
+            title: String(doc.fields.title ?? ""),
+            chunkText: String(doc.fields.chunkText ?? ""),
           startOffset: parseOptionalNumber(
             doc.fields.startOffset,
             logger,

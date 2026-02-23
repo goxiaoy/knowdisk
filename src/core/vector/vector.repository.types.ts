@@ -1,5 +1,6 @@
 export type VectorMetadata = {
   sourcePath: string;
+  title?: string;
   chunkText?: string;
   startOffset?: number;
   endOffset?: number;

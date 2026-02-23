@@ -28,6 +28,7 @@ export type FtsChunkRow = {
   chunkId: string;
   fileId: string;
   sourcePath: string;
+  title: string;
   text: string;
 };
 
@@ -77,6 +78,7 @@ export type IndexMetadataRepository = {
 
   upsertFtsChunks: (rows: FtsChunkRow[]) => void;
   searchFts: (query: string, limit: number) => FtsSearchRow[];
+  searchTitleFts: (query: string, limit: number) => FtsSearchRow[];
   deleteFtsChunksByIds: (chunkIds: string[]) => void;
 
   enqueueJob: (job: NewIndexJob) => void;

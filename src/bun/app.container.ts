@@ -143,41 +143,8 @@ function registerDependencies(
       const reranker = createReranker(cfg.reranker);
       return createRetrievalService({
         embedding,
-        vector: {
-          async search(queryVector, opts) {
-            const rows = await vector.search(queryVector, opts);
-            return rows.map((row) => ({
-              ...row,
-              metadata: {
-                sourcePath: row.metadata.sourcePath,
-                chunkText: row.metadata.chunkText ?? "",
-                updatedAt: row.metadata.updatedAt ?? "",
-                startOffset: row.metadata.startOffset,
-                endOffset: row.metadata.endOffset,
-                tokenEstimate: row.metadata.tokenEstimate,
-              },
-            }));
-          },
-          async listBySourcePath(sourcePath) {
-            const rows = await vector.listBySourcePath(sourcePath);
-            return rows.map((row) => ({
-              ...row,
-              metadata: {
-                sourcePath: row.metadata.sourcePath,
-                chunkText: row.metadata.chunkText ?? "",
-                updatedAt: row.metadata.updatedAt ?? "",
-                startOffset: row.metadata.startOffset,
-                endOffset: row.metadata.endOffset,
-                tokenEstimate: row.metadata.tokenEstimate,
-              },
-            }));
-          },
-        },
-        fts: {
-          searchFts(query: string, limit: number) {
-            return metadata.searchFts(query, limit);
-          },
-        },
+        vector,
+        fts: metadata,
         sourceReader: {
           readRange(path: string, startOffset: number, endOffset: number) {
             const parser = resolveParser({

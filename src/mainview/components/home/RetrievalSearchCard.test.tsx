@@ -4,11 +4,11 @@ import { RetrievalSearchCard } from "./RetrievalSearchCard";
 
 describe("RetrievalSearchCard", () => {
   it("calls search with topK=10 and renders card fields", async () => {
-    const calls: Array<{ query: string; topK: number }> = [];
+    const calls: Array<{ query: string; topK: number; titleOnly?: boolean }> = [];
     const renderer = create(
       <RetrievalSearchCard
-        search={async (query, topK) => {
-          calls.push({ query, topK });
+        search={async (query, topK, titleOnly) => {
+          calls.push({ query, topK, titleOnly });
           return [
             {
               chunkId: "c1",
@@ -30,13 +30,37 @@ describe("RetrievalSearchCard", () => {
       await root.findByProps({ "data-testid": "retrieval-search" }).props.onClick();
     });
 
-    expect(calls).toEqual([{ query: "what is knowdisk", topK: 10 }]);
+    expect(calls).toEqual([{ query: "what is knowdisk", topK: 10, titleOnly: false }]);
     expect(root.findByProps({ children: "/docs/a.md" })).toBeDefined();
     const scoreTextExists = root
       .findAllByType("p")
       .some((item) => item.children.map((child) => String(child)).join("").includes("score: 0.988"));
     expect(scoreTextExists).toBe(true);
     expect(root.findByProps({ children: "hello world" })).toBeDefined();
+  });
+
+  it("passes titleOnly=true when toggle is enabled", async () => {
+    const calls: Array<{ query: string; topK: number; titleOnly?: boolean }> = [];
+    const renderer = create(
+      <RetrievalSearchCard
+        search={async (query, topK, titleOnly) => {
+          calls.push({ query, topK, titleOnly });
+          return [];
+        }}
+      />,
+    );
+
+    const root = renderer.root;
+    await act(async () => {
+      root.findByProps({ "data-testid": "retrieval-query" }).props.onChange({ target: { value: "readme" } });
+      root.findByProps({ "data-testid": "retrieval-title-only" }).props.onChange({ target: { checked: true } });
+    });
+
+    await act(async () => {
+      await root.findByProps({ "data-testid": "retrieval-search" }).props.onClick();
+    });
+
+    expect(calls).toEqual([{ query: "readme", topK: 10, titleOnly: true }]);
   });
 
   it("shows error when search request fails", async () => {

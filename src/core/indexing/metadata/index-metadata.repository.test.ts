@@ -99,12 +99,14 @@ describe("index metadata repository", () => {
         chunkId: "c1",
         fileId: "f1",
         sourcePath: "/docs/a.md",
+        title: "a",
         text: "knowdisk retrieval architecture",
       },
       {
         chunkId: "c2",
         fileId: "f2",
         sourcePath: "/docs/b.md",
+        title: "b",
         text: "random unrelated text",
       },
     ]);
@@ -115,6 +117,16 @@ describe("index metadata repository", () => {
 
     repo.deleteFtsChunksByIds(["c1"]);
     expect(repo.searchFts("knowdisk", 10).length).toBe(0);
+    repo.upsertFtsChunks([
+      {
+        chunkId: "c3",
+        fileId: "f3",
+        sourcePath: "/docs/setup-guide.md",
+        title: "setup-guide",
+        text: "body",
+      },
+    ]);
+    expect(repo.searchTitleFts("setup-guide", 10)[0]?.chunkId).toBe("c3");
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

@@ -1,5 +1,6 @@
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
+import { basename, extname } from "node:path";
 import { stat } from "node:fs/promises";
 import type { IndexChunkRow } from "../metadata/index-metadata.repository.types";
 import type { ChunkDiff, ChunkSpan, FileIndexProcessor, FileIndexProcessorDeps } from "./file-index.processor.types";
@@ -177,6 +178,7 @@ async function buildVectorAndMetadataRows(
     vector: number[];
     metadata: {
       sourcePath: string;
+      title?: string;
       chunkText: string;
       startOffset?: number;
       endOffset?: number;
@@ -185,7 +187,8 @@ async function buildVectorAndMetadataRows(
     };
   }>;
   const chunkRows: IndexChunkRow[] = [];
-  const ftsRows: Array<{ chunkId: string; fileId: string; sourcePath: string; text: string }> = [];
+  const ftsRows: Array<{ chunkId: string; fileId: string; sourcePath: string; title: string; text: string }> = [];
+  const title = fileTitleFromPath(sourcePath);
 
   const updatedAtMs = Date.now();
   for (const span of spans) {
@@ -201,6 +204,7 @@ async function buildVectorAndMetadataRows(
       vector,
       metadata: {
         sourcePath,
+        title,
         chunkText: toPreview(span.text),
         startOffset: span.startOffset ?? undefined,
         endOffset: span.endOffset ?? undefined,
@@ -222,6 +226,7 @@ async function buildVectorAndMetadataRows(
       chunkId,
       fileId,
       sourcePath,
+      title,
       text: span.text,
     });
   }
@@ -263,6 +268,12 @@ function defaultMakeChunkId(input: {
 }) {
   const key = `${input.fileId}#${input.startOffset ?? ""}#${input.endOffset ?? ""}#${input.chunkHash}`;
   return `c_${createHash("sha256").update(key).digest("hex").slice(0, 32)}`;
+}
+
+function fileTitleFromPath(path: string) {
+  const base = basename(path);
+  const ext = extname(base);
+  return ext ? base.slice(0, -ext.length) : base;
 }
 
 function toNullableNumber(value: unknown): number | null {

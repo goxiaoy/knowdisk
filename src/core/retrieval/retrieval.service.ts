@@ -5,7 +5,8 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
   const mapRow = (row: {
     chunkId: string;
     score: number;
-    metadata: {
+      metadata: {
+      title?: string;
       chunkText?: string;
       sourcePath: string;
       updatedAt?: string;
@@ -25,23 +26,43 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
   });
 
   return {
-    async search(query: string, opts: { topK?: number }) {
+    async search(query: string, opts: { topK?: number; titleOnly?: boolean }) {
       const startedAt = Date.now();
       const topK = opts.topK ?? deps.defaults.topK;
-      deps.logger?.debug(
-        { subsystem: "retrieval", query, topK, ftsTopN: deps.defaults.ftsTopN ?? topK },
-        "retrieval.search: start",
-      );
-      const queryVector = await deps.embedding.embed(query);
-      const vectorRows = await deps.vector.search(queryVector, {
-        topK,
-      });
-      const ftsRows = deps.fts?.searchFts(query, deps.defaults.ftsTopN ?? topK) ?? [];
+      const titleOnly = Boolean(opts.titleOnly);
+      const singleKeyword = isSingleKeywordQuery(query);
       deps.logger?.debug(
         {
           subsystem: "retrieval",
           query,
           topK,
+          titleOnly,
+          singleKeyword,
+          ftsTopN: deps.defaults.ftsTopN ?? topK,
+        },
+        "retrieval.search: start",
+      );
+      const vectorRows = titleOnly
+        ? []
+        : await searchVector(deps, query, topK);
+      const contentFtsRows = titleOnly
+        ? []
+        : deps.fts?.searchFts(query, deps.defaults.ftsTopN ?? topK) ?? [];
+      const titleFtsRows =
+        titleOnly || singleKeyword
+          ? deps.fts?.searchTitleFts?.(query, deps.defaults.ftsTopN ?? topK) ?? []
+          : [];
+      const ftsRows: FtsRankRow[] = [
+        ...contentFtsRows.map((row) => ({ ...row, kind: "content" as const })),
+        ...titleFtsRows.map((row) => ({ ...row, kind: "title" as const })),
+      ];
+      deps.logger?.debug(
+        {
+          subsystem: "retrieval",
+          query,
+          topK,
+          titleOnly,
+          singleKeyword,
           vectorRows: vectorRows.map((row) => ({
             chunkId: row.chunkId,
             sourcePath: row.metadata.sourcePath,
@@ -51,6 +72,7 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
             chunkId: row.chunkId,
             sourcePath: row.sourcePath,
             score: row.score,
+            kind: row.kind,
           })),
         },
         "retrieval.search: raw rows",
@@ -64,6 +86,8 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
           subsystem: "retrieval",
           query,
           topK,
+          titleOnly,
+          singleKeyword,
           vectorCount: vectorRows.length,
           ftsCount: ftsRows.length,
           mergedCount: mergedRows.length,
@@ -108,25 +132,40 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
     },
   };
 }
-
-function mergeRows(vectorRows: VectorSearchRow[], ftsRows: Array<{
+type FtsRankRow = {
   chunkId: string;
   sourcePath: string;
   text: string;
   score: number;
-}>): VectorSearchRow[] {
+  kind: "content" | "title";
+};
+
+async function searchVector(
+  deps: RetrievalDeps,
+  query: string,
+  topK: number,
+): Promise<VectorSearchRow[]> {
+  const queryVector = await deps.embedding.embed(query);
+  return deps.vector.search(queryVector, { topK });
+}
+
+function mergeRows(vectorRows: VectorSearchRow[], ftsRows: FtsRankRow[]): VectorSearchRow[] {
   const merged = new Map<string, VectorSearchRow>();
   for (const row of vectorRows) {
-    merged.set(row.chunkId, row);
+    merged.set(row.chunkId, { ...row });
   }
 
   for (const row of ftsRows) {
-    if (merged.has(row.chunkId)) {
+    const weight = row.kind === "title" ? 1 : 0.8;
+    const weightedScore = normalizeFtsScore(row.score) * weight;
+    const existing = merged.get(row.chunkId);
+    if (existing) {
+      existing.score += weightedScore;
       continue;
     }
     merged.set(row.chunkId, {
       chunkId: row.chunkId,
-      score: normalizeFtsScore(row.score),
+      score: weightedScore,
       vector: [],
       metadata: {
         sourcePath: row.sourcePath,
@@ -139,4 +178,8 @@ function mergeRows(vectorRows: VectorSearchRow[], ftsRows: Array<{
 
 function normalizeFtsScore(score: number) {
   return 1 / (1 + Math.abs(score));
+}
+
+function isSingleKeywordQuery(query: string) {
+  return query.trim().split(/\s+/).filter(Boolean).length === 1;
 }

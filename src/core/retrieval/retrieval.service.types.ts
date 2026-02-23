@@ -27,6 +27,7 @@ export type RetrievalDeps = {
   };
   fts?: {
     searchFts: (query: string, limit: number) => FtsSearchRow[];
+    searchTitleFts?: (query: string, limit: number) => FtsSearchRow[];
   };
   defaults: {
     topK: number;
@@ -37,6 +38,6 @@ export type RetrievalDeps = {
 };
 
 export type RetrievalService = {
-  search: (query: string, opts: { topK?: number }) => Promise<RetrievalResult[]>;
+  search: (query: string, opts: { topK?: number; titleOnly?: boolean }) => Promise<RetrievalResult[]>;
   retrieveBySourcePath: (sourcePath: string) => Promise<RetrievalResult[]>;
 };

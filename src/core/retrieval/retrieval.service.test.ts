@@ -165,3 +165,111 @@ test("retrieveBySourcePath resolves chunk text via sourceReader when offsets exi
   const rows = await svc.retrieveBySourcePath("docs/a.md");
   expect(rows[0]?.chunkText).toBe("resolved-from-source");
 });
+
+test("titleOnly search uses only title FTS for scoring", async () => {
+  let titleFtsCalled = false;
+  let contentFtsCalled = false;
+  let embeddingCalled = false;
+  let vectorCalled = false;
+  const svc = createRetrievalService({
+    embedding: { async embed() { embeddingCalled = true; return [1, 0]; } },
+    vector: {
+      async search() {
+        vectorCalled = true;
+        return [
+          {
+            chunkId: "c1",
+            score: 0.9,
+            vector: [],
+            metadata: { sourcePath: "/docs/a/readme.md", title: "readme", chunkText: "chunk-1" },
+          },
+          {
+            chunkId: "c2",
+            score: 0.8,
+            vector: [],
+            metadata: { sourcePath: "/docs/a/readme.md", title: "readme", chunkText: "chunk-2" },
+          },
+          {
+            chunkId: "c3",
+            score: 0.7,
+            vector: [],
+            metadata: { sourcePath: "/docs/b/setup.md", title: "setup", chunkText: "chunk-3" },
+          },
+        ];
+      },
+      async listBySourcePath() {
+        return [];
+      },
+    },
+    fts: {
+      searchFts() {
+        contentFtsCalled = true;
+        return [];
+      },
+      searchTitleFts() {
+        titleFtsCalled = true;
+        return [
+          {
+            chunkId: "/docs/c/guide.md",
+            fileId: "",
+            sourcePath: "/docs/c/guide.md",
+            text: "/docs/c/guide.md",
+            score: 0,
+          },
+        ];
+      },
+    },
+    defaults: { topK: 5, ftsTopN: 10 },
+  });
+
+  const rows = await svc.search("readme", { topK: 5, titleOnly: true });
+  expect(titleFtsCalled).toBe(true);
+  expect(contentFtsCalled).toBe(false);
+  expect(embeddingCalled).toBe(false);
+  expect(vectorCalled).toBe(false);
+  expect(rows.some((row) => row.sourcePath === "/docs/c/guide.md")).toBe(true);
+  expect(rows.find((row) => row.sourcePath === "/docs/c/guide.md")?.chunkText).toBe("/docs/c/guide.md");
+});
+
+test("single keyword search mixes title and content with vector scoring", async () => {
+  let titleFtsCalled = false;
+  let contentFtsCalled = false;
+  const svc = createRetrievalService({
+    embedding: { async embed() { return [1, 0]; } },
+    vector: {
+      async search() {
+        return [
+          {
+            chunkId: "v1",
+            score: 0.5,
+            vector: [],
+            metadata: { sourcePath: "/docs/a.md", title: "a", chunkText: "vector row" },
+          },
+        ];
+      },
+      async listBySourcePath() {
+        return [];
+      },
+    },
+    fts: {
+      searchFts() {
+        contentFtsCalled = true;
+        return [
+          { chunkId: "v1", fileId: "f1", sourcePath: "/docs/a.md", text: "content hit", score: 0.2 },
+        ];
+      },
+      searchTitleFts() {
+        titleFtsCalled = true;
+        return [
+          { chunkId: "v1", fileId: "f1", sourcePath: "/docs/a.md", text: "title hit", score: 0.1 },
+        ];
+      },
+    },
+    defaults: { topK: 5, ftsTopN: 10 },
+  });
+
+  const rows = await svc.search("knowdisk", { topK: 5 });
+  expect(contentFtsCalled).toBe(true);
+  expect(titleFtsCalled).toBe(true);
+  expect(rows[0]?.score).toBeGreaterThan(0.5);
+});

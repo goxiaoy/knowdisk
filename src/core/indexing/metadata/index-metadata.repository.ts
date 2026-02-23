@@ -172,12 +172,18 @@ export function createIndexMetadataRepository(opts: {
       }
       const deleteStmt = db.query("DELETE FROM fts_chunks WHERE chunk_id = ?");
       const insertStmt = db.query(
-        "INSERT INTO fts_chunks (chunk_id, file_id, source_path, text) VALUES (?, ?, ?, ?)",
+        "INSERT INTO fts_chunks (chunk_id, file_id, source_path, title, text) VALUES (?, ?, ?, ?, ?)",
       );
       const tx = db.transaction((items: FtsChunkRow[]) => {
         for (const row of items) {
           deleteStmt.run(row.chunkId);
-          insertStmt.run(row.chunkId, row.fileId, row.sourcePath, row.text);
+          insertStmt.run(
+            row.chunkId,
+            row.fileId,
+            row.sourcePath,
+            row.title,
+            row.text,
+          );
         }
       });
       tx(rows);
@@ -202,6 +208,27 @@ export function createIndexMetadataRepository(opts: {
           LIMIT ?`,
         )
         .all(q, limit) as FtsSearchRow[];
+    },
+
+    searchTitleFts(query: string, limit: number) {
+      const q = query.trim().toLowerCase();
+      if (!q) {
+        return [];
+      }
+      return db
+        .query(
+          `SELECT
+            chunk_id AS chunkId,
+            file_id AS fileId,
+            source_path AS sourcePath,
+            title AS text,
+            bm25(fts_chunks) AS score
+          FROM fts_chunks
+          WHERE fts_chunks MATCH ?
+          ORDER BY score
+          LIMIT ?`,
+        )
+        .all(`title:"${escapeFtsToken(q)}"`, limit) as FtsSearchRow[];
     },
 
     deleteFtsChunksByIds(chunkIds: string[]) {
@@ -413,7 +440,9 @@ function migrate(db: Database) {
       updated_at_ms INTEGER NOT NULL
     )`,
   );
-  db.exec("CREATE INDEX IF NOT EXISTS idx_jobs_sched ON jobs(status, next_run_at_ms)");
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_jobs_sched ON jobs(status, next_run_at_ms)",
+  );
 
   db.exec(
     `CREATE TABLE IF NOT EXISTS tombstones (
@@ -427,6 +456,7 @@ function migrate(db: Database) {
       chunk_id UNINDEXED,
       file_id UNINDEXED,
       source_path UNINDEXED,
+      title,
       text,
       tokenize='unicode61'
     )`,
@@ -436,4 +466,8 @@ function migrate(db: Database) {
     `INSERT INTO meta(key, value) VALUES ('schema_version', ?)
       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
   ).run(String(SCHEMA_VERSION));
+}
+
+function escapeFtsToken(token: string) {
+  return token.replaceAll('"', '""');
 }

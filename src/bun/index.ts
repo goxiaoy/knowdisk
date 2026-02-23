@@ -182,8 +182,10 @@ const rpc = BrowserView.defineRPC({
       get_vector_stats(): Promise<VectorCollectionInspect> {
         return container.vectorRepository.inspect();
       },
-      search_retrieval({ query, topK }: { query: string; topK: number }): Promise<RetrievalResult[]> {
-        return container.retrievalService.search(query, { topK });
+      search_retrieval(
+        { query, topK, titleOnly }: { query: string; topK: number; titleOnly?: boolean },
+      ): Promise<RetrievalResult[]> {
+        return container.retrievalService.search(query, { topK, titleOnly });
       },
       retrieve_source_chunks({ sourcePath }: { sourcePath: string }): Promise<RetrievalResult[]> {
         return container.retrievalService.retrieveBySourcePath(sourcePath);

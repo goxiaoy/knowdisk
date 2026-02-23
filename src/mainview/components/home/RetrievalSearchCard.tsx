@@ -16,7 +16,7 @@ export function RetrievalSearchCard({
   pickFilePath = pickFilePathFromBun,
   topK = DEFAULT_TOP_K,
 }: {
-  search?: (query: string, topK: number) => Promise<RetrievalResult[] | null>;
+  search?: (query: string, topK: number, titleOnly?: boolean) => Promise<RetrievalResult[] | null>;
   retrieveBySourcePath?: (sourcePath: string) => Promise<RetrievalResult[] | null>;
   listSourceFiles?: () => Promise<string[] | null>;
   pickFilePath?: () => Promise<string | null>;
@@ -30,6 +30,7 @@ export function RetrievalSearchCard({
   const [error, setError] = useState("");
   const [results, setResults] = useState<RetrievalResult[]>([]);
   const [sourceFileOptions, setSourceFileOptions] = useState<string[]>([]);
+  const [titleOnly, setTitleOnly] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -52,7 +53,7 @@ export function RetrievalSearchCard({
     }
     setLoading(true);
     setError("");
-    const rows = await search(trimmed, topK);
+    const rows = await search(trimmed, topK, titleOnly);
     if (!rows) {
       setError("Search request failed.");
       setResults([]);
@@ -116,6 +117,16 @@ export function RetrievalSearchCard({
           {loading ? "Searching..." : "Search"}
         </button>
       </div>
+      <label className="mt-2 inline-flex items-center gap-2 text-xs text-slate-600">
+        <input
+          data-testid="retrieval-title-only"
+          type="checkbox"
+          checked={titleOnly}
+          onChange={(event) => setTitleOnly(event.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-cyan-700 focus:ring-cyan-200"
+        />
+        Title only (search by file title/path in vector + FTS)
+      </label>
 
       <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">or retrieve all chunks by file path</p>
       <div className="mt-2 flex gap-2">

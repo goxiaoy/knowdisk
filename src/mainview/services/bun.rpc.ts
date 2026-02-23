@@ -228,11 +228,12 @@ export async function getVectorStatsFromBun(): Promise<VectorCollectionInspect |
 export async function searchRetrievalInBun(
   query: string,
   topK: number,
+  titleOnly = false,
 ): Promise<RetrievalResult[] | null> {
   const channel = await getRpc();
   if (!channel) return null;
   try {
-    return await channel.request.search_retrieval({ query, topK });
+    return await channel.request.search_retrieval({ query, topK, titleOnly });
   } catch (error) {
     console.error("search_retrieval RPC failed:", error);
     return null;
