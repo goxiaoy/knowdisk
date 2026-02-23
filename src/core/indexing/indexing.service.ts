@@ -44,20 +44,40 @@ export function createSourceIndexingService(
   });
 
   const indexingState: IndexingStatus = {
-    running: false,
-    lastReason: "",
-    lastRunAt: "",
-    lastReconcileAt: "",
-    currentFile: null,
-    indexedFiles: 0,
-    queueDepth: 0,
-    runningWorkers: 0,
-    errors: [],
+    run: {
+      phase: "idle",
+      reason: "",
+      startedAt: "",
+      finishedAt: "",
+      lastReconcileAt: "",
+      indexedFiles: 0,
+      errors: [],
+    },
+    scheduler: {
+      phase: "idle",
+      queueDepth: 0,
+    },
+    worker: {
+      phase: "idle",
+      runningWorkers: 0,
+      currentFiles: [],
+      lastError: "",
+    },
   };
 
   const listeners = new Set<(status: IndexingStatus) => void>();
   const notify = () => {
-    const snapshot = { ...indexingState, errors: [...indexingState.errors] };
+    const snapshot: IndexingStatus = {
+      run: {
+        ...indexingState.run,
+        errors: [...indexingState.run.errors],
+      },
+      scheduler: { ...indexingState.scheduler },
+      worker: {
+        ...indexingState.worker,
+        currentFiles: [...indexingState.worker.currentFiles],
+      },
+    };
     for (const listener of listeners) {
       listener(snapshot);
     }
@@ -69,21 +89,36 @@ export function createSourceIndexingService(
     concurrency: cfg.indexing.worker.concurrency,
     maxAttempts: cfg.indexing.retry.maxAttempts,
     backoffMs: cfg.indexing.retry.backoffMs,
-    onJobStart(path) {
-      indexingState.currentFile = path;
-      indexingState.runningWorkers = 1;
+    onJobStart(path, jobType) {
+      indexingState.worker.phase = jobType === "delete" ? "deleting" : "indexing";
+      if (!indexingState.worker.currentFiles.includes(path)) {
+        indexingState.worker.currentFiles.push(path);
+      }
+      indexingState.worker.runningWorkers = indexingState.worker.currentFiles.length;
       notify();
     },
-    onJobDone() {
-      indexingState.indexedFiles += 1;
-      indexingState.currentFile = null;
-      indexingState.runningWorkers = 0;
+    onJobDone(path) {
+      if (indexingState.worker.currentFiles.includes(path)) {
+        indexingState.worker.currentFiles = indexingState.worker.currentFiles.filter(
+          (item) => item !== path,
+        );
+      }
+      indexingState.worker.runningWorkers = indexingState.worker.currentFiles.length;
+      indexingState.worker.phase =
+        indexingState.worker.runningWorkers > 0
+          ? indexingState.worker.phase
+          : "idle";
+      indexingState.run.indexedFiles += 1;
       notify();
     },
-    onJobError(path, error) {
-      indexingState.errors.push(`${path}: ${error}`);
-      indexingState.runningWorkers = 0;
-      indexingState.currentFile = null;
+    onJobError(path, _jobType, error) {
+      indexingState.run.errors.push(`${path}: ${error}`);
+      indexingState.worker.currentFiles = indexingState.worker.currentFiles.filter(
+        (item) => item !== path,
+      );
+      indexingState.worker.runningWorkers = indexingState.worker.currentFiles.length;
+      indexingState.worker.phase = "failed";
+      indexingState.worker.lastError = `${path}: ${error}`;
       notify();
     },
   });
@@ -101,11 +136,31 @@ export function createSourceIndexingService(
 
   const statusStore = {
     getSnapshot() {
-      return { ...indexingState, errors: [...indexingState.errors] };
+      return {
+        run: {
+          ...indexingState.run,
+          errors: [...indexingState.run.errors],
+        },
+        scheduler: { ...indexingState.scheduler },
+        worker: {
+          ...indexingState.worker,
+          currentFiles: [...indexingState.worker.currentFiles],
+        },
+      };
     },
     subscribe(listener: (status: IndexingStatus) => void) {
       listeners.add(listener);
-      listener({ ...indexingState, errors: [...indexingState.errors] });
+      listener({
+        run: {
+          ...indexingState.run,
+          errors: [...indexingState.run.errors],
+        },
+        scheduler: { ...indexingState.scheduler },
+        worker: {
+          ...indexingState.worker,
+          currentFiles: [...indexingState.worker.currentFiles],
+        },
+      });
       return () => {
         listeners.delete(listener);
       };
@@ -119,8 +174,8 @@ export function createSourceIndexingService(
       await drainWorkerQueue();
       finishRun(reason);
       return {
-        indexedFiles: indexingState.indexedFiles,
-        errors: [...indexingState.errors],
+        indexedFiles: indexingState.run.indexedFiles,
+        errors: [...indexingState.run.errors],
         repaired: repair,
       };
     },
@@ -136,15 +191,15 @@ export function createSourceIndexingService(
       await drainWorkerQueue();
       finishRun("incremental");
       return {
-        indexedFiles: indexingState.indexedFiles,
-        errors: [...indexingState.errors],
+        indexedFiles: indexingState.run.indexedFiles,
+        errors: [...indexingState.run.errors],
       };
     },
 
     async runScheduledReconcile() {
       const repaired = await enqueueReconcileJobs("scheduled_reconcile");
       await drainWorkerQueue();
-      indexingState.lastReconcileAt = new Date().toISOString();
+      indexingState.run.lastReconcileAt = new Date().toISOString();
       notify();
       return { repaired };
     },
@@ -183,7 +238,7 @@ export function createSourceIndexingService(
             reason: "startup_source_cleanup",
             nextRunAtMs: now,
           });
-          indexingState.queueDepth += 1;
+          indexingState.scheduler.queueDepth += 1;
           deletedFiles += 1;
         }
       }
@@ -206,25 +261,33 @@ export function createSourceIndexingService(
   };
 
   function beginRun(reason: string) {
-    indexingState.running = true;
-    indexingState.lastReason = reason;
-    indexingState.lastRunAt = new Date().toISOString();
-    indexingState.currentFile = null;
-    indexingState.indexedFiles = 0;
-    indexingState.queueDepth = 0;
-    indexingState.runningWorkers = 0;
-    indexingState.errors = [];
+    indexingState.run.phase = "running";
+    indexingState.run.reason = reason;
+    indexingState.run.startedAt = new Date().toISOString();
+    indexingState.run.finishedAt = "";
+    indexingState.run.indexedFiles = 0;
+    indexingState.run.errors = [];
+    indexingState.scheduler.phase = "idle";
+    indexingState.scheduler.queueDepth = 0;
+    indexingState.worker.phase = "idle";
+    indexingState.worker.runningWorkers = 0;
+    indexingState.worker.currentFiles = [];
+    indexingState.worker.lastError = "";
     notify();
   }
 
   function finishRun(reason: string) {
-    indexingState.running = false;
-    indexingState.currentFile = null;
+    indexingState.run.phase = "idle";
+    indexingState.run.finishedAt = new Date().toISOString();
+    indexingState.worker.phase = "idle";
+    indexingState.worker.currentFiles = [];
+    indexingState.worker.runningWorkers = 0;
+    indexingState.scheduler.phase = "idle";
     log.info(
       {
         reason,
-        indexedFiles: indexingState.indexedFiles,
-        errorCount: indexingState.errors.length,
+        indexedFiles: indexingState.run.indexedFiles,
+        errorCount: indexingState.run.errors.length,
       },
       "index run finished",
     );
@@ -248,11 +311,11 @@ export function createSourceIndexingService(
               mtimeMs: fileStat.mtimeMs,
             });
           } catch (error) {
-            indexingState.errors.push(`${filePath}: ${String(error)}`);
+            indexingState.run.errors.push(`${filePath}: ${String(error)}`);
           }
         }
       } catch (error) {
-        indexingState.errors.push(`${source.path}: ${String(error)}`);
+        indexingState.run.errors.push(`${source.path}: ${String(error)}`);
       }
     }
 
@@ -263,6 +326,7 @@ export function createSourceIndexingService(
 
     let enqueued = 0;
     const now = Date.now();
+    indexingState.scheduler.phase = "enqueueing";
 
     for (const [path, fsRow] of sourceFileStats.entries()) {
       const known = knownByPath.get(path);
@@ -278,7 +342,7 @@ export function createSourceIndexingService(
         nextRunAtMs: now,
       });
       enqueued += 1;
-      indexingState.queueDepth += 1;
+      indexingState.scheduler.queueDepth += 1;
     }
 
     for (const known of knownFiles) {
@@ -293,28 +357,35 @@ export function createSourceIndexingService(
         nextRunAtMs: now,
       });
       enqueued += 1;
-      indexingState.queueDepth += 1;
+      indexingState.scheduler.queueDepth += 1;
     }
 
+    indexingState.scheduler.phase = "idle";
     notify();
     return enqueued;
   }
 
   async function drainWorkerQueue() {
+    indexingState.scheduler.phase = "draining";
     while (true) {
       const flushed = scheduler.flushDue(Date.now());
       const processed = await worker.runOnce(Date.now());
       if (flushed > 0) {
-        indexingState.queueDepth += flushed;
+        indexingState.scheduler.queueDepth += flushed;
       }
       if (processed > 0) {
-        indexingState.queueDepth = Math.max(0, indexingState.queueDepth - processed);
+        indexingState.scheduler.queueDepth = Math.max(
+          0,
+          indexingState.scheduler.queueDepth - processed,
+        );
       }
       notify();
       if (flushed === 0 && processed === 0) {
         break;
       }
     }
+    indexingState.scheduler.phase = "idle";
+    notify();
   }
 }
 

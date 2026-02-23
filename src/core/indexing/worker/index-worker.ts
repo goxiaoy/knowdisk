@@ -13,7 +13,7 @@ export function createIndexWorker(deps: IndexWorkerDeps): IndexWorker {
       let processed = 0;
       for (const job of claimed) {
         try {
-          deps.onJobStart?.(job.path);
+          deps.onJobStart?.(job.path, job.jobType);
           if (job.jobType === "delete") {
             await deps.processor.deleteFile(job.path);
           } else {
@@ -23,10 +23,10 @@ export function createIndexWorker(deps: IndexWorkerDeps): IndexWorker {
             }
           }
           deps.metadata.completeJob(job.jobId);
-          deps.onJobDone?.(job.path);
+          deps.onJobDone?.(job.path, job.jobType);
           processed += 1;
         } catch (error) {
-          deps.onJobError?.(job.path, String(error));
+          deps.onJobError?.(job.path, job.jobType, String(error));
           if (job.attempt >= deps.maxAttempts) {
             deps.metadata.failJob(job.jobId, String(error));
             continue;

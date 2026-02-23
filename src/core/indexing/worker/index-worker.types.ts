@@ -20,7 +20,11 @@ export type IndexWorkerDeps = {
   concurrency: number;
   maxAttempts: number;
   backoffMs: number[];
-  onJobStart?: (path: string) => void;
-  onJobDone?: (path: string) => void;
-  onJobError?: (path: string, error: string) => void;
+  onJobStart?: (path: string, jobType: "index" | "delete" | "reconcile") => void;
+  onJobDone?: (path: string, jobType: "index" | "delete" | "reconcile") => void;
+  onJobError?: (
+    path: string,
+    jobType: "index" | "delete" | "reconcile",
+    error: string,
+  ) => void;
 };

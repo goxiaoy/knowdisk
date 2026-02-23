@@ -115,7 +115,7 @@ test("index status store is subscribable", async () => {
   const svc = createSourceIndexingService(configService, embedding, vectorRepo);
   const seenRunningStates: boolean[] = [];
   const unsubscribe = svc.getIndexStatus().subscribe((status) => {
-    seenRunningStates.push(status.running);
+    seenRunningStates.push(status.run.phase === "running");
   });
 
   await svc.runFullRebuild("manual");
@@ -164,16 +164,16 @@ test("index status includes current file while indexing", async () => {
   };
 
   const svc = createSourceIndexingService(configService, embedding, vectorRepo);
-  const seenCurrentFiles: Array<string | null> = [];
+  const seenCurrentFiles: string[][] = [];
   const unsubscribe = svc.getIndexStatus().subscribe((status) => {
-    seenCurrentFiles.push(status.currentFile);
+    seenCurrentFiles.push([...status.worker.currentFiles]);
   });
 
   await svc.runFullRebuild("manual");
   unsubscribe();
 
-  expect(seenCurrentFiles.includes(filePath)).toBe(true);
-  expect(seenCurrentFiles[seenCurrentFiles.length - 1]).toBeNull();
+  expect(seenCurrentFiles.some((items) => items.includes(filePath))).toBe(true);
+  expect(seenCurrentFiles[seenCurrentFiles.length - 1]).toEqual([]);
   expect(seenChunkIds.length).toBeGreaterThan(0);
   for (const chunkId of seenChunkIds) {
     expect(chunkId.startsWith("chunk_")).toBe(true);
