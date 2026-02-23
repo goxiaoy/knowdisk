@@ -13,6 +13,7 @@ function makeConfig(): AppConfig {
     mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
     indexing: {
+      chunking: { sizeChars: 1200, overlapChars: 200, charsPerToken: 4 },
       watch: { enabled: true, debounceMs: 50 },
       reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
       worker: { concurrency: 2, batchSize: 64 },
@@ -67,6 +68,27 @@ test("scheduled reconcile repairs missing chunk", async () => {
       return [0.1, 0.2, 0.3];
     },
   };
+  const chunking = {
+    async chunkParsedStream(input: AsyncIterable<{ text: string; startOffset: number }>) {
+      const chunks: Array<{
+        text: string;
+        startOffset: number;
+        endOffset: number;
+        tokenCount: number;
+        chunkHash: string;
+      }> = [];
+      for await (const part of input) {
+        chunks.push({
+          text: part.text,
+          startOffset: part.startOffset,
+          endOffset: part.startOffset + part.text.length,
+          tokenCount: 1,
+          chunkHash: "h",
+        });
+      }
+      return chunks;
+    },
+  };
   const upserts: unknown[][] = [];
   const vectorRepo = {
     async upsert(_rows: unknown[]) {
@@ -78,7 +100,7 @@ test("scheduled reconcile repairs missing chunk", async () => {
     },
   };
 
-  const svc = createSourceIndexingService(configService, embedding, vectorRepo);
+  const svc = createSourceIndexingService(configService, embedding, chunking, vectorRepo);
   const full = (await svc.runFullRebuild("test")) as { indexedFiles: number };
   expect(full.indexedFiles).toBe(0);
   const report = await svc.runScheduledReconcile();
@@ -103,6 +125,21 @@ test("index status store is subscribable", async () => {
       return [0.1, 0.2, 0.3];
     },
   };
+  const chunking = {
+    async chunkParsedStream(input: AsyncIterable<{ text: string; startOffset: number }>) {
+      const chunks = [];
+      for await (const part of input) {
+        chunks.push({
+          text: part.text,
+          startOffset: part.startOffset,
+          endOffset: part.startOffset + part.text.length,
+          tokenCount: 1,
+          chunkHash: String(part.startOffset),
+        });
+      }
+      return chunks;
+    },
+  };
   const vectorRepo = {
     async upsert(_rows: unknown[]) {
       return;
@@ -112,7 +149,7 @@ test("index status store is subscribable", async () => {
     },
   };
 
-  const svc = createSourceIndexingService(configService, embedding, vectorRepo);
+  const svc = createSourceIndexingService(configService, embedding, chunking, vectorRepo);
   const seenRunningStates: boolean[] = [];
   const unsubscribe = svc.getIndexStatus().subscribe((status) => {
     seenRunningStates.push(status.run.phase === "running");
@@ -150,6 +187,21 @@ test("index status includes current file while indexing", async () => {
       return [0.1, 0.2, 0.3];
     },
   };
+  const chunking = {
+    async chunkParsedStream(input: AsyncIterable<{ text: string; startOffset: number }>) {
+      const chunks = [];
+      for await (const part of input) {
+        chunks.push({
+          text: part.text,
+          startOffset: part.startOffset,
+          endOffset: part.startOffset + part.text.length,
+          tokenCount: 1,
+          chunkHash: String(part.startOffset),
+        });
+      }
+      return chunks;
+    },
+  };
   const seenChunkIds: string[] = [];
   const vectorRepo = {
     async upsert(rows: Array<{ chunkId: string }>) {
@@ -163,7 +215,7 @@ test("index status includes current file while indexing", async () => {
     },
   };
 
-  const svc = createSourceIndexingService(configService, embedding, vectorRepo);
+  const svc = createSourceIndexingService(configService, embedding, chunking, vectorRepo);
   const seenCurrentFiles: string[][] = [];
   const unsubscribe = svc.getIndexStatus().subscribe((status) => {
     seenCurrentFiles.push([...status.worker.currentFiles]);
@@ -204,6 +256,21 @@ test("incremental run enqueues and processes change events", async () => {
       return [0.1, 0.2];
     },
   };
+  const chunking = {
+    async chunkParsedStream(input: AsyncIterable<{ text: string; startOffset: number }>) {
+      const chunks = [];
+      for await (const part of input) {
+        chunks.push({
+          text: part.text,
+          startOffset: part.startOffset,
+          endOffset: part.startOffset + part.text.length,
+          tokenCount: 1,
+          chunkHash: String(part.startOffset),
+        });
+      }
+      return chunks;
+    },
+  };
   const upserts: Array<{ chunkId: string }> = [];
   const vectorRepo = {
     async upsert(rows: Array<{ chunkId: string }>) {
@@ -214,7 +281,7 @@ test("incremental run enqueues and processes change events", async () => {
     },
   };
 
-  const svc = createSourceIndexingService(configService, embedding, vectorRepo);
+  const svc = createSourceIndexingService(configService, embedding, chunking, vectorRepo);
   const result = await svc.runIncremental([{ path: filePath, type: "change" }]);
   expect((result as { indexedFiles: number }).indexedFiles).toBeGreaterThan(0);
   expect(upserts.length).toBeGreaterThan(0);

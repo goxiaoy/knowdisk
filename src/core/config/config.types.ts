@@ -47,6 +47,11 @@ export interface AppConfig {
     mode: UiMode;
   };
   indexing: {
+    chunking: {
+      sizeChars: number;
+      overlapChars: number;
+      charsPerToken: number;
+    };
     watch: {
       enabled: boolean;
       debounceMs: number;

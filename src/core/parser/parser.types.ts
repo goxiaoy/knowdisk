@@ -1,10 +1,5 @@
 export type SkipReason = "UNSUPPORTED_TYPE";
 
-export type ParseResult = {
-  text: string;
-  skipped?: SkipReason;
-};
-
 export type ParseChunk = {
   text: string;
   startOffset: number;
@@ -15,7 +10,6 @@ export type ParseChunk = {
 
 export type Parser = {
   id: "markdown" | "text" | "unsupported";
-  parse: (input: string) => ParseResult;
   parseStream: (input: AsyncIterable<string>) => AsyncIterable<ParseChunk>;
 };
 

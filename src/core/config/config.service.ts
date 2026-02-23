@@ -36,6 +36,7 @@ function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
     },
     ui: { mode: "safe" },
     indexing: {
+      chunking: { sizeChars: 1200, overlapChars: 200, charsPerToken: 4 },
       watch: { enabled: true, debounceMs: 500 },
       reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
       worker: { concurrency: 2, batchSize: 64 },
@@ -259,6 +260,20 @@ function migrateConfigWithDefaults(
         port: normalizePort(next.mcp?.port, defaults.mcp.port),
       },
       indexing: {
+        chunking: {
+          sizeChars: normalizePositiveInt(
+            next.indexing?.chunking?.sizeChars,
+            defaults.indexing.chunking.sizeChars,
+          ),
+          overlapChars: normalizePositiveInt(
+            next.indexing?.chunking?.overlapChars,
+            defaults.indexing.chunking.overlapChars,
+          ),
+          charsPerToken: normalizePositiveInt(
+            next.indexing?.chunking?.charsPerToken,
+            defaults.indexing.chunking.charsPerToken,
+          ),
+        },
         watch: {
           enabled: next.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
           debounceMs: normalizePositiveInt(

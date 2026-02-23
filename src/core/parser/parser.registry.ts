@@ -3,9 +3,6 @@ import { textParser } from "./parsers/text.parser";
 
 const markdownParser: Parser = {
   id: "markdown",
-  parse(input: string) {
-    return { text: input };
-  },
   parseStream(input) {
     return textParser.parseStream(input);
   },
@@ -13,9 +10,6 @@ const markdownParser: Parser = {
 
 const unsupportedParser: Parser = {
   id: "unsupported",
-  parse() {
-    return { text: "", skipped: "UNSUPPORTED_TYPE" };
-  },
   async *parseStream() {
     yield {
       text: "",

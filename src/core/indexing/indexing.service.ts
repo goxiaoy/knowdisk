@@ -15,10 +15,12 @@ import { createIndexJobScheduler } from "./jobs/index-job.scheduler";
 import { createFileIndexProcessor } from "./processor/file-index.processor";
 import { createIndexWorker } from "./worker/index-worker";
 import { collectIndexableFiles } from "./scan.files";
+import type { ChunkingService } from "./chunker/chunker.service.types";
 
 export function createSourceIndexingService(
   configService: ConfigService,
   embedding: EmbeddingProvider,
+  chunking: ChunkingService,
   vector: Pick<VectorRepository, "upsert" | "deleteBySourcePath">,
   logger?: LoggerService,
   opts?: {
@@ -39,6 +41,7 @@ export function createSourceIndexingService(
     createIndexMetadataRepository({ dbPath: opts?.metadataDbPath ?? ":memory:" });
   const processor = createFileIndexProcessor({
     embedding,
+    chunking,
     vector,
     metadata,
   });

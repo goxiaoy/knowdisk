@@ -5,12 +5,10 @@ import { join } from "node:path";
 import { createIndexMetadataRepository } from "../metadata/index-metadata.repository";
 import { createFileIndexProcessor } from "./file-index.processor";
 import type { Parser } from "../../parser/parser.types";
+import { createChunkingService } from "../chunker/chunker.service";
 
 const parser: Parser = {
   id: "text",
-  parse(input: string) {
-    return { text: input };
-  },
   async *parseStream(input: AsyncIterable<string>) {
     let offset = 0;
     for await (const chunk of input) {
@@ -26,6 +24,12 @@ const parser: Parser = {
 };
 
 describe("file index processor", () => {
+  const chunking = createChunkingService({
+    sizeChars: 1200,
+    overlapChars: 200,
+    charsPerToken: 4,
+  });
+
   test("skips unchanged indexed file by mtime and size", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-file-processor-"));
     const dbPath = join(dir, "index.db");
@@ -37,6 +41,7 @@ describe("file index processor", () => {
     const repo = createIndexMetadataRepository({ dbPath });
     const processor = createFileIndexProcessor({
       embedding: { async embed() { return [1, 2, 3]; } },
+      chunking,
       vector: {
         async upsert(rows) {
           upsertCalls += rows.length;
@@ -71,6 +76,7 @@ describe("file index processor", () => {
     const repo = createIndexMetadataRepository({ dbPath });
     const processor = createFileIndexProcessor({
       embedding: { async embed(text) { return [text.length]; } },
+      chunking,
       vector: {
         async upsert(rows) {
           calls.upsert.push(rows.length);
@@ -105,6 +111,7 @@ describe("file index processor", () => {
     const repo = createIndexMetadataRepository({ dbPath });
     const processor = createFileIndexProcessor({
       embedding: { async embed() { return [1]; } },
+      chunking,
       vector: {
         async upsert() {},
         async deleteBySourcePath() {
@@ -127,23 +134,21 @@ describe("file index processor", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("uses unified chunking strategy for full read and stream parsing", async () => {
+  test("uses unified chunking strategy in stream pipeline", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-file-processor-"));
     const dbPath = join(dir, "index.db");
-    const smallPath = join(dir, "small.txt");
-    const largePath = join(dir, "large.txt");
+    const filePath = join(dir, "sample.txt");
     const text = "x".repeat(2500);
-    writeFileSync(smallPath, text);
-    writeFileSync(largePath, text);
+    writeFileSync(filePath, text);
 
     const repo = createIndexMetadataRepository({ dbPath });
-    const calls: Array<{ sourcePath: string; count: number; starts: number[] }> = [];
+    const calls: Array<{ count: number; starts: number[] }> = [];
     const processor = createFileIndexProcessor({
       embedding: { async embed(input) { return [input.length]; } },
+      chunking,
       vector: {
         async upsert(rows) {
           calls.push({
-            sourcePath: rows[0]?.metadata.sourcePath ?? "",
             count: rows.length,
             starts: rows
               .map((row) => row.metadata.startOffset ?? -1)
@@ -153,39 +158,13 @@ describe("file index processor", () => {
         async deleteBySourcePath() {},
       },
       metadata: repo,
-      streamThresholdBytes: 1,
     });
 
-    await processor.indexFile(largePath, parser);
+    await processor.indexFile(filePath, parser);
 
-    const processorNoStream = createFileIndexProcessor({
-      embedding: { async embed(input) { return [input.length]; } },
-      vector: {
-        async upsert(rows) {
-          calls.push({
-            sourcePath: rows[0]?.metadata.sourcePath ?? "",
-            count: rows.length,
-            starts: rows
-              .map((row) => row.metadata.startOffset ?? -1)
-              .filter((value) => value >= 0),
-          });
-        },
-        async deleteBySourcePath() {},
-      },
-      metadata: repo,
-      streamThresholdBytes: 10_000_000,
-    });
-
-    await processorNoStream.indexFile(smallPath, parser);
-
-    const streamed = calls.find((item) => item.sourcePath === largePath);
-    const fullRead = calls.find((item) => item.sourcePath === smallPath);
-    expect(streamed).toBeDefined();
-    expect(fullRead).toBeDefined();
-    expect(streamed!.count).toBeGreaterThan(1);
-    expect(fullRead!.count).toBeGreaterThan(1);
-    expect(streamed!.starts).toContain(0);
-    expect(fullRead!.starts).toContain(0);
+    expect(calls.length).toBe(1);
+    expect(calls[0]!.count).toBeGreaterThan(1);
+    expect(calls[0]!.starts).toContain(0);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

@@ -9,6 +9,8 @@ import { createHealthService } from "../core/health/health.service";
 import type { HealthService } from "../core/health/health.service.types";
 import { createSourceIndexingService } from "../core/indexing/indexing.service";
 import type { IndexingService } from "../core/indexing/indexing.service.types";
+import { createChunkingService } from "../core/indexing/chunker/chunker.service";
+import type { ChunkingService } from "../core/indexing/chunker/chunker.service.types";
 import { createIndexMetadataRepository } from "../core/indexing/metadata/index-metadata.repository";
 import type { IndexMetadataRepository } from "../core/indexing/metadata/index-metadata.repository.types";
 import { createLoggerService } from "../core/logger/logger.service";
@@ -37,6 +39,7 @@ const TOKENS = {
   HealthService: Symbol("HealthService"),
   LoggerService: Symbol("LoggerService"),
   EmbeddingProvider: Symbol("EmbeddingProvider"),
+  ChunkingService: Symbol("ChunkingService"),
   VectorRepository: Symbol("VectorRepository"),
   RetrievalService: Symbol("RetrievalService"),
   IndexingService: Symbol("IndexingService"),
@@ -80,6 +83,12 @@ function registerDependencies(
     useFactory: (c) => {
       const appCfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
       return makeEmbeddingProvider(appCfg.embedding);
+    },
+  });
+  di.register(TOKENS.ChunkingService, {
+    useFactory: (c) => {
+      const appCfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
+      return createChunkingService(appCfg.indexing.chunking);
     },
   });
   di.register(TOKENS.VectorRepository, {
@@ -179,6 +188,7 @@ function registerDependencies(
       createSourceIndexingService(
         c.resolve<ConfigService>(TOKENS.ConfigService),
         c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
+        c.resolve<ChunkingService>(TOKENS.ChunkingService),
         c.resolve<VectorRepository>(TOKENS.VectorRepository),
         c.resolve<LoggerService>(TOKENS.LoggerService),
         {

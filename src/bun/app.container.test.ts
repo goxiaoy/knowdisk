@@ -42,6 +42,7 @@ function makeConfigService(enabled: boolean): ConfigService {
         mcp: { enabled: mcpEnabled, port: 3467 },
         ui: { mode: "safe" as const },
         indexing: {
+          chunking: { sizeChars: 1200, overlapChars: 200, charsPerToken: 4 },
           watch: { enabled: true, debounceMs: 500 },
           reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
           worker: { concurrency: 2, batchSize: 64 },

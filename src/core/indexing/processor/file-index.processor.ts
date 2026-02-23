@@ -1,16 +1,11 @@
-import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { stat } from "node:fs/promises";
 import type { IndexChunkRow } from "../metadata/index-metadata.repository.types";
 import type { ChunkDiff, ChunkSpan, FileIndexProcessor, FileIndexProcessorDeps } from "./file-index.processor.types";
 import type { Parser } from "../../parser/parser.types";
 
-const DEFAULT_CHUNK_SIZE_CHARS = 1200;
-const DEFAULT_CHUNK_OVERLAP_CHARS = 200;
-const CHARS_PER_TOKEN = 4;
-
 export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileIndexProcessor {
-  const streamThresholdBytes = deps.streamThresholdBytes ?? 10 * 1024 * 1024;
   const nowMs = deps.nowMs ?? (() => Date.now());
   const makeFileId = deps.makeFileId ?? defaultMakeFileId;
   const makeChunkId = deps.makeChunkId ?? defaultMakeChunkId;
@@ -43,7 +38,7 @@ export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileInde
         updatedAtMs: startedAt,
       });
 
-      const spans = await parseFile(path, parser, fileStat.size, streamThresholdBytes);
+      const spans = await parseFile(path, parser, deps);
       const previous = deps.metadata.listChunksByFileId(fileId);
       const diff = buildDiff(spans, previous);
 
@@ -115,29 +110,10 @@ export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileInde
 async function parseFile(
   path: string,
   parser: Parser,
-  size: number,
-  streamThresholdBytes: number,
+  deps: FileIndexProcessorDeps,
 ): Promise<ChunkSpan[]> {
-  if (size > streamThresholdBytes) {
-    const spans: ChunkSpan[] = [];
-    const stream = createReadStream(path, { encoding: "utf8" });
-    for await (const parsed of parser.parseStream(stream)) {
-      if (parsed.skipped || !parsed.text.trim()) {
-        continue;
-      }
-      spans.push(
-        ...chunkText(parsed.text, parsed.startOffset),
-      );
-    }
-    return spans;
-  }
-
-  const text = await readFile(path, "utf8");
-  const parsed = parser.parse(text);
-  if (parsed.skipped || !parsed.text.trim()) {
-    return [];
-  }
-  return chunkText(parsed.text, 0);
+  const stream = createReadStream(path, { encoding: "utf8" });
+  return deps.chunking.chunkParsedStream(toChunkInput(parser.parseStream(stream)));
 }
 
 function buildDiff(spans: ChunkSpan[], previous: IndexChunkRow[]): ChunkDiff {
@@ -251,35 +227,22 @@ async function buildVectorAndMetadataRows(
   return { vectorRows, chunkRows, ftsRows };
 }
 
-function hashText(text: string) {
-  return createHash("sha256").update(text).digest("hex");
-}
-
-function chunkText(text: string, baseOffset: number): ChunkSpan[] {
-  const spans: ChunkSpan[] = [];
-  let cursor = 0;
-  while (cursor < text.length) {
-    const end = Math.min(text.length, cursor + DEFAULT_CHUNK_SIZE_CHARS);
-    const chunk = text.slice(cursor, end);
-    if (chunk.trim()) {
-      spans.push({
-        text: chunk,
-        startOffset: baseOffset + cursor,
-        endOffset: baseOffset + end,
-        tokenCount: estimateTokens(chunk),
-        chunkHash: hashText(chunk),
-      });
+async function* toChunkInput(
+  input: AsyncIterable<{
+    text: string;
+    startOffset: number;
+    skipped?: string;
+  }>,
+) {
+  for await (const parsed of input) {
+    if (parsed.skipped || !parsed.text.trim()) {
+      continue;
     }
-    if (end >= text.length) {
-      break;
-    }
-    cursor = Math.max(0, end - DEFAULT_CHUNK_OVERLAP_CHARS);
+    yield {
+      text: parsed.text,
+      startOffset: parsed.startOffset,
+    };
   }
-  return spans;
-}
-
-function estimateTokens(text: string) {
-  return Math.max(1, Math.ceil(text.length / CHARS_PER_TOKEN));
 }
 
 function spanKey(startOffset: number | null, endOffset: number | null) {

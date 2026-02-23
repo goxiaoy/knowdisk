@@ -5,9 +5,6 @@ const CHARS_PER_TOKEN = 4;
 
 export const textParser: Parser = {
   id: "text",
-  parse(input: string) {
-    return { text: input };
-  },
   async *parseStream(input: AsyncIterable<string>) {
     let buffer = "";
     let emitted = 0;

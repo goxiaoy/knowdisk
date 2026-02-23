@@ -17,6 +17,7 @@ function getDefaultConfig(): AppConfig {
     mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
     indexing: {
+      chunking: { sizeChars: 1200, overlapChars: 200, charsPerToken: 4 },
       watch: { enabled: true, debounceMs: 500 },
       reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
       worker: { concurrency: 2, batchSize: 64 },
@@ -112,6 +113,23 @@ function loadConfig(): AppConfig {
             : defaults.mcp.port,
       },
       indexing: {
+        chunking: {
+          sizeChars:
+            Number.isInteger(parsed.indexing?.chunking?.sizeChars) &&
+            (parsed.indexing?.chunking?.sizeChars ?? 0) > 0
+              ? (parsed.indexing?.chunking?.sizeChars as number)
+              : defaults.indexing.chunking.sizeChars,
+          overlapChars:
+            Number.isInteger(parsed.indexing?.chunking?.overlapChars) &&
+            (parsed.indexing?.chunking?.overlapChars ?? 0) > 0
+              ? (parsed.indexing?.chunking?.overlapChars as number)
+              : defaults.indexing.chunking.overlapChars,
+          charsPerToken:
+            Number.isInteger(parsed.indexing?.chunking?.charsPerToken) &&
+            (parsed.indexing?.chunking?.charsPerToken ?? 0) > 0
+              ? (parsed.indexing?.chunking?.charsPerToken as number)
+              : defaults.indexing.chunking.charsPerToken,
+        },
         watch: {
           enabled: parsed.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
           debounceMs:
