@@ -44,6 +44,7 @@ export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileInde
       const spans = await parseFile(path, parser, deps);
       const previous = deps.metadata.listChunksByFileId(fileId);
       const diff = buildDiff(spans, previous);
+      const previousChunkIds = previous.map((row) => row.chunkId);
 
       const upsertRows = await buildVectorAndMetadataRows(
         diff.hasStructuralChange ? diff.all : diff.changedOrNew,
@@ -55,9 +56,9 @@ export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileInde
 
       if (diff.hasStructuralChange) {
         await deps.vector.deleteBySourcePath(path);
-        if (diff.removedChunkIds.length > 0) {
-          deps.metadata.deleteChunksByIds(diff.removedChunkIds);
-          deps.metadata.deleteFtsChunksByIds(diff.removedChunkIds);
+        if (previousChunkIds.length > 0) {
+          deps.metadata.deleteChunksByIds(previousChunkIds);
+          deps.metadata.deleteFtsChunksByIds(previousChunkIds);
         }
       } else if (diff.removedChunkIds.length > 0) {
         deps.metadata.deleteChunksByIds(diff.removedChunkIds);

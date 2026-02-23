@@ -104,6 +104,40 @@ describe("file index processor", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("replaces chunk metadata when same offsets have new content", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-file-processor-"));
+    const dbPath = join(dir, "index.db");
+    const filePath = join(dir, "a.txt");
+    writeFileSync(filePath, "alpha");
+
+    const repo = createIndexMetadataRepository({ dbPath });
+    const processor = createFileIndexProcessor({
+      embedding: { async embed(text) { return [text.length]; } },
+      chunking,
+      vector: {
+        async upsert() {},
+        async deleteBySourcePath() {},
+      },
+      metadata: repo,
+    });
+
+    await processor.indexFile(filePath, parser);
+    await Bun.sleep(5);
+    writeFileSync(filePath, "beta1");
+    await processor.indexFile(filePath, parser);
+
+    const file = repo.getFileByPath(filePath);
+    const chunks = file ? repo.listChunksByFileId(file.fileId) : [];
+    expect(chunks.length).toBe(1);
+    expect(chunks[0]?.startOffset).toBe(0);
+    expect(chunks[0]?.endOffset).toBe(5);
+    expect(repo.searchFts("alpha", 10).length).toBe(0);
+    expect(repo.searchFts("beta1", 10).length).toBe(1);
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("deleteFile clears chunks and marks file as deleted", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-file-processor-"));
     const dbPath = join(dir, "index.db");
