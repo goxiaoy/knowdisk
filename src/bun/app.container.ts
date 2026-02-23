@@ -29,6 +29,7 @@ export type AppContainer = {
   indexingService: IndexingService;
   addSourceAndReindex: (path: string) => Promise<SourceConfig[]>;
   forceResync: () => Promise<{ ok: boolean; error?: string }>;
+  close: () => void;
   mcpServer: ReturnType<typeof createMcpServer> | null;
 };
 
@@ -218,6 +219,9 @@ function registerDependencies(
           indexingService,
           addSourceAndReindex,
           forceResync,
+          close: () => {
+            metadataRepo?.close();
+          },
           mcpServer: null,
         } satisfies AppContainer;
       }
@@ -236,6 +240,9 @@ function registerDependencies(
         indexingService,
         addSourceAndReindex,
         forceResync,
+        close: () => {
+          metadataRepo?.close();
+        },
         mcpServer,
       } satisfies AppContainer;
     },

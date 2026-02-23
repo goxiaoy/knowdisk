@@ -1,68 +1,77 @@
-# React + Tailwind + Vite Electrobun Template
+# Know Disk
 
-A fast Electrobun desktop app template with React, Tailwind CSS, and Vite for hot module replacement (HMR).
+Know Disk is a local desktop RAG app built with Electrobun + React. It indexes local source directories into a vector store, keeps index metadata in SQLite, exposes retrieval over UI and MCP, and supports incremental updates with periodic reconcile.
 
-## Getting Started
+## Stack
+
+- Bun / Electrobun
+- React + Tailwind + Vite
+- `@zvec/zvec` (vector index)
+- `bun:sqlite` (index metadata + FTS5)
+- pino (structured logs)
+
+## Development
 
 ```bash
-# Install dependencies
+# Install deps
 bun install
 
-# Development without HMR (uses bundled assets)
+# Dev (bundled assets)
 bun run dev
 
-# Development with HMR (recommended)
+# Dev with HMR
 bun run dev:hmr
 
-# Build for production
-bun run build
-
-# Build for production release
-bun run build:prod
+# Tests
+bun test
 ```
 
-## How HMR Works
+`bun run dev` and `bun run dev:hmr` run with `LOG_LEVEL=debug`.
 
-When you run `bun run dev:hmr`:
+## Runtime Data Paths
 
-1. **Vite dev server** starts on `http://localhost:5173` with HMR enabled
-2. **Electrobun** starts and detects the running Vite server
-3. The app loads from the Vite dev server instead of bundled assets
-4. Changes to React components update instantly without full page reload
+By default (macOS/Linux), Know Disk stores runtime data under:
 
-When you run `bun run dev` (without HMR):
+- `~/.knowdisk/app-config.json`
+- `~/.knowdisk/zvec/...` (vector collection)
+- `~/.knowdisk/metadata/index.db` (SQLite metadata + FTS)
+- `~/.knowdisk/cache/...` (local model caches)
 
-1. Electrobun starts and loads from `views://mainview/index.html`
-2. You need to rebuild (`bun run build`) to see changes
+## Indexing Model
 
-## Project Structure
+Indexing uses three truths:
 
-```
-├── src/
-│   ├── bun/
-│   │   └── index.ts        # Main process (Electrobun/Bun)
-│   └── mainview/
-│       ├── App.tsx         # React app component
-│       ├── main.tsx        # React entry point
-│       ├── index.html      # HTML template
-│       └── index.css       # Tailwind CSS
-├── electrobun.config.ts    # Electrobun configuration
-├── vite.config.ts          # Vite configuration
-├── tailwind.config.js      # Tailwind configuration
-└── package.json
-```
+1. File system is source of truth.
+2. SQLite metadata tracks files/chunks/jobs.
+3. Vector index is a rebuildable cache of embeddings.
 
-## Customizing
+### Incremental behavior
 
-- **React components**: Edit files in `src/mainview/`
-- **Tailwind theme**: Edit `tailwind.config.js`
-- **Vite settings**: Edit `vite.config.ts`
-- **Window settings**: Edit `src/bun/index.ts`
-- **App metadata**: Edit `electrobun.config.ts`
+- File changes are enqueued as jobs.
+- Worker processes jobs with retry/backoff.
+- Chunk-level diff uses hash-based updates.
+- Scheduled reconcile scans sources periodically and repairs drift.
 
-## Verification Gate
+## Retrieval
 
-Before claiming feature-complete for local RAG + MCP behavior, run:
+Search uses hybrid recall:
+
+- vector recall from zvec
+- keyword recall from SQLite FTS5
+- merge + dedupe by `chunkId`
+- optional reranker final ordering
+
+## MCP Endpoint
+
+When enabled in config, MCP is exposed via HTTP:
+
+- `http://127.0.0.1:<port>/mcp`
+
+Default port is `3467`.
+
+## Verification
+
+Recommended verification before merge/release:
 
 ```bash
 bun test
@@ -70,8 +79,4 @@ bun run build
 bun run dev
 ```
 
-Record outcomes in `docs/plans/verification-checklist-local-rag-mcp.md` including:
-
-- command summaries,
-- execution date/time,
-- known gaps that still require manual validation.
+Record outcomes in `docs/plans/verification-checklist-local-rag-mcp.md`.

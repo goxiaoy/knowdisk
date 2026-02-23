@@ -34,6 +34,7 @@ container.loggerService.info(
 );
 const startupConfig = container.configService.getConfig();
 let mcpHttpServer: ReturnType<typeof Bun.serve> | null = null;
+let reconcileTimer: ReturnType<typeof setInterval> | null = null;
 if (startupConfig.mcp.enabled && container.mcpServer) {
   try {
     mcpHttpServer = Bun.serve({
@@ -56,6 +57,20 @@ if (startupConfig.mcp.enabled && container.mcpServer) {
       "Failed to start MCP HTTP endpoint",
     );
   }
+}
+if (startupConfig.indexing.reconcile.enabled) {
+  reconcileTimer = setInterval(() => {
+    void container.indexingService.runScheduledReconcile().catch((error) => {
+      container.loggerService.error(
+        { subsystem: "indexing", error: String(error) },
+        "scheduled reconcile failed",
+      );
+    });
+  }, startupConfig.indexing.reconcile.intervalMs);
+  container.loggerService.info(
+    { intervalMs: startupConfig.indexing.reconcile.intervalMs },
+    "Index reconcile scheduler started",
+  );
 }
 
 const rpc = BrowserView.defineRPC({
@@ -173,8 +188,12 @@ const mainWindow = new BrowserWindow({
 });
 
 mainWindow.on("close", () => {
+  if (reconcileTimer) {
+    clearInterval(reconcileTimer);
+  }
   mcpHttpServer?.stop(true);
   void container.mcpServer?.close();
+  container.close();
   Utils.quit();
 });
 
