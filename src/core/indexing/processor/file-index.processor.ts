@@ -5,6 +5,10 @@ import type { IndexChunkRow } from "../metadata/index-metadata.repository.types"
 import type { ChunkDiff, ChunkSpan, FileIndexProcessor, FileIndexProcessorDeps } from "./file-index.processor.types";
 import type { Parser } from "../../parser/parser.types";
 
+const DEFAULT_CHUNK_SIZE_CHARS = 1200;
+const DEFAULT_CHUNK_OVERLAP_CHARS = 200;
+const CHARS_PER_TOKEN = 4;
+
 export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileIndexProcessor {
   const streamThresholdBytes = deps.streamThresholdBytes ?? 10 * 1024 * 1024;
   const nowMs = deps.nowMs ?? (() => Date.now());
@@ -121,13 +125,9 @@ async function parseFile(
       if (parsed.skipped || !parsed.text.trim()) {
         continue;
       }
-      spans.push({
-        text: parsed.text,
-        startOffset: parsed.startOffset,
-        endOffset: parsed.endOffset,
-        tokenCount: parsed.tokenEstimate,
-        chunkHash: hashText(parsed.text),
-      });
+      spans.push(
+        ...chunkText(parsed.text, parsed.startOffset),
+      );
     }
     return spans;
   }
@@ -137,15 +137,7 @@ async function parseFile(
   if (parsed.skipped || !parsed.text.trim()) {
     return [];
   }
-  return [
-    {
-      text: parsed.text,
-      startOffset: null,
-      endOffset: null,
-      tokenCount: null,
-      chunkHash: hashText(parsed.text),
-    },
-  ];
+  return chunkText(parsed.text, 0);
 }
 
 function buildDiff(spans: ChunkSpan[], previous: IndexChunkRow[]): ChunkDiff {
@@ -261,6 +253,33 @@ async function buildVectorAndMetadataRows(
 
 function hashText(text: string) {
   return createHash("sha256").update(text).digest("hex");
+}
+
+function chunkText(text: string, baseOffset: number): ChunkSpan[] {
+  const spans: ChunkSpan[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const end = Math.min(text.length, cursor + DEFAULT_CHUNK_SIZE_CHARS);
+    const chunk = text.slice(cursor, end);
+    if (chunk.trim()) {
+      spans.push({
+        text: chunk,
+        startOffset: baseOffset + cursor,
+        endOffset: baseOffset + end,
+        tokenCount: estimateTokens(chunk),
+        chunkHash: hashText(chunk),
+      });
+    }
+    if (end >= text.length) {
+      break;
+    }
+    cursor = Math.max(0, end - DEFAULT_CHUNK_OVERLAP_CHARS);
+  }
+  return spans;
+}
+
+function estimateTokens(text: string) {
+  return Math.max(1, Math.ceil(text.length / CHARS_PER_TOKEN));
 }
 
 function spanKey(startOffset: number | null, endOffset: number | null) {

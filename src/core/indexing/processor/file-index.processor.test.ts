@@ -126,4 +126,68 @@ describe("file index processor", () => {
     repo.close();
     rmSync(dir, { recursive: true, force: true });
   });
+
+  test("uses unified chunking strategy for full read and stream parsing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-file-processor-"));
+    const dbPath = join(dir, "index.db");
+    const smallPath = join(dir, "small.txt");
+    const largePath = join(dir, "large.txt");
+    const text = "x".repeat(2500);
+    writeFileSync(smallPath, text);
+    writeFileSync(largePath, text);
+
+    const repo = createIndexMetadataRepository({ dbPath });
+    const calls: Array<{ sourcePath: string; count: number; starts: number[] }> = [];
+    const processor = createFileIndexProcessor({
+      embedding: { async embed(input) { return [input.length]; } },
+      vector: {
+        async upsert(rows) {
+          calls.push({
+            sourcePath: rows[0]?.metadata.sourcePath ?? "",
+            count: rows.length,
+            starts: rows
+              .map((row) => row.metadata.startOffset ?? -1)
+              .filter((value) => value >= 0),
+          });
+        },
+        async deleteBySourcePath() {},
+      },
+      metadata: repo,
+      streamThresholdBytes: 1,
+    });
+
+    await processor.indexFile(largePath, parser);
+
+    const processorNoStream = createFileIndexProcessor({
+      embedding: { async embed(input) { return [input.length]; } },
+      vector: {
+        async upsert(rows) {
+          calls.push({
+            sourcePath: rows[0]?.metadata.sourcePath ?? "",
+            count: rows.length,
+            starts: rows
+              .map((row) => row.metadata.startOffset ?? -1)
+              .filter((value) => value >= 0),
+          });
+        },
+        async deleteBySourcePath() {},
+      },
+      metadata: repo,
+      streamThresholdBytes: 10_000_000,
+    });
+
+    await processorNoStream.indexFile(smallPath, parser);
+
+    const streamed = calls.find((item) => item.sourcePath === largePath);
+    const fullRead = calls.find((item) => item.sourcePath === smallPath);
+    expect(streamed).toBeDefined();
+    expect(fullRead).toBeDefined();
+    expect(streamed!.count).toBeGreaterThan(1);
+    expect(fullRead!.count).toBeGreaterThan(1);
+    expect(streamed!.starts).toContain(0);
+    expect(fullRead!.starts).toContain(0);
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
