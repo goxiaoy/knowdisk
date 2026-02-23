@@ -146,6 +146,24 @@ describe("getDefaultConfig", () => {
     expect(migrated.sources).toEqual([{ path: "/user/goxy/a", enabled: true }]);
   });
 
+  test("preserves input order when collapsing nested sources", () => {
+    const migrated = migrateConfig({
+      version: 1,
+      sources: [
+        { path: "/x/y", enabled: true },
+        { path: "/a/b", enabled: true },
+        { path: "/a", enabled: true },
+        { path: "/z", enabled: true },
+      ],
+    });
+
+    expect(migrated.sources).toEqual([
+      { path: "/x/y", enabled: true },
+      { path: "/a", enabled: true },
+      { path: "/z", enabled: true },
+    ]);
+  });
+
   test("updates embedding and reranker settings", () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-config-"));
     const configPath = join(dir, "app-config.json");

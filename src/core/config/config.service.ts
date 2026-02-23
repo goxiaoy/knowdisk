@@ -512,7 +512,11 @@ function normalizeSources(input: unknown[]): SourceConfig[] {
 }
 
 function normalizeSourcePath(path: string) {
-  return path.trim().replace(/\/+$/, "");
+  const trimmed = path.trim();
+  if (trimmed === "/") {
+    return trimmed;
+  }
+  return trimmed.replace(/\/+$/, "");
 }
 
 function dedupeAndCollapseSources(sources: SourceConfig[]): SourceConfig[] {
@@ -529,16 +533,18 @@ function dedupeAndCollapseSources(sources: SourceConfig[]): SourceConfig[] {
     });
   }
 
-  const sorted = Array.from(mergedByPath.values()).sort((a, b) =>
-    a.path.localeCompare(b.path) || a.path.length - b.path.length,
-  );
-
   const collapsed: SourceConfig[] = [];
-  for (const candidate of sorted) {
+  for (const candidate of mergedByPath.values()) {
     const hasParent = collapsed.some((parent) => isSameOrParentPath(parent.path, candidate.path));
-    if (!hasParent) {
-      collapsed.push(candidate);
+    if (hasParent) {
+      continue;
     }
+    for (let i = collapsed.length - 1; i >= 0; i -= 1) {
+      if (isSameOrParentPath(candidate.path, collapsed[i]!.path)) {
+        collapsed.splice(i, 1);
+      }
+    }
+    collapsed.push(candidate);
   }
   return collapsed;
 }
