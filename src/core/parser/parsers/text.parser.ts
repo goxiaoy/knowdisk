@@ -1,4 +1,5 @@
 import type { Parser } from "../parser.types";
+import { readFile } from "node:fs/promises";
 
 const STREAM_CHUNK_SIZE = 4000;
 const CHARS_PER_TOKEN = 4;
@@ -31,6 +32,12 @@ export const textParser: Parser = {
         tokenEstimate: estimateTokens(text),
       };
     }
+  },
+  async readRange(path, startOffset, endOffset) {
+    const text = await readFile(path, "utf8");
+    const start = Math.max(0, startOffset);
+    const end = Math.max(start, endOffset);
+    return text.slice(start, end);
   },
 };
 

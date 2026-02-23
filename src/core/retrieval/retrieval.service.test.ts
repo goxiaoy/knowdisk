@@ -127,3 +127,41 @@ test("retrieves all chunks by source path and keeps ordering metadata", async ()
     tokenEstimate: 12,
   });
 });
+
+test("retrieveBySourcePath resolves chunk text via sourceReader when offsets exist", async () => {
+  const svc = createRetrievalService({
+    embedding: { async embed() { return [1, 0]; } },
+    vector: {
+      async search() {
+        return [];
+      },
+      async listBySourcePath() {
+        return [
+          {
+            chunkId: "c1",
+            score: 0,
+            metadata: {
+              sourcePath: "docs/a.md",
+              chunkText: "preview only",
+              startOffset: 10,
+              endOffset: 20,
+              tokenEstimate: 3,
+            },
+          },
+        ];
+      },
+    },
+    sourceReader: {
+      async readRange(path: string, startOffset: number, endOffset: number) {
+        expect(path).toBe("docs/a.md");
+        expect(startOffset).toBe(10);
+        expect(endOffset).toBe(20);
+        return "resolved-from-source";
+      },
+    },
+    defaults: { topK: 5 },
+  });
+
+  const rows = await svc.retrieveBySourcePath("docs/a.md");
+  expect(rows[0]?.chunkText).toBe("resolved-from-source");
+});

@@ -34,8 +34,10 @@ describe("index worker", () => {
       backoffMs: [1000, 5000],
     });
 
-    const processed = await worker.runOnce(100);
-    expect(processed).toBe(2);
+    const stats = await worker.runOnce(100);
+    expect(stats.claimed).toBe(2);
+    expect(stats.settled).toBe(2);
+    expect(stats.retried).toBe(0);
     expect(count).toBe(2);
     expect(repo.getJobById("j1")?.status).toBe("done");
     expect(repo.getJobById("j2")?.status).toBe("done");
@@ -62,14 +64,23 @@ describe("index worker", () => {
       backoffMs: [1000, 5000],
     });
 
-    await worker.runOnce(100);
+    const firstStats = await worker.runOnce(100);
+    expect(firstStats.claimed).toBe(1);
+    expect(firstStats.settled).toBe(0);
+    expect(firstStats.retried).toBe(1);
     const first = repo.getJobById("j1");
     expect(first?.status).toBe("pending");
     expect(first?.nextRunAtMs).toBe(1100);
 
-    expect(await worker.runOnce(500)).toBe(0);
+    const waitStats = await worker.runOnce(500);
+    expect(waitStats.claimed).toBe(0);
+    expect(waitStats.settled).toBe(0);
+    expect(waitStats.retried).toBe(0);
 
-    await worker.runOnce(1100);
+    const secondStats = await worker.runOnce(1100);
+    expect(secondStats.claimed).toBe(1);
+    expect(secondStats.settled).toBe(1);
+    expect(secondStats.retried).toBe(0);
     const second = repo.getJobById("j1");
     expect(second?.status).toBe("failed");
     expect(second?.attempt).toBe(2);

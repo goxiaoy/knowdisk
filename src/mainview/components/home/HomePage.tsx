@@ -53,8 +53,8 @@ export function HomePage({
 
         <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
           <div className="space-y-6">
-            <VectorStatsCard />
             <IndexStatusCard />
+            <VectorStatsCard />
           </div>
           <RetrievalSearchCard />
         </div>

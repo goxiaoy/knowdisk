@@ -17,6 +17,13 @@ export type RetrievalResult = {
 export type RetrievalDeps = {
   embedding: EmbeddingProvider;
   vector: Pick<VectorRepository, "search" | "listBySourcePath">;
+  sourceReader?: {
+    readRange: (
+      path: string,
+      startOffset: number,
+      endOffset: number,
+    ) => Promise<string>;
+  };
   fts?: {
     searchFts: (query: string, limit: number) => FtsSearchRow[];
   };

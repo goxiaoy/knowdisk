@@ -124,7 +124,11 @@ export function IndexStatusCard({
         </div>
         <div className="md:col-span-2">
           <dt className="text-slate-500">Worker Last Error</dt>
-          <dd data-testid="index-status-worker-last-error" className="font-medium text-rose-700">
+          <dd
+            data-testid="index-status-worker-last-error"
+            tabIndex={0}
+            className="select-text font-medium text-rose-700"
+          >
             {status.worker.lastError || "-"}
           </dd>
         </div>
@@ -136,7 +140,11 @@ export function IndexStatusCard({
             ) : (
               <ul className="list-disc space-y-1 pl-5">
                 {status.run.errors.map((error, index) => (
-                  <li key={`${index}-${error}`} className="break-all">
+                  <li
+                    key={`${index}-${error}`}
+                    tabIndex={0}
+                    className="break-all select-text"
+                  >
                     {error}
                   </li>
                 ))}

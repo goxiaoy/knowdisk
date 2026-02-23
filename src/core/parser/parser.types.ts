@@ -11,6 +11,11 @@ export type ParseChunk = {
 export type Parser = {
   id: "markdown" | "text" | "unsupported";
   parseStream: (input: AsyncIterable<string>) => AsyncIterable<ParseChunk>;
+  readRange: (
+    path: string,
+    startOffset: number,
+    endOffset: number,
+  ) => Promise<string>;
 };
 
 export type ParserMeta = {

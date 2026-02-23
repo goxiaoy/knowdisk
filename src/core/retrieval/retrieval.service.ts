@@ -41,7 +41,33 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
     },
     async retrieveBySourcePath(sourcePath: string) {
       const rows = await deps.vector.listBySourcePath(sourcePath);
-      return rows.map(mapRow);
+      return Promise.all(
+        rows.map(async (row) => {
+          let chunkText = row.metadata.chunkText ?? "";
+          if (
+            deps.sourceReader &&
+            row.metadata.startOffset !== undefined &&
+            row.metadata.endOffset !== undefined
+          ) {
+            try {
+              chunkText = await deps.sourceReader.readRange(
+                row.metadata.sourcePath,
+                row.metadata.startOffset,
+                row.metadata.endOffset,
+              );
+            } catch {
+              // fallback to preview from vector metadata
+            }
+          }
+          return mapRow({
+            ...row,
+            metadata: {
+              ...row.metadata,
+              chunkText,
+            },
+          });
+        }),
+      );
     },
   };
 }

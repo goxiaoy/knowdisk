@@ -5,6 +5,8 @@ import type { IndexChunkRow } from "../metadata/index-metadata.repository.types"
 import type { ChunkDiff, ChunkSpan, FileIndexProcessor, FileIndexProcessorDeps } from "./file-index.processor.types";
 import type { Parser } from "../../parser/parser.types";
 
+const VECTOR_PREVIEW_CHARS = 200;
+
 export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileIndexProcessor {
   const nowMs = deps.nowMs ?? (() => Date.now());
   const makeFileId = deps.makeFileId ?? defaultMakeFileId;
@@ -199,7 +201,7 @@ async function buildVectorAndMetadataRows(
       vector,
       metadata: {
         sourcePath,
-        chunkText: span.text,
+        chunkText: toPreview(span.text),
         startOffset: span.startOffset ?? undefined,
         endOffset: span.endOffset ?? undefined,
         tokenEstimate: span.tokenCount ?? undefined,
@@ -260,9 +262,16 @@ function defaultMakeChunkId(input: {
   chunkHash: string;
 }) {
   const key = `${input.fileId}#${input.startOffset ?? ""}#${input.endOffset ?? ""}#${input.chunkHash}`;
-  return `chunk_${createHash("sha256").update(key).digest("hex")}`;
+  return `c_${createHash("sha256").update(key).digest("hex").slice(0, 32)}`;
 }
 
 function toNullableNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function toPreview(text: string) {
+  if (text.length <= VECTOR_PREVIEW_CHARS) {
+    return text;
+  }
+  return `${text.slice(0, VECTOR_PREVIEW_CHARS)}...`;
 }

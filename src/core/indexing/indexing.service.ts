@@ -115,13 +115,15 @@ export function createSourceIndexingService(
       notify();
     },
     onJobError(path, _jobType, error) {
-      indexingState.run.errors.push(`${path}: ${error}`);
+      const message = `${path}: ${error}`;
+      indexingState.run.errors.push(message);
+      log.error({ path, error }, "index job failed");
       indexingState.worker.currentFiles = indexingState.worker.currentFiles.filter(
         (item) => item !== path,
       );
       indexingState.worker.runningWorkers = indexingState.worker.currentFiles.length;
       indexingState.worker.phase = "failed";
-      indexingState.worker.lastError = `${path}: ${error}`;
+      indexingState.worker.lastError = message;
       notify();
     },
   });
@@ -314,11 +316,15 @@ export function createSourceIndexingService(
               mtimeMs: fileStat.mtimeMs,
             });
           } catch (error) {
-            indexingState.run.errors.push(`${filePath}: ${String(error)}`);
+            const message = `${filePath}: ${String(error)}`;
+            indexingState.run.errors.push(message);
+            log.error({ path: filePath, error: String(error) }, "failed to stat source file");
           }
         }
       } catch (error) {
-        indexingState.run.errors.push(`${source.path}: ${String(error)}`);
+        const message = `${source.path}: ${String(error)}`;
+        indexingState.run.errors.push(message);
+        log.error({ sourcePath: source.path, error: String(error) }, "failed to scan source");
       }
     }
 
@@ -372,18 +378,18 @@ export function createSourceIndexingService(
     indexingState.scheduler.phase = "draining";
     while (true) {
       const flushed = scheduler.flushDue(Date.now());
-      const processed = await worker.runOnce(Date.now());
+      const stats = await worker.runOnce(Date.now());
       if (flushed > 0) {
         indexingState.scheduler.queueDepth += flushed;
       }
-      if (processed > 0) {
+      if (stats.settled > 0) {
         indexingState.scheduler.queueDepth = Math.max(
           0,
-          indexingState.scheduler.queueDepth - processed,
+          indexingState.scheduler.queueDepth - stats.settled,
         );
       }
       notify();
-      if (flushed === 0 && processed === 0) {
+      if (flushed === 0 && stats.claimed === 0) {
         break;
       }
     }

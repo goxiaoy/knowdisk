@@ -8,7 +8,9 @@ export type WorkerProcessor = {
 
 export type IndexWorker = {
   start: () => void;
-  runOnce: (nowMs?: number) => Promise<number>;
+  runOnce: (
+    nowMs?: number,
+  ) => Promise<{ claimed: number; settled: number; retried: number }>;
 };
 
 export type IndexWorkerDeps = {

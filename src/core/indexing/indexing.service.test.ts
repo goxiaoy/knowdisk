@@ -228,7 +228,8 @@ test("index status includes current file while indexing", async () => {
   expect(seenCurrentFiles[seenCurrentFiles.length - 1]).toEqual([]);
   expect(seenChunkIds.length).toBeGreaterThan(0);
   for (const chunkId of seenChunkIds) {
-    expect(chunkId.startsWith("chunk_")).toBe(true);
+    expect(chunkId.startsWith("c_")).toBe(true);
+    expect(chunkId.length).toBeLessThanOrEqual(64);
     expect(chunkId.includes("/")).toBe(false);
   }
 });

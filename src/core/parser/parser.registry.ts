@@ -6,6 +6,9 @@ const markdownParser: Parser = {
   parseStream(input) {
     return textParser.parseStream(input);
   },
+  readRange(path, startOffset, endOffset) {
+    return textParser.readRange(path, startOffset, endOffset);
+  },
 };
 
 const unsupportedParser: Parser = {
@@ -18,6 +21,9 @@ const unsupportedParser: Parser = {
       tokenEstimate: 0,
       skipped: "UNSUPPORTED_TYPE",
     };
+  },
+  async readRange() {
+    throw new Error("UNSUPPORTED_TYPE");
   },
 };
 

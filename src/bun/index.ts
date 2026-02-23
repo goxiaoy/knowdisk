@@ -93,6 +93,18 @@ if (startupConfig.mcp.enabled && container.mcpServer) {
   }
 }
 if (startupConfig.indexing.reconcile.enabled) {
+  void container.indexingService.runScheduledReconcile().then((report) => {
+    container.loggerService.info(
+      { repaired: report.repaired },
+      "Startup reconcile completed",
+    );
+  }).catch((error) => {
+    container.loggerService.error(
+      { subsystem: "indexing", error: String(error) },
+      "startup reconcile failed",
+    );
+  });
+
   reconcileTimer = setInterval(() => {
     void container.indexingService.runScheduledReconcile().catch((error) => {
       container.loggerService.error(

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createIndexMetadataRepository } from "../metadata/index-metadata.repository";
@@ -20,6 +20,9 @@ const parser: Parser = {
       };
       offset += chunk.length;
     }
+  },
+  async readRange(path, startOffset, endOffset) {
+    return readFileSync(path, "utf8").slice(startOffset, endOffset);
   },
 };
 

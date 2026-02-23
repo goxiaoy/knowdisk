@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { join } from "node:path";
+import { extname } from "node:path";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
 import { defaultConfigService } from "../core/config/config.service";
 import type { ConfigService } from "../core/config/config.types";
@@ -22,6 +23,7 @@ import { createRetrievalService } from "../core/retrieval/retrieval.service";
 import type { RetrievalService } from "../core/retrieval/retrieval.service.types";
 import { createVectorRepository } from "../core/vector/vector.repository";
 import type { VectorRepository } from "../core/vector/vector.repository.types";
+import { resolveParser } from "../core/parser/parser.registry";
 
 export type AppContainer = {
   loggerService: LoggerService;
@@ -173,6 +175,14 @@ function registerDependencies(
         fts: {
           searchFts(query: string, limit: number) {
             return metadata.searchFts(query, limit);
+          },
+        },
+        sourceReader: {
+          readRange(path: string, startOffset: number, endOffset: number) {
+            const parser = resolveParser({
+              ext: extname(path).toLowerCase(),
+            });
+            return parser.readRange(path, startOffset, endOffset);
           },
         },
         reranker: reranker ?? undefined,

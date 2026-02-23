@@ -10,7 +10,8 @@ export function createIndexWorker(deps: IndexWorkerDeps): IndexWorker {
 
     async runOnce(nowMs = Date.now()) {
       const claimed = deps.metadata.claimDueJobs(deps.concurrency, nowMs);
-      let processed = 0;
+      let settled = 0;
+      let retried = 0;
       for (const job of claimed) {
         try {
           deps.onJobStart?.(job.path, job.jobType);
@@ -24,18 +25,20 @@ export function createIndexWorker(deps: IndexWorkerDeps): IndexWorker {
           }
           deps.metadata.completeJob(job.jobId);
           deps.onJobDone?.(job.path, job.jobType);
-          processed += 1;
+          settled += 1;
         } catch (error) {
           deps.onJobError?.(job.path, job.jobType, String(error));
           if (job.attempt >= deps.maxAttempts) {
             deps.metadata.failJob(job.jobId, String(error));
+            settled += 1;
             continue;
           }
           const backoff = deps.backoffMs[Math.min(job.attempt - 1, deps.backoffMs.length - 1)] ?? 1000;
           deps.metadata.retryJob(job.jobId, String(error), nowMs + backoff);
+          retried += 1;
         }
       }
-      return processed;
+      return { claimed: claimed.length, settled, retried };
     },
   };
 }
