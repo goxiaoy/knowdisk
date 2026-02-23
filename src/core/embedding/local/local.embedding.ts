@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import type { EmbeddingConfig } from "../embedding.types";
 
@@ -39,10 +39,19 @@ export async function initLocalExtractor(
   const providerDir = join(cfg.local.cacheDir, "provider-local");
   mkdirSync(providerDir, { recursive: true });
   const factory = resolveLocalExtractorFactory(createExtractor);
-  return factory(cfg.local.model, {
+  const options = {
     hfEndpoint: cfg.local.hfEndpoint,
     cacheDir: providerDir,
-  });
+  };
+  try {
+    return await factory(cfg.local.model, options);
+  } catch (error) {
+    if (!isCorruptedOnnxError(error)) {
+      throw error;
+    }
+    clearModelCache(providerDir, cfg.local.model);
+    return factory(cfg.local.model, options);
+  }
 }
 
 export async function createDefaultLocalExtractor(
@@ -76,4 +85,14 @@ export async function createDefaultLocalExtractor(
       ) => Promise<LocalExtractor>;
     }
   ).pipeline("feature-extraction", model);
+}
+
+function isCorruptedOnnxError(error: unknown) {
+  const message = String(error ?? "").toLowerCase();
+  return message.includes("protobuf parsing failed");
+}
+
+function clearModelCache(cacheDir: string, model: string) {
+  const modelDir = join(cacheDir, model);
+  rmSync(modelDir, { recursive: true, force: true });
 }

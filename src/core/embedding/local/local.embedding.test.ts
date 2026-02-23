@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   createDefaultLocalExtractor,
   embedWithLocalProvider,
@@ -63,4 +66,37 @@ test("initLocalExtractor creates provider-local cache directory", async () => {
   );
   const vector = await embedWithLocalProvider("x", extractor);
   expect(vector).toHaveLength(1);
+});
+
+test("initLocalExtractor clears model cache and retries once on protobuf parsing failure", async () => {
+  const base = join(tmpdir(), `knowdisk-embed-${Date.now()}`);
+  const cfg = makeLocalConfig({
+    cacheDir: base,
+    model: "onnx-community/gte-multilingual-base",
+  });
+  const modelCacheDir = join(
+    base,
+    "provider-local",
+    "onnx-community",
+    "gte-multilingual-base",
+  );
+  mkdirSync(modelCacheDir, { recursive: true });
+  writeFileSync(join(modelCacheDir, "marker.txt"), "x");
+
+  let attempts = 0;
+  const extractor = await initLocalExtractor(
+    cfg,
+    async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("Protobuf parsing failed");
+      }
+      return async () => ({ data: new Float32Array([0.5]) });
+    },
+  );
+
+  const vector = await embedWithLocalProvider("x", extractor);
+  expect(vector).toEqual([0.5]);
+  expect(attempts).toBe(2);
+  expect(existsSync(modelCacheDir)).toBe(false);
 });

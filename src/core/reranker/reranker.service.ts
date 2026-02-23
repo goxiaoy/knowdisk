@@ -9,18 +9,16 @@ export function createReranker(config: AppConfig["reranker"]): RerankerService |
   }
 
   const topN = getTopN(config);
-  const providerDir = getProviderDir(config);
-  mkdirSync(providerDir, { recursive: true });
+  const localRuntimePromise = config.provider === "local"
+    ? initLocalRerankerRuntime(config)
+    : null;
+  void localRuntimePromise?.catch(() => {});
 
   return {
     async rerank(query: string, rows: RerankRow[], opts: { topK: number }) {
-      const queryTerms = tokenize(query);
-      const rescored = rows.map((row) => {
-        const overlap = countOverlap(queryTerms, tokenize(row.metadata.chunkText ?? ""));
-        const blend = row.score * 0.75 + overlap * 0.25;
-        return { ...row, score: blend };
-      });
-
+      const rescored = config.provider === "local"
+        ? await rerankWithLocalModel(query, rows, localRuntimePromise)
+        : rerankWithTokenOverlap(query, rows);
       rescored.sort((a, b) => b.score - a.score || a.chunkId.localeCompare(b.chunkId));
       return rescored.slice(0, Math.min(opts.topK, topN));
     },
@@ -33,11 +31,112 @@ function getTopN(config: AppConfig["reranker"]) {
   return config.openai.topN;
 }
 
-function getProviderDir(config: AppConfig["reranker"]) {
-  if (config.provider === "local") {
-    return join(config.local.cacheDir, "provider-local");
+type LocalRerankerRuntime = {
+  tokenizePairs: (query: string, docs: string[]) => Promise<unknown>;
+  score: (inputs: unknown) => Promise<number[]>;
+};
+
+async function initLocalRerankerRuntime(
+  config: AppConfig["reranker"],
+): Promise<LocalRerankerRuntime> {
+  const providerDir = join(config.local.cacheDir, "provider-local");
+  mkdirSync(providerDir, { recursive: true });
+
+  const transformers = await import("@huggingface/transformers");
+  const env = (transformers as unknown as {
+    env?: {
+      allowRemoteModels?: boolean;
+      remoteHost?: string;
+      cacheDir?: string;
+    };
+  }).env;
+
+  if (env) {
+    env.allowRemoteModels = true;
+    env.remoteHost = config.local.hfEndpoint.replace(/\/+$/, "") + "/";
+    env.cacheDir = providerDir;
   }
-  return join("build", "cache", "reranker", config.provider);
+
+  const tokenizer = await (
+    transformers as unknown as {
+      AutoTokenizer: {
+        from_pretrained: (model: string) => Promise<{
+          (
+            texts: string[],
+            opts: {
+              text_pair: string[];
+              padding: boolean;
+              truncation: boolean;
+            },
+          ): unknown;
+        }>;
+      };
+    }
+  ).AutoTokenizer.from_pretrained(config.local.model);
+
+  const model = await (
+    transformers as unknown as {
+      AutoModelForSequenceClassification: {
+        from_pretrained: (model: string, opts: { quantized: boolean }) => Promise<{
+          (inputs: unknown): Promise<{ logits?: { data?: ArrayLike<number> } }>;
+        }>;
+      };
+    }
+  ).AutoModelForSequenceClassification.from_pretrained(config.local.model, {
+    quantized: false,
+  });
+
+  return {
+    async tokenizePairs(query: string, docs: string[]) {
+      const queries = Array(docs.length).fill(query);
+      return tokenizer(queries, {
+        text_pair: docs,
+        padding: true,
+        truncation: true,
+      });
+    },
+    async score(inputs: unknown) {
+      const outputs = await model(inputs);
+      if (!outputs?.logits?.data) {
+        return [];
+      }
+      return Array.from(outputs.logits.data);
+    },
+  };
+}
+
+async function rerankWithLocalModel(
+  query: string,
+  rows: RerankRow[],
+  runtimePromise: Promise<LocalRerankerRuntime> | null,
+) {
+  if (!runtimePromise || rows.length === 0) {
+    return rows;
+  }
+  const docs = rows.map((row) => row.metadata.chunkText ?? "");
+  try {
+    const runtime = await runtimePromise;
+    const inputs = await runtime.tokenizePairs(query, docs);
+    const scores = await runtime.score(inputs);
+    if (scores.length !== rows.length) {
+      return rerankWithTokenOverlap(query, rows);
+    }
+    return rows.map((row, idx) => ({
+      ...row,
+      score: scores[idx] ?? row.score,
+    }));
+  } catch {
+    return rerankWithTokenOverlap(query, rows);
+  }
+}
+
+function rerankWithTokenOverlap(query: string, rows: RerankRow[]) {
+  const queryTerms = tokenize(query);
+  return rows.map((row) => {
+    const overlap = countOverlap(queryTerms, tokenize(row.metadata.chunkText ?? ""));
+    const blend = row.score * 0.75 + overlap * 0.25;
+    return { ...row, score: blend };
+  });
 }
 
 function tokenize(input: string): string[] {

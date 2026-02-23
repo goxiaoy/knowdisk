@@ -64,7 +64,7 @@ export function createDefaultConfig(opts?: {
       local: {
         hfEndpoint: "https://hf-mirror.com",
         cacheDir: rerankerCacheDir,
-        model: "mGTE-Base-Reranker-ML-1024",
+        model: "onnx-community/gte-multilingual-reranker-base",
         topN: 5,
       },
       qwen: {

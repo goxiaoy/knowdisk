@@ -30,6 +30,7 @@ describe("getDefaultConfig", () => {
     expect(cfg.embedding.local.model).toBe("onnx-community/gte-multilingual-base");
     expect(cfg.embedding.local.dimension).toBe(768);
     expect(cfg.embedding.local.hfEndpoint).toBe("https://hf-mirror.com");
+    expect(cfg.reranker.local.model).toBe("onnx-community/gte-multilingual-reranker-base");
     expect(cfg.reranker.local.topN).toBe(5);
   });
 

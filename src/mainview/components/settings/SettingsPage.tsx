@@ -239,7 +239,7 @@ export function SettingsPage({
               local: {
                 hfEndpoint: rerankerLocalHfEndpoint.trim() || "https://hf-mirror.com",
                 cacheDir: rerankerLocalCacheDir.trim() || source.reranker.local.cacheDir,
-                model: rerankerLocalModel.trim() || "BAAI/bge-reranker-base",
+                model: rerankerLocalModel.trim() || source.reranker.local.model,
                 topN: Math.max(1, Number.parseInt(rerankerLocalTopN, 10) || 5),
               },
             },
