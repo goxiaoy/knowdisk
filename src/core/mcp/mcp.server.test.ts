@@ -7,13 +7,14 @@ test("search_local_knowledge returns retrieval payload", async () => {
   const server = createMcpServer({
     retrieval: {
       async search(_query: string, opts: { topK?: number }) {
-        return Array.from({ length: opts.topK ?? 5 }, (_, i) => ({
+        const reranked = Array.from({ length: opts.topK ?? 5 }, (_, i) => ({
           chunkId: `c${i}`,
           sourcePath: `docs/${i}.md`,
           chunkText: `chunk ${i}`,
           score: 1 - i * 0.1,
           updatedAt: "2026-02-21T00:00:00.000Z",
         }));
+        return { reranked, fts: [], vector: reranked };
       },
       async retrieveBySourcePath(_sourcePath: string, _fromVector: boolean) {
         return [];
@@ -27,17 +28,17 @@ test("search_local_knowledge returns retrieval payload", async () => {
   const res = await server.callTool("search_local_knowledge", {
     query: "setup",
     top_k: 3,
-  }) as { results: Array<{ sourcePath: string }> };
+  }) as { reranked: Array<{ sourcePath: string }> };
 
-  expect(res.results).toHaveLength(3);
-  expect(res.results[0]).toHaveProperty("sourcePath");
+  expect(res.reranked).toHaveLength(3);
+  expect(res.reranked[0]).toHaveProperty("sourcePath");
 });
 
 test("search_local_knowledge fails when mcp is disabled", async () => {
   const server = createMcpServer({
     retrieval: {
       async search() {
-        return [];
+        return { reranked: [], fts: [], vector: [] };
       },
       async retrieveBySourcePath(_sourcePath: string, _fromVector: boolean) {
         return [];
@@ -58,13 +59,14 @@ test("http transport supports listTools and callTool", async () => {
   const mcp = createMcpServer({
     retrieval: {
       async search(query: string, opts: { topK?: number }) {
-        return Array.from({ length: opts.topK ?? 5 }, (_, i) => ({
+        const reranked = Array.from({ length: opts.topK ?? 5 }, (_, i) => ({
           chunkId: `c${i}`,
           sourcePath: `docs/${query}-${i}.md`,
           chunkText: `chunk ${i}`,
           score: 1 - i * 0.1,
           updatedAt: "2026-02-21T00:00:00.000Z",
         }));
+        return { reranked, fts: [], vector: reranked };
       },
       async retrieveBySourcePath(sourcePath: string, fromVector: boolean) {
         expect(fromVector).toBe(false);

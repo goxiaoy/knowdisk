@@ -200,8 +200,13 @@ export function SettingsPage({
               local: {
                 hfEndpoint: embeddingLocalHfEndpoint.trim() || "https://hf-mirror.com",
                 cacheDir: embeddingLocalCacheDir.trim() || source.embedding.local.cacheDir,
-                model: embeddingLocalModel.trim() || "Xenova/all-MiniLM-L6-v2",
-                dimension: Math.max(1, Number.parseInt(embeddingLocalDimension, 10) || 384),
+                model: embeddingLocalModel.trim() || source.embedding.local.model,
+                dimension:
+                  Math.max(
+                    1,
+                    Number.parseInt(embeddingLocalDimension, 10) ||
+                      source.embedding.local.dimension,
+                  ),
               },
             },
           }))

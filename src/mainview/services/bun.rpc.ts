@@ -2,6 +2,7 @@ import type { AppConfig, SourceConfig } from "../../core/config/config.types";
 import type { ComponentHealth } from "../../core/health/health.service.types";
 import type { IndexingStatus } from "../../core/indexing/indexing.service.types";
 import type { RetrievalResult } from "../../core/retrieval/retrieval.service.types";
+import type { RetrievalDebugResult } from "../../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
 
 type BridgeRpc = {
@@ -21,7 +22,7 @@ type BridgeRpc = {
       query: string;
       topK: number;
       titleOnly?: boolean;
-    }) => Promise<RetrievalResult[]>;
+    }) => Promise<RetrievalDebugResult>;
     retrieve_source_chunks: (params: { sourcePath: string }) => Promise<RetrievalResult[]>;
     list_source_files: () => Promise<string[]>;
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
@@ -216,7 +217,7 @@ export async function searchRetrievalInBun(
   query: string,
   topK: number,
   titleOnly = false,
-): Promise<RetrievalResult[] | null> {
+): Promise<RetrievalDebugResult | null> {
   const channel = await getRpc();
   if (!channel) return null;
   try {

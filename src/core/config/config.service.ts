@@ -11,6 +11,7 @@ import type {
   LocalRerankerConfig,
   SourceConfig,
 } from "./config.types";
+import { createDefaultConfig } from "./default-config";
 import { isCloudEmbeddingProvider } from "../embedding/embedding.types";
 
 export function getDefaultConfig(): AppConfig {
@@ -20,80 +21,14 @@ export function getDefaultConfig(): AppConfig {
 function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
   const embeddingCacheDir = opts.userDataDir
     ? join(opts.userDataDir, "cache", "embedding", "local")
-    : "build/cache/embedding/local";
+    : undefined;
   const rerankerCacheDir = opts.userDataDir
     ? join(opts.userDataDir, "cache", "reranker", "local")
-    : "build/cache/reranker/local";
-  return {
-    version: 1,
-    onboarding: {
-      completed: false,
-    },
-    sources: [],
-    mcp: {
-      enabled: true,
-      port: 3467,
-    },
-    ui: { mode: "safe" },
-    indexing: {
-      chunking: { sizeChars: 1200, overlapChars: 200, charsPerToken: 4 },
-      watch: { enabled: true, debounceMs: 500 },
-      reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
-      worker: { concurrency: 2, batchSize: 64 },
-      retry: { maxAttempts: 3, backoffMs: [1000, 5000, 20000] },
-    },
-    retrieval: {
-      hybrid: {
-        ftsTopN: 30,
-        vectorTopK: 20,
-        rerankTopN: 10,
-      },
-    },
-    embedding: {
-      provider: "local",
-      local: {
-        hfEndpoint: "https://hf-mirror.com",
-        cacheDir: embeddingCacheDir,
-        model: "Xenova/all-MiniLM-L6-v2",
-        dimension: 384,
-      },
-      qwen_dense: {
-        apiKey: "",
-        model: "text-embedding-v4",
-        dimension: 1024,
-      },
-      qwen_sparse: {
-        apiKey: "",
-        model: "text-embedding-v4",
-        dimension: 1024,
-      },
-      openai_dense: {
-        apiKey: "",
-        model: "text-embedding-3-small",
-        dimension: 1536,
-      },
-    },
-    reranker: {
-      enabled: true,
-      provider: "local",
-      local: {
-        hfEndpoint: "https://hf-mirror.com",
-        cacheDir: rerankerCacheDir,
-        model: "BAAI/bge-reranker-base",
-        topN: 5,
-      },
-      qwen: {
-        apiKey: "",
-        model: "gte-rerank-v2",
-        topN: 5,
-      },
-      openai: {
-        apiKey: "",
-        model: "text-embedding-3-small",
-        topN: 5,
-      },
-    },
-  };
+    : undefined;
+  return createDefaultConfig({
+    embeddingCacheDir,
+    rerankerCacheDir,
+  });
 }
 
 export function validateConfig(cfg: AppConfig): {
@@ -126,17 +61,13 @@ function validateMcp(mcp: AppConfig["mcp"]): string[] {
   return errors;
 }
 
-function normalizePositiveInt(
-  value: unknown,
-  fallback: number,
-): number {
-  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : fallback;
+function normalizePositiveInt(value: unknown, fallback: number): number {
+  return Number.isInteger(value) && Number(value) > 0
+    ? Number(value)
+    : fallback;
 }
 
-function normalizeBackoffMs(
-  value: unknown,
-  fallback: number[],
-): number[] {
+function normalizeBackoffMs(value: unknown, fallback: number[]): number[] {
   if (!Array.isArray(value)) {
     return fallback;
   }
@@ -275,7 +206,8 @@ function migrateConfigWithDefaults(
           ),
         },
         watch: {
-          enabled: next.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
+          enabled:
+            next.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
           debounceMs: normalizePositiveInt(
             next.indexing?.watch?.debounceMs,
             defaults.indexing.watch.debounceMs,
@@ -336,7 +268,9 @@ function migrateConfigWithDefaults(
   return {
     ...defaults,
     version: 1,
-    sources: normalizeSources(Array.isArray(legacy.sources) ? legacy.sources : []),
+    sources: normalizeSources(
+      Array.isArray(legacy.sources) ? legacy.sources : [],
+    ),
   };
 }
 
@@ -552,7 +486,9 @@ function dedupeAndCollapseSources(sources: SourceConfig[]): SourceConfig[] {
 
   const collapsed: SourceConfig[] = [];
   for (const candidate of mergedByPath.values()) {
-    const hasParent = collapsed.some((parent) => isSameOrParentPath(parent.path, candidate.path));
+    const hasParent = collapsed.some((parent) =>
+      isSameOrParentPath(parent.path, candidate.path),
+    );
     if (hasParent) {
       continue;
     }

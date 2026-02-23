@@ -33,6 +33,20 @@ export type RetrievalChunkInfo = {
   updatedAtMs?: number;
 };
 
+export type RetrievalFtsDebugResult = {
+  chunkId: string;
+  sourcePath: string;
+  score: number;
+  kind: "content" | "title";
+  text: string;
+};
+
+export type RetrievalDebugResult = {
+  reranked: RetrievalResult[];
+  fts: RetrievalFtsDebugResult[];
+  vector: RetrievalResult[];
+};
+
 export type RetrievalDeps = {
   embedding: EmbeddingProvider;
   vector: {
@@ -71,7 +85,7 @@ export type RetrievalDeps = {
 };
 
 export type RetrievalService = {
-  search: (query: string, opts: { topK?: number; titleOnly?: boolean }) => Promise<RetrievalResult[]>;
+  search: (query: string, opts: { topK?: number; titleOnly?: boolean }) => Promise<RetrievalDebugResult>;
   retrieveBySourcePath: (sourcePath: string, fromVector: boolean) => Promise<RetrievalResult[]>;
   getSourceChunkInfoByPath: (sourcePath: string) => Promise<RetrievalChunkInfo[]>;
 };

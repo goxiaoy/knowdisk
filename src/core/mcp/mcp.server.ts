@@ -14,10 +14,10 @@ export function createMcpServer(deps: McpServerDeps): McpServerService {
     if (!(deps.isEnabled?.() ?? true)) {
       throw new Error("MCP_DISABLED");
     }
-    const results = await deps.retrieval.search(args.query, {
+    const result = await deps.retrieval.search(args.query, {
       topK: args.top_k ?? 5,
     });
-    return { results };
+    return result;
   };
 
   const runGetSourceChunkInfo = async (args: { source_path: string }) => {

@@ -10,7 +10,7 @@ export function getEmbeddingProviderModel(provider: EmbeddingProviderId): string
   if (provider === "openai_dense") return "text-embedding-3-small";
   if (provider === "qwen_dense") return "text-embedding-v4";
   if (provider === "qwen_sparse") return "text-embedding-v4";
-  return "Xenova/all-MiniLM-L6-v2";
+  return "onnx-community/gte-multilingual-base";
 }
 
 export type EmbeddingConfig = {

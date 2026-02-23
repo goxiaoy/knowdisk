@@ -154,6 +154,26 @@ describe("index metadata repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("searchFts supports Chinese tokenization with nodejieba", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertFtsChunks([
+      {
+        chunkId: "c-zh-1",
+        fileId: "f-zh-1",
+        sourcePath: "/docs/zh.md",
+        title: "中文文档",
+        text: "我们正在实现中文分词和检索能力",
+      },
+    ]);
+
+    const rows = repo.searchFts("中文分词", 10);
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.chunkId).toBe("c-zh-1");
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("enqueues, claims, completes and fails jobs", () => {
     const { dir, repo } = makeRepo();
     repo.enqueueJob({

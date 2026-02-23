@@ -1,80 +1,17 @@
 import type { AppConfig, ConfigService } from "../../core/config/config.types";
-import {
-  getConfigFromBun,
-  updateConfigInBun,
-} from "./bun.rpc";
+import { createDefaultConfig } from "../../core/config/default-config";
+import { getConfigFromBun, updateConfigInBun } from "./bun.rpc";
 
 const STORAGE_KEY = "knowdisk-app-config";
-const listeners = new Set<(event: { prev: AppConfig; next: AppConfig }) => void>();
+const listeners = new Set<
+  (event: { prev: AppConfig; next: AppConfig }) => void
+>();
 
 function getDefaultConfig(): AppConfig {
-  return {
-    version: 1,
-    onboarding: {
-      completed: false,
-    },
-    sources: [],
-    mcp: { enabled: true, port: 3467 },
-    ui: { mode: "safe" },
-    indexing: {
-      chunking: { sizeChars: 1200, overlapChars: 200, charsPerToken: 4 },
-      watch: { enabled: true, debounceMs: 500 },
-      reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
-      worker: { concurrency: 2, batchSize: 64 },
-      retry: { maxAttempts: 3, backoffMs: [1000, 5000, 20000] },
-    },
-    retrieval: {
-      hybrid: {
-        ftsTopN: 30,
-        vectorTopK: 20,
-        rerankTopN: 10,
-      },
-    },
-    embedding: {
-      provider: "local",
-      local: {
-        hfEndpoint: "https://hf-mirror.com",
-        cacheDir: "cache/embedding/local",
-        model: "Xenova/all-MiniLM-L6-v2",
-        dimension: 384,
-      },
-      qwen_dense: {
-        apiKey: "",
-        model: "text-embedding-v4",
-        dimension: 1024,
-      },
-      qwen_sparse: {
-        apiKey: "",
-        model: "text-embedding-v4",
-        dimension: 1024,
-      },
-      openai_dense: {
-        apiKey: "",
-        model: "text-embedding-3-small",
-        dimension: 1536,
-      },
-    },
-    reranker: {
-      enabled: true,
-      provider: "local",
-      local: {
-        hfEndpoint: "https://hf-mirror.com",
-        cacheDir: "cache/reranker/local",
-        model: "BAAI/bge-reranker-base",
-        topN: 5,
-      },
-      qwen: {
-        apiKey: "",
-        model: "gte-rerank-v2",
-        topN: 5,
-      },
-      openai: {
-        apiKey: "",
-        model: "text-embedding-3-small",
-        topN: 5,
-      },
-    },
-  };
+  return createDefaultConfig({
+    embeddingCacheDir: "cache/embedding/local",
+    rerankerCacheDir: "cache/reranker/local",
+  });
 }
 
 function loadConfig(): AppConfig {
@@ -95,7 +32,8 @@ function loadConfig(): AppConfig {
       ...defaults,
       ...parsed,
       onboarding: {
-        completed: parsed.onboarding?.completed ?? defaults.onboarding.completed,
+        completed:
+          parsed.onboarding?.completed ?? defaults.onboarding.completed,
       },
       sources: dedupeAndCollapseSources(
         normalizedSources
@@ -108,7 +46,9 @@ function loadConfig(): AppConfig {
       mcp: {
         enabled: parsed.mcp?.enabled ?? true,
         port:
-          Number.isInteger(parsed.mcp?.port) && (parsed.mcp?.port ?? 0) > 0 && (parsed.mcp?.port ?? 0) <= 65535
+          Number.isInteger(parsed.mcp?.port) &&
+          (parsed.mcp?.port ?? 0) > 0 &&
+          (parsed.mcp?.port ?? 0) <= 65535
             ? (parsed.mcp?.port as number)
             : defaults.mcp.port,
       },
@@ -131,7 +71,8 @@ function loadConfig(): AppConfig {
               : defaults.indexing.chunking.charsPerToken,
         },
         watch: {
-          enabled: parsed.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
+          enabled:
+            parsed.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
           debounceMs:
             Number.isInteger(parsed.indexing?.watch?.debounceMs) &&
             (parsed.indexing?.watch?.debounceMs ?? 0) > 0
@@ -245,7 +186,9 @@ function normalizeSourcePath(path: string) {
   return trimmed.replace(/\/+$/, "");
 }
 
-function dedupeAndCollapseSources(sources: Array<{ path: string; enabled: boolean }>) {
+function dedupeAndCollapseSources(
+  sources: Array<{ path: string; enabled: boolean }>,
+) {
   const mergedByPath = new Map<string, { path: string; enabled: boolean }>();
   for (const source of sources) {
     const existing = mergedByPath.get(source.path);
@@ -261,7 +204,9 @@ function dedupeAndCollapseSources(sources: Array<{ path: string; enabled: boolea
 
   const collapsed: Array<{ path: string; enabled: boolean }> = [];
   for (const candidate of mergedByPath.values()) {
-    const hasParent = collapsed.some((parent) => isSameOrParentPath(parent.path, candidate.path));
+    const hasParent = collapsed.some((parent) =>
+      isSameOrParentPath(parent.path, candidate.path),
+    );
     if (hasParent) {
       continue;
     }

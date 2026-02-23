@@ -9,14 +9,33 @@ describe("RetrievalSearchCard", () => {
       <RetrievalSearchCard
         search={async (query, topK, titleOnly) => {
           calls.push({ query, topK, titleOnly });
-          return [
+          return {
+          reranked: [
             {
               chunkId: "c1",
               sourcePath: "/docs/a.md",
               chunkText: "hello world",
               score: 0.9876,
             },
-          ];
+          ],
+          fts: [
+            {
+              chunkId: "c1",
+              sourcePath: "/docs/a.md",
+              score: 0.1,
+              kind: "content",
+              text: "hello world",
+            },
+          ],
+          vector: [
+            {
+              chunkId: "c1",
+              sourcePath: "/docs/a.md",
+              chunkText: "hello world",
+              score: 0.9,
+            },
+          ],
+          };
         }}
       />,
     );
@@ -31,12 +50,15 @@ describe("RetrievalSearchCard", () => {
     });
 
     expect(calls).toEqual([{ query: "what is knowdisk", topK: 10, titleOnly: false }]);
-    expect(root.findByProps({ children: "/docs/a.md" })).toBeDefined();
+    expect(root.findAllByProps({ children: "/docs/a.md" }).length).toBeGreaterThan(0);
+    expect(root.findByProps({ children: "Rerank Results (1)" })).toBeDefined();
+    expect(root.findByProps({ children: "FTS Results (1)" })).toBeDefined();
+    expect(root.findByProps({ children: "Vector Results (1)" })).toBeDefined();
     const scoreTextExists = root
       .findAllByType("p")
       .some((item) => item.children.map((child) => String(child)).join("").includes("score: 0.988"));
     expect(scoreTextExists).toBe(true);
-    expect(root.findByProps({ children: "hello world" })).toBeDefined();
+    expect(root.findAllByProps({ children: "hello world" }).length).toBeGreaterThan(0);
   });
 
   it("passes titleOnly=true when toggle is enabled", async () => {
@@ -45,7 +67,7 @@ describe("RetrievalSearchCard", () => {
       <RetrievalSearchCard
         search={async (query, topK, titleOnly) => {
           calls.push({ query, topK, titleOnly });
-          return [];
+          return { reranked: [], fts: [], vector: [] };
         }}
       />,
     );
@@ -83,7 +105,11 @@ describe("RetrievalSearchCard", () => {
   });
 
   it("disables search button for empty query", () => {
-    const renderer = create(<RetrievalSearchCard search={async () => []} />);
+    const renderer = create(
+      <RetrievalSearchCard
+        search={async () => ({ reranked: [], fts: [], vector: [] })}
+      />,
+    );
     const button = renderer.root.findByProps({ "data-testid": "retrieval-search" });
     expect(button.props.disabled).toBe(true);
   });
@@ -92,7 +118,7 @@ describe("RetrievalSearchCard", () => {
     const calls: string[] = [];
     const renderer = create(
       <RetrievalSearchCard
-        search={async () => []}
+        search={async () => ({ reranked: [], fts: [], vector: [] })}
         retrieveBySourcePath={async (sourcePath) => {
           calls.push(sourcePath);
           return [
@@ -127,7 +153,7 @@ describe("RetrievalSearchCard", () => {
   it("fills source path from file picker", async () => {
     const renderer = create(
       <RetrievalSearchCard
-        search={async () => []}
+        search={async () => ({ reranked: [], fts: [], vector: [] })}
         retrieveBySourcePath={async () => []}
         listSourceFiles={async () => []}
         pickFilePath={async () => "/picked/path/readme.md"}
@@ -148,7 +174,7 @@ describe("RetrievalSearchCard", () => {
     await act(async () => {
       renderer = create(
         <RetrievalSearchCard
-          search={async () => []}
+          search={async () => ({ reranked: [], fts: [], vector: [] })}
           retrieveBySourcePath={async () => []}
           listSourceFiles={async () => ["/docs/a.md", "/docs/b.md"]}
           pickFilePath={async () => null}

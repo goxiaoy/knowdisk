@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { RetrievalResult } from "../../../core/retrieval/retrieval.service.types";
+import { type ReactNode, useEffect, useState } from "react";
+import type { RetrievalDebugResult, RetrievalResult } from "../../../core/retrieval/retrieval.service.types";
 import {
   listSourceFilesInBun,
   pickFilePathFromBun,
@@ -16,7 +16,7 @@ export function RetrievalSearchCard({
   pickFilePath = pickFilePathFromBun,
   topK = DEFAULT_TOP_K,
 }: {
-  search?: (query: string, topK: number, titleOnly?: boolean) => Promise<RetrievalResult[] | null>;
+  search?: (query: string, topK: number, titleOnly?: boolean) => Promise<RetrievalDebugResult | null>;
   retrieveBySourcePath?: (sourcePath: string) => Promise<RetrievalResult[] | null>;
   listSourceFiles?: () => Promise<string[] | null>;
   pickFilePath?: () => Promise<string | null>;
@@ -29,6 +29,7 @@ export function RetrievalSearchCard({
   const [pickingFile, setPickingFile] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<RetrievalResult[]>([]);
+  const [debugResults, setDebugResults] = useState<RetrievalDebugResult | null>(null);
   const [sourceFileOptions, setSourceFileOptions] = useState<string[]>([]);
   const [titleOnly, setTitleOnly] = useState(false);
 
@@ -53,14 +54,16 @@ export function RetrievalSearchCard({
     }
     setLoading(true);
     setError("");
-    const rows = await search(trimmed, topK, titleOnly);
-    if (!rows) {
+    const debug = await search(trimmed, topK, titleOnly);
+    if (!debug) {
       setError("Search request failed.");
       setResults([]);
+      setDebugResults(null);
       setLoading(false);
       return;
     }
-    setResults(rows);
+    setResults(debug.reranked);
+    setDebugResults(debug);
     setLoading(false);
   };
 
@@ -75,10 +78,12 @@ export function RetrievalSearchCard({
     if (!rows) {
       setError("Retrieve source chunks request failed.");
       setResults([]);
+      setDebugResults(null);
       setRetrieving(false);
       return;
     }
     setResults(rows);
+    setDebugResults(null);
     setRetrieving(false);
   };
 
@@ -170,9 +175,30 @@ export function RetrievalSearchCard({
       ) : null}
 
       <div className="mt-4 space-y-3">
-        {results.length === 0 ? (
+        {debugResults ? (
+          <div className="space-y-4 rounded-xl border border-cyan-100 bg-cyan-50/40 p-3">
+            <DebugSection title={`Rerank Results (${debugResults.reranked.length})`} rows={debugResults.reranked} />
+            <DebugSection title={`FTS Results (${debugResults.fts.length})`}>
+              {debugResults.fts.length === 0 ? (
+                <p className="text-xs text-slate-500">No results.</p>
+              ) : (
+                <div className="space-y-2">
+                  {debugResults.fts.map((row) => (
+                    <div key={`${row.kind}-${row.chunkId}-${row.sourcePath}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <p className="break-all text-xs font-semibold text-slate-900">{row.sourcePath}</p>
+                      <p className="mt-1 text-[11px] text-cyan-700">kind: {row.kind}, score: {row.score.toFixed(3)}</p>
+                      <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{row.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </DebugSection>
+            <DebugSection title={`Vector Results (${debugResults.vector.length})`} rows={debugResults.vector} />
+          </div>
+        ) : null}
+        {!debugResults && results.length === 0 ? (
           <p data-testid="retrieval-empty" className="text-sm text-slate-500">No results.</p>
-        ) : (
+        ) : !debugResults ? (
           results.map((row) => (
             <div key={`${row.chunkId}-${row.sourcePath}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="break-all text-sm font-semibold text-slate-900">{row.sourcePath}</p>
@@ -183,8 +209,40 @@ export function RetrievalSearchCard({
               <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{row.chunkText}</p>
             </div>
           ))
-        )}
+        ) : null}
       </div>
     </article>
+  );
+}
+
+function DebugSection({
+  title,
+  rows,
+  children,
+}: {
+  title: string;
+  rows?: RetrievalResult[];
+  children?: ReactNode;
+}) {
+  return (
+    <section>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">{title}</p>
+      {children ? children : null}
+      {rows ? (
+        rows.length === 0 ? (
+          <p className="text-xs text-slate-500">No results.</p>
+        ) : (
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <div key={`${row.chunkId}-${row.sourcePath}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="break-all text-xs font-semibold text-slate-900">{row.sourcePath}</p>
+                <p className="mt-1 text-[11px] text-cyan-700">score: {row.score.toFixed(3)}</p>
+                <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{row.chunkText}</p>
+              </div>
+            ))}
+          </div>
+        )
+      ) : null}
+    </section>
   );
 }

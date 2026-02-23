@@ -1,4 +1,5 @@
 import type {
+  RetrievalDebugResult,
   RetrievalDeps,
   RetrievalService,
   RetrievalVectorRow,
@@ -30,6 +31,95 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
 
   return {
     async search(query: string, opts: { topK?: number; titleOnly?: boolean }) {
+      return executeSearch(deps, mapRow, query, opts);
+    },
+    async retrieveBySourcePath(sourcePath: string, fromVector: boolean) {
+      if (fromVector) {
+        const rows = await deps.vector.listBySourcePath(sourcePath);
+        return rows.map((row) => ({
+          chunkId: row.chunkId,
+          chunkText: row.metadata.chunkText ?? "",
+          sourcePath: row.metadata.sourcePath,
+          score: row.score,
+          updatedAt: row.metadata.updatedAt,
+          startOffset: row.metadata.startOffset,
+          endOffset: row.metadata.endOffset,
+          tokenEstimate: row.metadata.tokenEstimate,
+        }));
+      }
+      const rows = deps.metadata.listChunksBySourcePath(sourcePath);
+      return Promise.all(
+        rows.map(async (row) => {
+          let chunkText = "";
+          if (
+            deps.sourceReader &&
+            row.startOffset !== null &&
+            row.endOffset !== null
+          ) {
+            try {
+              chunkText = await deps.sourceReader.readRange(
+                row.sourcePath,
+                row.startOffset,
+                row.endOffset,
+              );
+            } catch {
+              // fallback to empty string
+            }
+          }
+          return {
+            chunkId: row.chunkId,
+            chunkText,
+            sourcePath: row.sourcePath,
+            score: 0,
+            startOffset: row.startOffset ?? undefined,
+            endOffset: row.endOffset ?? undefined,
+            tokenEstimate: row.tokenCount ?? undefined,
+          };
+        }),
+      );
+    },
+    async getSourceChunkInfoByPath(sourcePath: string) {
+      return deps.metadata.listChunksBySourcePath(sourcePath).map((row) => ({
+        chunkId: row.chunkId,
+        fileId: row.fileId,
+        sourcePath: row.sourcePath,
+        startOffset: row.startOffset ?? undefined,
+        endOffset: row.endOffset ?? undefined,
+        chunkHash: row.chunkHash,
+        tokenCount: row.tokenCount ?? undefined,
+        updatedAtMs: row.updatedAtMs,
+      }));
+    },
+  };
+}
+
+async function executeSearch(
+  deps: RetrievalDeps,
+  mapRow: (row: {
+    chunkId: string;
+    score: number;
+    metadata: {
+      title?: string;
+      chunkText?: string;
+      sourcePath: string;
+      updatedAt?: string;
+      startOffset?: number;
+      endOffset?: number;
+      tokenEstimate?: number;
+    };
+  }) => {
+    chunkId: string;
+    chunkText: string;
+    sourcePath: string;
+    score: number;
+    updatedAt?: string;
+    startOffset?: number;
+    endOffset?: number;
+    tokenEstimate?: number;
+  },
+  query: string,
+  opts: { topK?: number; titleOnly?: boolean },
+): Promise<RetrievalDebugResult> {
       const startedAt = Date.now();
       const topK = opts.topK ?? deps.defaults.topK;
       const titleOnly = Boolean(opts.titleOnly);
@@ -105,66 +195,17 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
         "retrieval.search: done",
       );
 
-      return finalRows.map(mapRow);
-    },
-    async retrieveBySourcePath(sourcePath: string, fromVector: boolean) {
-      if (fromVector) {
-        const rows = await deps.vector.listBySourcePath(sourcePath);
-        return rows.map((row) => ({
+      return {
+        reranked: finalRows.map(mapRow),
+        vector: vectorRows.map(mapRow),
+        fts: ftsRows.map((row) => ({
           chunkId: row.chunkId,
-          chunkText: row.metadata.chunkText ?? "",
-          sourcePath: row.metadata.sourcePath,
+          sourcePath: row.sourcePath,
           score: row.score,
-          updatedAt: row.metadata.updatedAt,
-          startOffset: row.metadata.startOffset,
-          endOffset: row.metadata.endOffset,
-          tokenEstimate: row.metadata.tokenEstimate,
-        }));
-      }
-      const rows = deps.metadata.listChunksBySourcePath(sourcePath);
-      return Promise.all(
-        rows.map(async (row) => {
-          let chunkText = "";
-          if (
-            deps.sourceReader &&
-            row.startOffset !== null &&
-            row.endOffset !== null
-          ) {
-            try {
-              chunkText = await deps.sourceReader.readRange(
-                row.sourcePath,
-                row.startOffset,
-                row.endOffset,
-              );
-            } catch {
-              // fallback to empty string
-            }
-          }
-          return {
-            chunkId: row.chunkId,
-            chunkText,
-            sourcePath: row.sourcePath,
-            score: 0,
-            startOffset: row.startOffset ?? undefined,
-            endOffset: row.endOffset ?? undefined,
-            tokenEstimate: row.tokenCount ?? undefined,
-          };
-        }),
-      );
-    },
-    async getSourceChunkInfoByPath(sourcePath: string) {
-      return deps.metadata.listChunksBySourcePath(sourcePath).map((row) => ({
-        chunkId: row.chunkId,
-        fileId: row.fileId,
-        sourcePath: row.sourcePath,
-        startOffset: row.startOffset ?? undefined,
-        endOffset: row.endOffset ?? undefined,
-        chunkHash: row.chunkHash,
-        tokenCount: row.tokenCount ?? undefined,
-        updatedAtMs: row.updatedAtMs,
-      }));
-    },
-  };
+          kind: row.kind,
+          text: row.text,
+        })),
+      };
 }
 type FtsRankRow = {
   chunkId: string;

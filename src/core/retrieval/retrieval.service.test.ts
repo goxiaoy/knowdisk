@@ -48,9 +48,9 @@ test("returns deterministic top-k with metadata", async () => {
 
   const svc = createRetrievalService(fakeDeps);
   const result = await svc.search("what is knowdisk", { topK: 2 });
-  expect(result.length).toBe(2);
-  expect(result[0]).toHaveProperty("sourcePath");
-  expect(result[0]).toHaveProperty("chunkText");
+  expect(result.reranked.length).toBe(2);
+  expect(result.reranked[0]).toHaveProperty("sourcePath");
+  expect(result.reranked[0]).toHaveProperty("chunkText");
 });
 
 test("applies reranker when configured", async () => {
@@ -333,8 +333,8 @@ test("titleOnly search uses only title FTS for scoring", async () => {
   expect(contentFtsCalled).toBe(false);
   expect(embeddingCalled).toBe(false);
   expect(vectorCalled).toBe(false);
-  expect(rows.some((row) => row.sourcePath === "/docs/c/guide.md")).toBe(true);
-  expect(rows.find((row) => row.sourcePath === "/docs/c/guide.md")?.chunkText).toBe("/docs/c/guide.md");
+  expect(rows.reranked.some((row) => row.sourcePath === "/docs/c/guide.md")).toBe(true);
+  expect(rows.reranked.find((row) => row.sourcePath === "/docs/c/guide.md")?.chunkText).toBe("/docs/c/guide.md");
 });
 
 test("single keyword search mixes title and content with vector scoring", async () => {
@@ -382,5 +382,5 @@ test("single keyword search mixes title and content with vector scoring", async 
   const rows = await svc.search("knowdisk", { topK: 5 });
   expect(contentFtsCalled).toBe(true);
   expect(titleFtsCalled).toBe(true);
-  expect(rows[0]?.score).toBeGreaterThan(0.5);
+  expect(rows.reranked[0]?.score).toBeGreaterThan(0.5);
 });

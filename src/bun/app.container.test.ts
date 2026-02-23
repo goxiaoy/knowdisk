@@ -93,7 +93,11 @@ test("mcp server delegates search to retrieval service", async () => {
   let called = false;
   container.retrievalService.search = async () => {
     called = true;
-    return [{ chunkId: "c1", sourcePath: "docs/a.md", chunkText: "a", score: 1 }];
+    return {
+      reranked: [{ chunkId: "c1", sourcePath: "docs/a.md", chunkText: "a", score: 1 }],
+      fts: [],
+      vector: [{ chunkId: "c1", sourcePath: "docs/a.md", chunkText: "a", score: 1 }],
+    };
   };
 
   const result = await container.mcpServer!.callTool("search_local_knowledge", {
@@ -102,7 +106,7 @@ test("mcp server delegates search to retrieval service", async () => {
   });
 
   expect(called).toBe(true);
-  expect(Array.isArray(result.results)).toBe(true);
+  expect(Array.isArray((result as { reranked: unknown[] }).reranked)).toBe(true);
   rmSync(dir, { recursive: true, force: true });
 });
 

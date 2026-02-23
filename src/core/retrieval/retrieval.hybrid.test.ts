@@ -71,5 +71,5 @@ test("hybrid retrieval merges vector and fts rows then reranks once", async () =
   expect(vectorCalled).toBe(true);
   expect(ftsCalled).toBe(true);
   expect(rerankRows).toBe(2);
-  expect(result.map((row) => row.chunkId).sort()).toEqual(["a", "b"]);
+  expect(result.reranked.map((row) => row.chunkId).sort()).toEqual(["a", "b"]);
 });

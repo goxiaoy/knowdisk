@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { Database } from "bun:sqlite";
+import nodejieba from "nodejieba";
 import type {
   FtsChunkRow,
   FtsSearchRow,
@@ -200,8 +201,8 @@ export function createIndexMetadataRepository(opts: {
             row.chunkId,
             row.fileId,
             row.sourcePath,
-            row.title,
-            row.text,
+            toFtsIndexedText(row.title),
+            toFtsIndexedText(row.text),
           );
         }
       });
@@ -494,10 +495,50 @@ function escapeFtsToken(token: string) {
 }
 
 function tokenizeFtsQuery(query: string) {
-  return query
-    .split(/[^\p{L}\p{N}_]+/u)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
+  const jiebaTokens = tokenizeByJieba(query);
+  if (jiebaTokens.length > 0) {
+    return jiebaTokens;
+  }
+  return tokenizeByRegex(query);
+}
+
+function tokenizeByJieba(query: string) {
+  try {
+    const parts = nodejieba
+      .cutForSearch(query)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    return normalizeTokens(parts);
+  } catch {
+    return [];
+  }
+}
+
+function tokenizeByRegex(query: string) {
+  return normalizeTokens([query]);
+}
+
+function normalizeTokens(parts: string[]) {
+  return parts
+    .flatMap((part) =>
+      part
+        .split(/[^\p{L}\p{N}_]+/u)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 0),
+    )
+    .filter((token) => token.length > 0);
+}
+
+function toFtsIndexedText(input: string) {
+  const normalized = input.trim();
+  if (!normalized) {
+    return "";
+  }
+  const tokens = tokenizeByJieba(normalized);
+  if (tokens.length === 0) {
+    return normalized;
+  }
+  return `${normalized}\n${tokens.join(" ")}`;
 }
 
 function buildContentMatchQuery(query: string) {

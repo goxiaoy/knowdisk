@@ -13,6 +13,7 @@ import { createIncrementalBatcher } from "./incremental-batcher";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 import type { IndexingStatus } from "../core/indexing/indexing.service.types";
+import type { RetrievalDebugResult } from "../core/retrieval/retrieval.service.types";
 import type { RetrievalResult } from "../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../core/vector/vector.repository.types";
 
@@ -206,7 +207,7 @@ const rpc = BrowserView.defineRPC({
       get_vector_stats(): Promise<VectorCollectionInspect> {
         return container.vectorRepository.inspect();
       },
-      search_retrieval(params?: unknown): Promise<RetrievalResult[]> {
+      search_retrieval(params?: unknown): Promise<RetrievalDebugResult> {
         const { query, topK, titleOnly } = params as {
           query: string;
           topK: number;

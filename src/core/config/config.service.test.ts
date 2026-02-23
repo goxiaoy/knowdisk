@@ -27,7 +27,8 @@ describe("getDefaultConfig", () => {
     expect(cfg.retrieval.hybrid.ftsTopN).toBe(30);
     expect(cfg.retrieval.hybrid.vectorTopK).toBe(20);
     expect(cfg.retrieval.hybrid.rerankTopN).toBe(10);
-    expect(cfg.embedding.local.dimension).toBe(384);
+    expect(cfg.embedding.local.model).toBe("onnx-community/gte-multilingual-base");
+    expect(cfg.embedding.local.dimension).toBe(768);
     expect(cfg.embedding.local.hfEndpoint).toBe("https://hf-mirror.com");
     expect(cfg.reranker.local.topN).toBe(5);
   });
