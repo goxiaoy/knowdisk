@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { watch, type FSWatcher } from "node:fs";
 import { statSync } from "node:fs";
 import { createAppContainer } from "./app.container";
+import { createIncrementalBatcher } from "./incremental-batcher";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 import type { IndexingStatus } from "../core/indexing/indexing.service.types";
@@ -38,8 +39,18 @@ const startupConfig = container.configService.getConfig();
 let mcpHttpServer: ReturnType<typeof Bun.serve> | null = null;
 let reconcileTimer: ReturnType<typeof setInterval> | null = null;
 const fsWatchers: FSWatcher[] = [];
-let incrementalFlushTimer: ReturnType<typeof setTimeout> | null = null;
-const pendingIncremental = new Map<string, "add" | "change" | "unlink">();
+const incrementalBatcher = createIncrementalBatcher({
+  debounceMs: startupConfig.indexing.watch.debounceMs,
+  runIncremental(changes) {
+    return container.indexingService.runIncremental(changes);
+  },
+  onError(error, changes) {
+    container.loggerService.error(
+      { subsystem: "indexing", error: String(error), changeCount: changes.length },
+      "incremental indexing failed",
+    );
+  },
+});
 if (startupConfig.mcp.enabled && container.mcpServer) {
   try {
     mcpHttpServer = Bun.serve({
@@ -92,8 +103,7 @@ if (startupConfig.indexing.watch.enabled) {
           }
           const fullPath = join(sourcePath, String(filename));
           const type = classifyFileChange(fullPath);
-          pendingIncremental.set(fullPath, type);
-          scheduleIncrementalFlush(startupConfig.indexing.watch.debounceMs);
+          incrementalBatcher.enqueue(fullPath, type);
         },
       );
       fsWatchers.push(watcher);
@@ -227,9 +237,7 @@ const mainWindow = new BrowserWindow({
 });
 
 mainWindow.on("close", () => {
-  if (incrementalFlushTimer) {
-    clearTimeout(incrementalFlushTimer);
-  }
+  incrementalBatcher.dispose();
   for (const watcher of fsWatchers) {
     watcher.close();
   }
@@ -278,26 +286,6 @@ async function walkDirectory(dirPath: string, files: string[], maxFiles: number)
       files.push(fullPath);
     }
   }
-}
-
-function scheduleIncrementalFlush(debounceMs: number) {
-  if (incrementalFlushTimer) {
-    clearTimeout(incrementalFlushTimer);
-  }
-  incrementalFlushTimer = setTimeout(() => {
-    incrementalFlushTimer = null;
-    const changes = Array.from(pendingIncremental.entries()).map(([path, type]) => ({ path, type }));
-    pendingIncremental.clear();
-    if (changes.length === 0) {
-      return;
-    }
-    void container.indexingService.runIncremental(changes).catch((error) => {
-      container.loggerService.error(
-        { subsystem: "indexing", error: String(error), changeCount: changes.length },
-        "incremental indexing failed",
-      );
-    });
-  }, Math.max(10, debounceMs));
 }
 
 function classifyFileChange(path: string): "add" | "change" | "unlink" {
