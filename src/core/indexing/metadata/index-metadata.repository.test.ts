@@ -134,6 +134,26 @@ describe("index metadata repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("searchFts handles path-like query without syntax error", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertFtsChunks([
+      {
+        chunkId: "c1",
+        fileId: "f1",
+        sourcePath: "/Users/goxy/Documents/testobsidian/.obsidian/workspace.json",
+        title: "workspace",
+        text: "path /Users/goxy/Documents/testobsidian/.obsidian/workspace.json",
+      },
+    ]);
+
+    const rows = repo.searchFts("/Users/goxy/Documents/testobsidian/.obsidian/workspace.json", 10);
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.chunkId).toBe("c1");
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("enqueues, claims, completes and fails jobs", () => {
     const { dir, repo } = makeRepo();
     repo.enqueueJob({

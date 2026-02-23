@@ -213,6 +213,7 @@ export function createIndexMetadataRepository(opts: {
       if (!q) {
         return [];
       }
+      const matchQuery = buildContentMatchQuery(q);
       return db
         .query(
           `SELECT
@@ -226,7 +227,7 @@ export function createIndexMetadataRepository(opts: {
           ORDER BY score
           LIMIT ?`,
         )
-        .all(q, limit) as FtsSearchRow[];
+        .all(matchQuery, limit) as FtsSearchRow[];
     },
 
     searchTitleFts(query: string, limit: number) {
@@ -234,6 +235,7 @@ export function createIndexMetadataRepository(opts: {
       if (!q) {
         return [];
       }
+      const matchQuery = buildTitleMatchQuery(q);
       return db
         .query(
           `SELECT
@@ -247,7 +249,7 @@ export function createIndexMetadataRepository(opts: {
           ORDER BY score
           LIMIT ?`,
         )
-        .all(`title:"${escapeFtsToken(q)}"`, limit) as FtsSearchRow[];
+        .all(matchQuery, limit) as FtsSearchRow[];
     },
 
     deleteFtsChunksByIds(chunkIds: string[]) {
@@ -489,4 +491,29 @@ function migrate(db: Database) {
 
 function escapeFtsToken(token: string) {
   return token.split('"').join('""');
+}
+
+function tokenizeFtsQuery(query: string) {
+  return query
+    .split(/[^\p{L}\p{N}_]+/u)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+function buildContentMatchQuery(query: string) {
+  const tokens = tokenizeFtsQuery(query);
+  if (tokens.length === 0) {
+    return `"${escapeFtsToken(query)}"`;
+  }
+  return tokens.map((token) => `"${escapeFtsToken(token)}"`).join(" AND ");
+}
+
+function buildTitleMatchQuery(query: string) {
+  const tokens = tokenizeFtsQuery(query);
+  if (tokens.length === 0) {
+    return `title:"${escapeFtsToken(query)}"`;
+  }
+  return tokens
+    .map((token) => `title:"${escapeFtsToken(token)}"`)
+    .join(" AND ");
 }
