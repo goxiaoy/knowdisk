@@ -9,6 +9,8 @@ import { createHealthService } from "../core/health/health.service";
 import type { HealthService } from "../core/health/health.service.types";
 import { createSourceIndexingService } from "../core/indexing/indexing.service";
 import type { IndexingService } from "../core/indexing/indexing.service.types";
+import { createIndexMetadataRepository } from "../core/indexing/metadata/index-metadata.repository";
+import type { IndexMetadataRepository } from "../core/indexing/metadata/index-metadata.repository.types";
 import { createLoggerService } from "../core/logger/logger.service";
 import type { LoggerService } from "../core/logger/logger.service.types";
 import { createMcpServer } from "../core/mcp/mcp.server";
@@ -38,6 +40,7 @@ const TOKENS = {
   VectorRepository: Symbol("VectorRepository"),
   RetrievalService: Symbol("RetrievalService"),
   IndexingService: Symbol("IndexingService"),
+  IndexMetadataRepository: Symbol("IndexMetadataRepository"),
   AppContainer: Symbol("AppContainer"),
 } as const;
 
@@ -62,6 +65,7 @@ function registerDependencies(
   },
 ) {
   let vectorRepo: VectorRepository | null = null;
+  let metadataRepo: IndexMetadataRepository | null = null;
   di.registerInstance<ConfigService>(TOKENS.ConfigService, deps?.configService ?? defaultConfigService);
   di.register(TOKENS.LoggerService, {
     useFactory: () => createLoggerService({ name: "knowdisk" }),
@@ -102,11 +106,23 @@ function registerDependencies(
       return vectorRepo;
     },
   });
+  di.register(TOKENS.IndexMetadataRepository, {
+    useFactory: () => {
+      if (metadataRepo) {
+        return metadataRepo;
+      }
+      metadataRepo = createIndexMetadataRepository({
+        dbPath: join(deps?.userDataDir ?? "build", "metadata", "index.db"),
+      });
+      return metadataRepo;
+    },
+  });
   di.register(TOKENS.RetrievalService, {
     useFactory: (c) => {
       const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
       const embedding = c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider);
       const vector = c.resolve<VectorRepository>(TOKENS.VectorRepository);
+      const metadata = c.resolve<IndexMetadataRepository>(TOKENS.IndexMetadataRepository);
       const reranker = createReranker(cfg.reranker);
       return createRetrievalService({
         embedding,
@@ -140,8 +156,13 @@ function registerDependencies(
             }));
           },
         },
+        fts: {
+          searchFts(query: string, limit: number) {
+            return metadata.searchFts(query, limit);
+          },
+        },
         reranker: reranker ?? undefined,
-        defaults: { topK: 5 },
+        defaults: { topK: cfg.retrieval.hybrid.vectorTopK, ftsTopN: cfg.retrieval.hybrid.ftsTopN },
       });
     },
   });
@@ -152,6 +173,7 @@ function registerDependencies(
         c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
         c.resolve<VectorRepository>(TOKENS.VectorRepository),
         c.resolve<LoggerService>(TOKENS.LoggerService),
+        { metadata: c.resolve<IndexMetadataRepository>(TOKENS.IndexMetadataRepository) },
       ),
   });
   di.register(TOKENS.AppContainer, {

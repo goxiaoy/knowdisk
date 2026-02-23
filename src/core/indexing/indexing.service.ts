@@ -10,6 +10,7 @@ import type {
 import type { LoggerService } from "../logger/logger.service.types";
 import type { VectorRepository } from "../vector/vector.repository.types";
 import { createIndexMetadataRepository } from "./metadata/index-metadata.repository";
+import type { IndexMetadataRepository } from "./metadata/index-metadata.repository.types";
 import { createIndexJobScheduler } from "./jobs/index-job.scheduler";
 import { createFileIndexProcessor } from "./processor/file-index.processor";
 import { createIndexWorker } from "./worker/index-worker";
@@ -20,6 +21,10 @@ export function createSourceIndexingService(
   embedding: EmbeddingProvider,
   vector: Pick<VectorRepository, "upsert" | "deleteBySourcePath">,
   logger?: LoggerService,
+  opts?: {
+    metadata?: IndexMetadataRepository;
+    metadataDbPath?: string;
+  },
 ): IndexingService {
   const log = logger?.child({ subsystem: "indexing" }) ?? {
     info: (_obj?: unknown, _msg?: string) => {},
@@ -29,7 +34,9 @@ export function createSourceIndexingService(
   };
 
   const cfg = configService.getConfig();
-  const metadata = createIndexMetadataRepository({ dbPath: ":memory:" });
+  const metadata =
+    opts?.metadata ??
+    createIndexMetadataRepository({ dbPath: opts?.metadataDbPath ?? ":memory:" });
   const processor = createFileIndexProcessor({
     embedding,
     vector,
