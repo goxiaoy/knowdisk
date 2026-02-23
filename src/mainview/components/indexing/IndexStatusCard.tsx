@@ -14,13 +14,19 @@ const EMPTY_STATUS: IndexingStatus = {
   errors: [],
 };
 
-export function IndexStatusCard({ pollMs = 1000 }: { pollMs?: number }) {
+export function IndexStatusCard({
+  pollMs = 1000,
+  loadStatus = getIndexStatusFromBun,
+}: {
+  pollMs?: number;
+  loadStatus?: () => Promise<IndexingStatus | null>;
+}) {
   const [status, setStatus] = useState<IndexingStatus>(EMPTY_STATUS);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const next = await getIndexStatusFromBun();
+      const next = await loadStatus();
       if (!cancelled && next) {
         setStatus(next);
       }
@@ -33,7 +39,7 @@ export function IndexStatusCard({ pollMs = 1000 }: { pollMs?: number }) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [pollMs]);
+  }, [loadStatus, pollMs]);
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
