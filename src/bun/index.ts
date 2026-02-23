@@ -37,7 +37,7 @@ container.loggerService.info(
 const startupConfig = container.configService.getConfig();
 let mcpHttpServer: ReturnType<typeof Bun.serve> | null = null;
 let reconcileTimer: ReturnType<typeof setInterval> | null = null;
-const fsWatchers: FSWatcher[] = [];
+const sourceWatchers = new Map<string, FSWatcher>();
 const incrementalBatcher = createIncrementalBatcher({
   debounceMs: startupConfig.indexing.watch.debounceMs,
   runIncremental(changes) {
@@ -50,6 +50,25 @@ const incrementalBatcher = createIncrementalBatcher({
     );
   },
 });
+const stopConfigSubscription = container.configService.subscribe(({ next }) => {
+  syncSourceWatchers(next);
+});
+
+const startupCleanup = await container.indexingService
+  .purgeDeferredSourceDeletions()
+  .catch((error) => {
+    container.loggerService.error(
+      { subsystem: "indexing", error: String(error) },
+      "startup source cleanup failed",
+    );
+    return null;
+  });
+if (startupCleanup && startupCleanup.removedSources > 0) {
+  container.loggerService.info(
+    startupCleanup,
+    "startup source cleanup finished",
+  );
+}
 if (startupConfig.mcp.enabled && container.mcpServer) {
   try {
     mcpHttpServer = Bun.serve({
@@ -87,49 +106,7 @@ if (startupConfig.indexing.reconcile.enabled) {
     "Index reconcile scheduler started",
   );
 }
-if (startupConfig.indexing.watch.enabled) {
-  const watchSources = startupConfig.sources
-    .filter((source) => source.enabled)
-    .map((source) => source.path);
-  for (const sourcePath of watchSources) {
-    try {
-      const watcher = chokidar.watch(sourcePath, {
-        ignoreInitial: true,
-        awaitWriteFinish: {
-          stabilityThreshold: 300,
-          pollInterval: 100,
-        },
-      });
-      watcher.on("add", (path) => {
-        incrementalBatcher.enqueue(path, "add");
-      });
-      watcher.on("change", (path) => {
-        incrementalBatcher.enqueue(path, "change");
-      });
-      watcher.on("unlink", (path) => {
-        incrementalBatcher.enqueue(path, "unlink");
-      });
-      watcher.on("error", (error) => {
-        container.loggerService.warn(
-          { sourcePath, error: String(error) },
-          "Source watcher error",
-        );
-      });
-      fsWatchers.push(watcher);
-    } catch (error) {
-      container.loggerService.warn(
-        { sourcePath, error: String(error) },
-        "Failed to start source watcher",
-      );
-    }
-  }
-  if (fsWatchers.length > 0) {
-    container.loggerService.info(
-      { sourceCount: fsWatchers.length, debounceMs: startupConfig.indexing.watch.debounceMs },
-      "Index watcher started",
-    );
-  }
-}
+syncSourceWatchers(startupConfig);
 
 const rpc = BrowserView.defineRPC({
   handlers: {
@@ -140,22 +117,42 @@ const rpc = BrowserView.defineRPC({
       update_config({ config }: { config: AppConfig }) {
         return container.configService.updateConfig(() => config);
       },
-      add_source({ path }: { path: string }) {
-        return container.addSourceAndReindex(path);
+      async add_source({ path }: { path: string }) {
+        const next = container.configService.updateConfig((source) => {
+          if (source.sources.some((item) => item.path === path)) {
+            return source;
+          }
+          return {
+            ...source,
+            sources: [...source.sources, { path, enabled: true }],
+          };
+        });
+        container.indexingService.cancelDeferredSourceDeletion(path);
+        void container.indexingService.runFullRebuild("source_added");
+        return next.sources;
       },
       update_source({ path, enabled }: { path: string; enabled: boolean }) {
-        return container.configService.updateConfig((source) => ({
+        const next = container.configService.updateConfig((source) => ({
           ...source,
           sources: source.sources.map((item) =>
             item.path === path ? { ...item, enabled } : item,
           ),
-        })).sources;
+        }));
+        if (enabled) {
+          container.indexingService.cancelDeferredSourceDeletion(path);
+          void container.indexingService.runFullRebuild("source_enabled");
+        } else {
+          container.indexingService.deferSourceDeletion(path);
+        }
+        return next.sources;
       },
       remove_source({ path }: { path: string }) {
-        return container.configService.updateConfig((source) => ({
+        const next = container.configService.updateConfig((source) => ({
           ...source,
           sources: source.sources.filter((item) => item.path !== path),
-        })).sources;
+        }));
+        container.indexingService.deferSourceDeletion(path);
+        return next.sources;
       },
       get_health() {
         return container.healthService.getComponentHealth();
@@ -177,8 +174,19 @@ const rpc = BrowserView.defineRPC({
         const sourceDirs = cfg.sources.filter((source) => source.enabled).map((source) => source.path);
         return listFilesFromSourceDirs(sourceDirs, 5000);
       },
-      force_resync() {
-        return container.forceResync();
+      async force_resync() {
+        try {
+          await container.vectorRepository.destroy();
+          container.indexingService.clearAllIndexData();
+          await container.indexingService.runFullRebuild("force_resync");
+          return { ok: true };
+        } catch (error) {
+          container.loggerService.error(
+            { subsystem: "indexing", error: String(error) },
+            "force resync failed",
+          );
+          return { ok: false, error: String(error) };
+        }
       },
       pick_source_directory_start({ requestId }: { requestId: string }) {
         void (async () => {
@@ -247,9 +255,11 @@ const mainWindow = new BrowserWindow({
 
 mainWindow.on("close", () => {
   incrementalBatcher.dispose();
-  for (const watcher of fsWatchers) {
+  for (const watcher of sourceWatchers.values()) {
     void watcher.close();
   }
+  sourceWatchers.clear();
+  stopConfigSubscription();
   if (reconcileTimer) {
     clearInterval(reconcileTimer);
   }
@@ -293,6 +303,66 @@ async function walkDirectory(dirPath: string, files: string[], maxFiles: number)
     }
     if (entry.isFile()) {
       files.push(fullPath);
+    }
+  }
+}
+
+function syncSourceWatchers(config: AppConfig) {
+  if (!config.indexing.watch.enabled) {
+    for (const [sourcePath, watcher] of sourceWatchers.entries()) {
+      void watcher.close();
+      sourceWatchers.delete(sourcePath);
+    }
+    return;
+  }
+
+  const nextWatchSources = new Set(
+    config.sources.filter((source) => source.enabled).map((source) => source.path),
+  );
+
+  for (const [sourcePath, watcher] of sourceWatchers.entries()) {
+    if (nextWatchSources.has(sourcePath)) {
+      continue;
+    }
+    void watcher.close();
+    sourceWatchers.delete(sourcePath);
+    container.loggerService.info({ sourcePath }, "Source watcher stopped");
+  }
+
+  for (const sourcePath of nextWatchSources) {
+    if (sourceWatchers.has(sourcePath)) {
+      continue;
+    }
+    try {
+      const watcher = chokidar.watch(sourcePath, {
+        ignoreInitial: true,
+        awaitWriteFinish: {
+          stabilityThreshold: 300,
+          pollInterval: 100,
+        },
+      });
+      watcher.on("add", (path) => {
+        incrementalBatcher.enqueue(path, "add");
+      });
+      watcher.on("change", (path) => {
+        incrementalBatcher.enqueue(path, "change");
+      });
+      watcher.on("unlink", (path) => {
+        incrementalBatcher.enqueue(path, "unlink");
+      });
+      watcher.on("error", (error) => {
+        container.loggerService.warn(
+          { sourcePath, error: String(error) },
+          "Source watcher error",
+        );
+      });
+      sourceWatchers.set(sourcePath, watcher);
+      container.loggerService.info({ sourcePath }, "Source watcher started");
+    } catch (error) {
+      container.loggerService.warn(
+        { sourcePath, error: String(error) },
+        "Failed to start source watcher",
+      );
     }
   }
 }

@@ -149,6 +149,57 @@ export function createSourceIndexingService(
       return { repaired };
     },
 
+    deferSourceDeletion(sourcePath: string) {
+      metadata.addSourceTombstone(sourcePath);
+      log.info({ sourcePath }, "deferred source deletion recorded");
+    },
+
+    cancelDeferredSourceDeletion(sourcePath: string) {
+      metadata.removeSourceTombstone(sourcePath);
+      log.info({ sourcePath }, "deferred source deletion removed");
+    },
+
+    async purgeDeferredSourceDeletions() {
+      const sources = metadata.listSourceTombstones();
+      if (sources.length === 0) {
+        return { removedSources: 0, deletedFiles: 0 };
+      }
+
+      beginRun("startup_source_cleanup");
+      const now = Date.now();
+      const knownFiles = metadata
+        .listFiles()
+        .filter((file) => file.status !== "deleted");
+      let deletedFiles = 0;
+      for (const sourcePath of sources) {
+        const matches = knownFiles.filter((file) =>
+          isSameOrParentPath(sourcePath, file.path),
+        );
+        for (const file of matches) {
+          metadata.enqueueJob({
+            jobId: globalThis.crypto.randomUUID(),
+            path: file.path,
+            jobType: "delete",
+            reason: "startup_source_cleanup",
+            nextRunAtMs: now,
+          });
+          indexingState.queueDepth += 1;
+          deletedFiles += 1;
+        }
+      }
+      await drainWorkerQueue();
+      for (const sourcePath of sources) {
+        metadata.removeSourceTombstone(sourcePath);
+      }
+      finishRun("startup_source_cleanup");
+      return { removedSources: sources.length, deletedFiles };
+    },
+
+    clearAllIndexData() {
+      metadata.clearAllIndexData();
+      log.info("index metadata cleared");
+    },
+
     getIndexStatus() {
       return statusStore;
     },
@@ -272,6 +323,13 @@ function normalizeChangeType(type: string): "add" | "change" | "unlink" {
     return type;
   }
   return "change";
+}
+
+function isSameOrParentPath(parent: string, child: string) {
+  if (parent === child) {
+    return true;
+  }
+  return child.startsWith(`${parent}/`);
 }
 
 export function resolveParserExt(path: string) {

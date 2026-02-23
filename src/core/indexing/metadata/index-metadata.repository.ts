@@ -322,6 +322,35 @@ export function createIndexMetadataRepository(opts: {
         .run(Date.now());
       return Number(result.changes ?? 0);
     },
+
+    listSourceTombstones() {
+      const rows = db
+        .query("SELECT path FROM tombstones ORDER BY deleted_time_ms ASC")
+        .all() as Array<{ path: string }>;
+      return rows.map((row) => row.path);
+    },
+
+    addSourceTombstone(path: string) {
+      db.query(
+        `INSERT INTO tombstones(path, deleted_time_ms) VALUES(?, ?)
+          ON CONFLICT(path) DO UPDATE SET deleted_time_ms=excluded.deleted_time_ms`,
+      ).run(path, Date.now());
+    },
+
+    removeSourceTombstone(path: string) {
+      db.query("DELETE FROM tombstones WHERE path = ?").run(path);
+    },
+
+    clearAllIndexData() {
+      const tx = db.transaction(() => {
+        db.query("DELETE FROM jobs").run();
+        db.query("DELETE FROM chunks").run();
+        db.query("DELETE FROM files").run();
+        db.query("DELETE FROM fts_chunks").run();
+        db.query("DELETE FROM tombstones").run();
+      });
+      tx();
+    },
   };
 }
 

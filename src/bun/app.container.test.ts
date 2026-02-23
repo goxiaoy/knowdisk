@@ -68,13 +68,16 @@ function makeConfigService(enabled: boolean): ConfigService {
   };
 }
 
-test("does not create mcp server when mcp is disabled", () => {
+test("mcp server rejects calls when mcp is disabled", async () => {
   const dir = mkdtempSync(join(tmpdir(), "knowdisk-app-container-"));
   const container = createAppContainer({
     configService: makeConfigService(false),
     vectorCollectionPath: join(dir, "v.zvec"),
   });
-  expect(container.mcpServer).toBeNull();
+  expect(container.mcpServer).not.toBeNull();
+  await expect(
+    container.mcpServer!.callTool("search_local_knowledge", { query: "x" }),
+  ).rejects.toThrow("MCP_DISABLED");
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -99,48 +102,6 @@ test("mcp server delegates search to retrieval service", async () => {
 
   expect(called).toBe(true);
   expect(Array.isArray(result.results)).toBe(true);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test("addSourceAndReindex triggers indexing task", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "knowdisk-app-container-"));
-  const container = createAppContainer({
-    configService: makeConfigService(true),
-    vectorCollectionPath: join(dir, "v.zvec"),
-  });
-  const calls: string[] = [];
-  const original = container.indexingService.runFullRebuild;
-  container.indexingService.runFullRebuild = async (reason: string) => {
-    calls.push(reason);
-    return original(reason);
-  };
-
-  await container.addSourceAndReindex("/tmp/docs");
-
-  expect(calls).toEqual(["source_added"]);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test("forceResync destroys vector store and triggers full rebuild", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "knowdisk-app-container-"));
-  const container = createAppContainer({
-    configService: makeConfigService(true),
-    vectorCollectionPath: join(dir, "v.zvec"),
-  });
-
-  const calls: string[] = [];
-  container.vectorRepository.destroy = async () => {
-    calls.push("destroy");
-  };
-  container.indexingService.runFullRebuild = async (reason: string) => {
-    calls.push(reason);
-    return { indexedFiles: 0, errors: [] };
-  };
-
-  const result = await container.forceResync();
-
-  expect(result.ok).toBe(true);
-  expect(calls).toEqual(["destroy", "force_resync"]);
   rmSync(dir, { recursive: true, force: true });
 });
 

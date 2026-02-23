@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { join } from "node:path";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
 import { defaultConfigService } from "../core/config/config.service";
-import type { ConfigService, SourceConfig } from "../core/config/config.types";
+import type { ConfigService } from "../core/config/config.types";
 import { makeEmbeddingProvider } from "../core/embedding/embedding.service";
 import type { EmbeddingProvider } from "../core/embedding/embedding.types";
 import { createHealthService } from "../core/health/health.service";
@@ -14,6 +14,7 @@ import type { IndexMetadataRepository } from "../core/indexing/metadata/index-me
 import { createLoggerService } from "../core/logger/logger.service";
 import type { LoggerService } from "../core/logger/logger.service.types";
 import { createMcpServer } from "../core/mcp/mcp.server";
+import type { McpServerService } from "../core/mcp/mcp.server.types";
 import { createReranker } from "../core/reranker/reranker.service";
 import { createRetrievalService } from "../core/retrieval/retrieval.service";
 import type { RetrievalService } from "../core/retrieval/retrieval.service.types";
@@ -27,10 +28,8 @@ export type AppContainer = {
   vectorRepository: VectorRepository;
   retrievalService: RetrievalService;
   indexingService: IndexingService;
-  addSourceAndReindex: (path: string) => Promise<SourceConfig[]>;
-  forceResync: () => Promise<{ ok: boolean; error?: string }>;
   close: () => void;
-  mcpServer: ReturnType<typeof createMcpServer> | null;
+  mcpServer: McpServerService | null;
 };
 
 const TOKENS = {
@@ -67,7 +66,10 @@ function registerDependencies(
 ) {
   let vectorRepo: VectorRepository | null = null;
   let metadataRepo: IndexMetadataRepository | null = null;
-  di.registerInstance<ConfigService>(TOKENS.ConfigService, deps?.configService ?? defaultConfigService);
+  di.registerInstance<ConfigService>(
+    TOKENS.ConfigService,
+    deps?.configService ?? defaultConfigService,
+  );
   di.register(TOKENS.LoggerService, {
     useFactory: () => createLoggerService({ name: "knowdisk" }),
   });
@@ -123,7 +125,9 @@ function registerDependencies(
       const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
       const embedding = c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider);
       const vector = c.resolve<VectorRepository>(TOKENS.VectorRepository);
-      const metadata = c.resolve<IndexMetadataRepository>(TOKENS.IndexMetadataRepository);
+      const metadata = c.resolve<IndexMetadataRepository>(
+        TOKENS.IndexMetadataRepository,
+      );
       const reranker = createReranker(cfg.reranker);
       return createRetrievalService({
         embedding,
@@ -163,7 +167,10 @@ function registerDependencies(
           },
         },
         reranker: reranker ?? undefined,
-        defaults: { topK: cfg.retrieval.hybrid.vectorTopK, ftsTopN: cfg.retrieval.hybrid.ftsTopN },
+        defaults: {
+          topK: cfg.retrieval.hybrid.vectorTopK,
+          ftsTopN: cfg.retrieval.hybrid.ftsTopN,
+        },
       });
     },
   });
@@ -174,7 +181,11 @@ function registerDependencies(
         c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
         c.resolve<VectorRepository>(TOKENS.VectorRepository),
         c.resolve<LoggerService>(TOKENS.LoggerService),
-        { metadata: c.resolve<IndexMetadataRepository>(TOKENS.IndexMetadataRepository) },
+        {
+          metadata: c.resolve<IndexMetadataRepository>(
+            TOKENS.IndexMetadataRepository,
+          ),
+        },
       ),
   });
   di.register(TOKENS.AppContainer, {
@@ -182,49 +193,15 @@ function registerDependencies(
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
       const loggerService = c.resolve<LoggerService>(TOKENS.LoggerService);
       const healthService = c.resolve<HealthService>(TOKENS.HealthService);
-      const vectorRepository = c.resolve<VectorRepository>(TOKENS.VectorRepository);
-      const retrievalService = c.resolve<RetrievalService>(TOKENS.RetrievalService);
-      const indexingService = c.resolve<IndexingService>(TOKENS.IndexingService);
-      const addSourceAndReindex = async (path: string) => {
-        const next = configService.updateConfig((source) => {
-          if (source.sources.some((item) => item.path === path)) {
-            return source;
-          }
-          return {
-            ...source,
-            sources: [...source.sources, { path, enabled: true }],
-          };
-        });
-        void indexingService.runFullRebuild("source_added");
-        return next.sources;
-      };
-      const forceResync = async () => {
-        try {
-          await vectorRepository.destroy();
-          await indexingService.runFullRebuild("force_resync");
-          return { ok: true };
-        } catch (error) {
-          loggerService.error({ subsystem: "indexing", error: String(error) }, "force resync failed");
-          return { ok: false, error: String(error) };
-        }
-      };
-
-      if (!configService.getConfig().mcp.enabled) {
-        return {
-          configService,
-          loggerService,
-          healthService,
-          vectorRepository,
-          retrievalService,
-          indexingService,
-          addSourceAndReindex,
-          forceResync,
-          close: () => {
-            metadataRepo?.close();
-          },
-          mcpServer: null,
-        } satisfies AppContainer;
-      }
+      const vectorRepository = c.resolve<VectorRepository>(
+        TOKENS.VectorRepository,
+      );
+      const retrievalService = c.resolve<RetrievalService>(
+        TOKENS.RetrievalService,
+      );
+      const indexingService = c.resolve<IndexingService>(
+        TOKENS.IndexingService,
+      );
 
       const mcpServer = createMcpServer({
         retrieval: retrievalService,
@@ -238,8 +215,6 @@ function registerDependencies(
         vectorRepository,
         retrievalService,
         indexingService,
-        addSourceAndReindex,
-        forceResync,
         close: () => {
           metadataRepo?.close();
         },

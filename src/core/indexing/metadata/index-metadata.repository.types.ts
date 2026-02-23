@@ -86,4 +86,10 @@ export type IndexMetadataRepository = {
   failJob: (jobId: string, error: string) => void;
   retryJob: (jobId: string, error: string, nextRunAtMs: number) => void;
   resetRunningJobsToPending: () => number;
+
+  listSourceTombstones: () => string[];
+  addSourceTombstone: (path: string) => void;
+  removeSourceTombstone: (path: string) => void;
+
+  clearAllIndexData: () => void;
 };

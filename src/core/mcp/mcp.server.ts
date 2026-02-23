@@ -1,14 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
-import type { RetrievalService } from "../retrieval/retrieval.service.types";
+import type { McpServerDeps, McpServerService } from "./mcp.server.types";
 
-export type McpServerDeps = {
-  retrieval: Pick<RetrievalService, "search">;
-  isEnabled?: () => boolean;
-};
-
-export function createMcpServer(deps: McpServerDeps) {
+export function createMcpServer(deps: McpServerDeps): McpServerService {
   const server = new McpServer({
     name: "knowdisk-mcp",
     version: "1.0.0",

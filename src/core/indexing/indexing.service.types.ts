@@ -24,5 +24,12 @@ export type IndexingService = {
   runFullRebuild: (reason: string) => Promise<unknown>;
   runIncremental: (changes: FileChange[]) => Promise<unknown>;
   runScheduledReconcile: () => Promise<{ repaired: number }>;
+  deferSourceDeletion: (sourcePath: string) => void;
+  cancelDeferredSourceDeletion: (sourcePath: string) => void;
+  purgeDeferredSourceDeletions: () => Promise<{
+    removedSources: number;
+    deletedFiles: number;
+  }>;
+  clearAllIndexData: () => void;
   getIndexStatus: () => IndexingStatusStore;
 };
