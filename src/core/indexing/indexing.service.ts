@@ -47,8 +47,11 @@ export function createSourceIndexingService(
     running: false,
     lastReason: "",
     lastRunAt: "",
+    lastReconcileAt: "",
     currentFile: null,
     indexedFiles: 0,
+    queueDepth: 0,
+    runningWorkers: 0,
     errors: [],
   };
 
@@ -68,15 +71,19 @@ export function createSourceIndexingService(
     backoffMs: cfg.indexing.retry.backoffMs,
     onJobStart(path) {
       indexingState.currentFile = path;
+      indexingState.runningWorkers = 1;
       notify();
     },
     onJobDone() {
       indexingState.indexedFiles += 1;
       indexingState.currentFile = null;
+      indexingState.runningWorkers = 0;
       notify();
     },
     onJobError(path, error) {
       indexingState.errors.push(`${path}: ${error}`);
+      indexingState.runningWorkers = 0;
+      indexingState.currentFile = null;
       notify();
     },
   });
@@ -137,6 +144,8 @@ export function createSourceIndexingService(
     async runScheduledReconcile() {
       const repaired = await enqueueReconcileJobs("scheduled_reconcile");
       await drainWorkerQueue();
+      indexingState.lastReconcileAt = new Date().toISOString();
+      notify();
       return { repaired };
     },
 
@@ -151,6 +160,8 @@ export function createSourceIndexingService(
     indexingState.lastRunAt = new Date().toISOString();
     indexingState.currentFile = null;
     indexingState.indexedFiles = 0;
+    indexingState.queueDepth = 0;
+    indexingState.runningWorkers = 0;
     indexingState.errors = [];
     notify();
   }
@@ -216,6 +227,7 @@ export function createSourceIndexingService(
         nextRunAtMs: now,
       });
       enqueued += 1;
+      indexingState.queueDepth += 1;
     }
 
     for (const known of knownFiles) {
@@ -230,8 +242,10 @@ export function createSourceIndexingService(
         nextRunAtMs: now,
       });
       enqueued += 1;
+      indexingState.queueDepth += 1;
     }
 
+    notify();
     return enqueued;
   }
 
@@ -239,6 +253,13 @@ export function createSourceIndexingService(
     while (true) {
       const flushed = scheduler.flushDue(Date.now());
       const processed = await worker.runOnce(Date.now());
+      if (flushed > 0) {
+        indexingState.queueDepth += flushed;
+      }
+      if (processed > 0) {
+        indexingState.queueDepth = Math.max(0, indexingState.queueDepth - processed);
+      }
+      notify();
       if (flushed === 0 && processed === 0) {
         break;
       }

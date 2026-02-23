@@ -7,8 +7,11 @@ export type IndexingStatus = {
   running: boolean;
   lastReason: string;
   lastRunAt: string;
+  lastReconcileAt: string;
   currentFile: string | null;
   indexedFiles: number;
+  queueDepth: number;
+  runningWorkers: number;
   errors: string[];
 };
 

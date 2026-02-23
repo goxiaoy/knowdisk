@@ -6,8 +6,11 @@ const EMPTY_STATUS: IndexingStatus = {
   running: false,
   lastReason: "",
   lastRunAt: "",
+  lastReconcileAt: "",
   currentFile: null,
   indexedFiles: 0,
+  queueDepth: 0,
+  runningWorkers: 0,
   errors: [],
 };
 
@@ -57,6 +60,18 @@ export function IndexStatusCard({ pollMs = 1000 }: { pollMs?: number }) {
             {status.indexedFiles}
           </dd>
         </div>
+        <div>
+          <dt className="text-slate-500">Queue Depth</dt>
+          <dd data-testid="index-status-queue-depth" className="font-medium text-slate-900">
+            {status.queueDepth}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">Running Workers</dt>
+          <dd data-testid="index-status-running-workers" className="font-medium text-slate-900">
+            {status.runningWorkers}
+          </dd>
+        </div>
         <div className="md:col-span-2">
           <dt className="text-slate-500">Current File</dt>
           <dd data-testid="index-status-current-file" className="font-medium text-slate-900 break-all">
@@ -67,6 +82,12 @@ export function IndexStatusCard({ pollMs = 1000 }: { pollMs?: number }) {
           <dt className="text-slate-500">Last Run At</dt>
           <dd data-testid="index-status-last-run-at" className="font-medium text-slate-900">
             {status.lastRunAt || "-"}
+          </dd>
+        </div>
+        <div className="md:col-span-2">
+          <dt className="text-slate-500">Last Reconcile At</dt>
+          <dd data-testid="index-status-last-reconcile-at" className="font-medium text-slate-900">
+            {status.lastReconcileAt || "-"}
           </dd>
         </div>
         <div className="md:col-span-2">
