@@ -142,6 +142,10 @@ describe("index metadata repository", () => {
 
     repo.completeJob("j1");
     repo.failJob("j2", "boom");
+    repo.retryJob("j2", "retrying", 999);
+    const retried = repo.getJobById("j2");
+    expect(retried?.status).toBe("pending");
+    expect(retried?.nextRunAtMs).toBe(999);
 
     const none = repo.claimDueJobs(5, 20);
     expect(none.length).toBe(0);

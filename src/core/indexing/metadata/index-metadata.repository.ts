@@ -254,6 +254,26 @@ export function createIndexMetadataRepository(opts: {
       return rows;
     },
 
+    getJobById(jobId: string) {
+      return db
+        .query(
+          `SELECT
+            job_id AS jobId,
+            path,
+            job_type AS jobType,
+            status,
+            reason,
+            attempt,
+            error,
+            next_run_at_ms AS nextRunAtMs,
+            created_at_ms AS createdAtMs,
+            updated_at_ms AS updatedAtMs
+          FROM jobs
+          WHERE job_id = ?`,
+        )
+        .get(jobId) as IndexJobRow | null;
+    },
+
     completeJob(jobId: string) {
       db.query(
         "UPDATE jobs SET status = 'done', error = NULL, updated_at_ms = ? WHERE job_id = ?",
@@ -264,6 +284,14 @@ export function createIndexMetadataRepository(opts: {
       db.query(
         "UPDATE jobs SET status = 'failed', error = ?, updated_at_ms = ? WHERE job_id = ?",
       ).run(error, Date.now(), jobId);
+    },
+
+    retryJob(jobId: string, error: string, nextRunAtMs: number) {
+      db.query(
+        `UPDATE jobs
+          SET status = 'pending', error = ?, next_run_at_ms = ?, updated_at_ms = ?
+          WHERE job_id = ?`,
+      ).run(error, nextRunAtMs, Date.now(), jobId);
     },
 
     resetRunningJobsToPending() {

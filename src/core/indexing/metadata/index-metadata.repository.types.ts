@@ -79,7 +79,9 @@ export type IndexMetadataRepository = {
 
   enqueueJob: (job: NewIndexJob) => void;
   claimDueJobs: (limit: number, nowMs: number) => IndexJobRow[];
+  getJobById: (jobId: string) => IndexJobRow | null;
   completeJob: (jobId: string) => void;
   failJob: (jobId: string, error: string) => void;
+  retryJob: (jobId: string, error: string, nextRunAtMs: number) => void;
   resetRunningJobsToPending: () => number;
 };
