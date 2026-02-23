@@ -586,6 +586,10 @@ export function createConfigService(opts?: {
         persist(fallback);
         return fallback;
       }
+      const normalized = JSON.stringify(parsed, null, 2) + "\n";
+      if (raw !== normalized) {
+        persist(parsed);
+      }
       return parsed;
     } catch {
       const fallback = defaults;

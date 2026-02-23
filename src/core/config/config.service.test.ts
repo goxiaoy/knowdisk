@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -162,6 +162,36 @@ describe("getDefaultConfig", () => {
       { path: "/a", enabled: true },
       { path: "/z", enabled: true },
     ]);
+  });
+
+  test("normalizes and persists manually edited config on startup", () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-config-"));
+    const configPath = join(dir, "app-config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          version: 1,
+          sources: [
+            { path: "/user/goxy/a/b/", enabled: true },
+            { path: "/user/goxy/a", enabled: true },
+          ],
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf8",
+    );
+
+    const service = createConfigService({ configPath });
+    expect(service.getConfig().sources).toEqual([{ path: "/user/goxy/a", enabled: true }]);
+
+    const persisted = JSON.parse(readFileSync(configPath, "utf8")) as {
+      sources?: Array<{ path: string; enabled: boolean }>;
+    };
+    expect(persisted.sources).toEqual([{ path: "/user/goxy/a", enabled: true }]);
+
+    rmSync(dir, { recursive: true, force: true });
   });
 
   test("updates embedding and reranker settings", () => {
