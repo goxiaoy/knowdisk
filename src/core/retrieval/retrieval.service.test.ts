@@ -32,6 +32,9 @@ test("returns deterministic top-k with metadata", async () => {
         ];
         return rows.slice(0, opts.topK);
       },
+      async listBySourcePath() {
+        return [];
+      },
     },
     metadata: {
       listChunksBySourcePath() {
@@ -64,6 +67,9 @@ test("applies reranker when configured", async () => {
           },
         ];
       },
+      async listBySourcePath() {
+        return [];
+      },
     },
     metadata: {
       listChunksBySourcePath() {
@@ -88,6 +94,9 @@ test("retrieves all chunks by source path and keeps ordering metadata", async ()
     embedding: { async embed() { return [1, 0]; } },
     vector: {
       async search() {
+        return [];
+      },
+      async listBySourcePath() {
         return [];
       },
     },
@@ -121,7 +130,7 @@ test("retrieves all chunks by source path and keeps ordering metadata", async ()
     defaults: { topK: 5 },
   });
 
-  const rows = await svc.retrieveBySourcePath("docs/a.md");
+  const rows = await svc.retrieveBySourcePath("docs/a.md", false);
   expect(rows.length).toBe(2);
   expect(rows[0]).toMatchObject({
     chunkId: "c1",
@@ -137,6 +146,9 @@ test("retrieveBySourcePath resolves chunk text via sourceReader when offsets exi
     embedding: { async embed() { return [1, 0]; } },
     vector: {
       async search() {
+        return [];
+      },
+      async listBySourcePath() {
         return [];
       },
     },
@@ -167,8 +179,46 @@ test("retrieveBySourcePath resolves chunk text via sourceReader when offsets exi
     defaults: { topK: 5 },
   });
 
-  const rows = await svc.retrieveBySourcePath("docs/a.md");
+  const rows = await svc.retrieveBySourcePath("docs/a.md", false);
   expect(rows[0]?.chunkText).toBe("resolved-from-source");
+});
+
+test("retrieveBySourcePath can read directly from vector rows", async () => {
+  const svc = createRetrievalService({
+    embedding: { async embed() { return [1, 0]; } },
+    vector: {
+      async search() {
+        return [];
+      },
+      async listBySourcePath(sourcePath: string) {
+        expect(sourcePath).toBe("docs/a.md");
+        return [
+          {
+            chunkId: "c1",
+            score: 0.3,
+            metadata: {
+              sourcePath,
+              chunkText: "from-vector",
+              startOffset: 0,
+              endOffset: 10,
+              tokenEstimate: 3,
+            },
+          },
+        ];
+      },
+    },
+    metadata: {
+      listChunksBySourcePath() {
+        return [];
+      },
+    },
+    defaults: { topK: 5 },
+  });
+
+  const rows = await svc.retrieveBySourcePath("docs/a.md", true);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.chunkText).toBe("from-vector");
+  expect(rows[0]?.score).toBe(0.3);
 });
 
 test("getSourceChunkInfoByPath returns raw metadata rows", async () => {
@@ -176,6 +226,9 @@ test("getSourceChunkInfoByPath returns raw metadata rows", async () => {
     embedding: { async embed() { return [1, 0]; } },
     vector: {
       async search() {
+        return [];
+      },
+      async listBySourcePath() {
         return [];
       },
     },
@@ -245,6 +298,9 @@ test("titleOnly search uses only title FTS for scoring", async () => {
           },
         ];
       },
+      async listBySourcePath() {
+        return [];
+      },
     },
     metadata: {
       listChunksBySourcePath() {
@@ -296,6 +352,9 @@ test("single keyword search mixes title and content with vector scoring", async 
             metadata: { sourcePath: "/docs/a.md", title: "a", chunkText: "vector row" },
           },
         ];
+      },
+      async listBySourcePath() {
+        return [];
       },
     },
     metadata: {

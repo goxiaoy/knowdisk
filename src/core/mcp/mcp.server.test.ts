@@ -15,7 +15,7 @@ test("search_local_knowledge returns retrieval payload", async () => {
           updatedAt: "2026-02-21T00:00:00.000Z",
         }));
       },
-      async retrieveBySourcePath(_sourcePath: string) {
+      async retrieveBySourcePath(_sourcePath: string, _fromVector: boolean) {
         return [];
       },
       async getSourceChunkInfoByPath(_sourcePath: string) {
@@ -39,7 +39,7 @@ test("search_local_knowledge fails when mcp is disabled", async () => {
       async search() {
         return [];
       },
-      async retrieveBySourcePath(_sourcePath: string) {
+      async retrieveBySourcePath(_sourcePath: string, _fromVector: boolean) {
         return [];
       },
       async getSourceChunkInfoByPath(_sourcePath: string) {
@@ -66,7 +66,8 @@ test("http transport supports listTools and callTool", async () => {
           updatedAt: "2026-02-21T00:00:00.000Z",
         }));
       },
-      async retrieveBySourcePath(sourcePath: string) {
+      async retrieveBySourcePath(sourcePath: string, fromVector: boolean) {
+        expect(fromVector).toBe(false);
         return [
           {
             chunkId: "c-path-1",

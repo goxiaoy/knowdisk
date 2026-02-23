@@ -34,7 +34,7 @@ export function createMcpServer(deps: McpServerDeps): McpServerService {
       throw new Error("MCP_DISABLED");
     }
     const sourcePath = args.source_path.trim();
-    const chunks = await deps.retrieval.retrieveBySourcePath(sourcePath);
+    const chunks = await deps.retrieval.retrieveBySourcePath(sourcePath, false);
     return {
       sourcePath,
       chunkCount: chunks.length,

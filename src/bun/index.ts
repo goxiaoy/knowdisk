@@ -24,10 +24,15 @@ async function getMainViewUrl(): Promise<string> {
   if (channel === "dev") {
     try {
       await fetch(DEV_SERVER_URL, { method: "HEAD" });
-      container.loggerService.info({ devServerUrl: DEV_SERVER_URL }, "HMR enabled: using Vite dev server");
+      container.loggerService.info(
+        { devServerUrl: DEV_SERVER_URL },
+        "HMR enabled: using Vite dev server",
+      );
       return DEV_SERVER_URL;
     } catch {
-      container.loggerService.warn("Vite dev server not running. Run 'bun run dev:hmr' for HMR support.");
+      container.loggerService.warn(
+        "Vite dev server not running. Run 'bun run dev:hmr' for HMR support.",
+      );
     }
   }
   return "views://mainview/index.html";
@@ -51,7 +56,11 @@ const incrementalBatcher = createIncrementalBatcher({
   },
   onError(error, changes) {
     container.loggerService.error(
-      { subsystem: "indexing", error: String(error), changeCount: changes.length },
+      {
+        subsystem: "indexing",
+        error: String(error),
+        changeCount: changes.length,
+      },
       "incremental indexing failed",
     );
   },
@@ -99,17 +108,20 @@ if (startupConfig.mcp.enabled && container.mcpServer) {
   }
 }
 if (startupConfig.indexing.reconcile.enabled) {
-  void container.indexingService.runScheduledReconcile().then((report) => {
-    container.loggerService.info(
-      { repaired: report.repaired },
-      "Startup reconcile completed",
-    );
-  }).catch((error) => {
-    container.loggerService.error(
-      { subsystem: "indexing", error: String(error) },
-      "startup reconcile failed",
-    );
-  });
+  void container.indexingService
+    .runScheduledReconcile()
+    .then((report) => {
+      container.loggerService.info(
+        { repaired: report.repaired },
+        "Startup reconcile completed",
+      );
+    })
+    .catch((error) => {
+      container.loggerService.error(
+        { subsystem: "indexing", error: String(error) },
+        "startup reconcile failed",
+      );
+    });
 
   reconcileTimer = setInterval(() => {
     void container.indexingService.runScheduledReconcile().catch((error) => {
@@ -180,7 +192,9 @@ const rpc = BrowserView.defineRPC({
         return container.healthService.getComponentHealth();
       },
       get_index_status(): IndexingStatus {
-        const snapshot = container.indexingService.getIndexStatus().getSnapshot();
+        const snapshot = container.indexingService
+          .getIndexStatus()
+          .getSnapshot();
         return {
           ...snapshot,
           run: {
@@ -192,9 +206,7 @@ const rpc = BrowserView.defineRPC({
       get_vector_stats(): Promise<VectorCollectionInspect> {
         return container.vectorRepository.inspect();
       },
-      search_retrieval(
-        params?: unknown,
-      ): Promise<RetrievalResult[]> {
+      search_retrieval(params?: unknown): Promise<RetrievalResult[]> {
         const { query, topK, titleOnly } = params as {
           query: string;
           topK: number;
@@ -204,11 +216,13 @@ const rpc = BrowserView.defineRPC({
       },
       retrieve_source_chunks(params?: unknown): Promise<RetrievalResult[]> {
         const { sourcePath } = params as { sourcePath: string };
-        return container.retrievalService.retrieveBySourcePath(sourcePath);
+        return container.retrievalService.retrieveBySourcePath(sourcePath, true);
       },
       async list_source_files(): Promise<string[]> {
         const cfg = container.configService.getConfig();
-        const sourceDirs = cfg.sources.filter((source) => source.enabled).map((source) => source.path);
+        const sourceDirs = cfg.sources
+          .filter((source) => source.enabled)
+          .map((source) => source.path);
         return listFilesFromSourceDirs(sourceDirs, 5000);
       },
       async force_resync() {
@@ -241,7 +255,11 @@ const rpc = BrowserView.defineRPC({
           }
           const next = upsertKnowDiskMcpServerConfig(raw, { endpoint });
           await mkdir(dirname(configPath), { recursive: true });
-          await writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+          await writeFile(
+            configPath,
+            `${JSON.stringify(next, null, 2)}\n`,
+            "utf8",
+          );
           container.loggerService.info(
             { subsystem: "mcp", endpoint, configPath },
             "Claude Desktop MCP config updated",
@@ -340,7 +358,10 @@ mainWindow.on("close", () => {
 
 container.loggerService.info("Know Disk app started");
 
-async function listFilesFromSourceDirs(sourceDirs: string[], maxFiles: number): Promise<string[]> {
+async function listFilesFromSourceDirs(
+  sourceDirs: string[],
+  maxFiles: number,
+): Promise<string[]> {
   const files: string[] = [];
   for (const dir of sourceDirs) {
     await walkDirectory(dir, files, maxFiles);
@@ -351,7 +372,11 @@ async function listFilesFromSourceDirs(sourceDirs: string[], maxFiles: number): 
   return files;
 }
 
-async function walkDirectory(dirPath: string, files: string[], maxFiles: number): Promise<void> {
+async function walkDirectory(
+  dirPath: string,
+  files: string[],
+  maxFiles: number,
+): Promise<void> {
   if (files.length >= maxFiles) {
     return;
   }
@@ -386,7 +411,9 @@ function syncSourceWatchers(config: AppConfig) {
   }
 
   const nextWatchSources = new Set(
-    config.sources.filter((source) => source.enabled).map((source) => source.path),
+    config.sources
+      .filter((source) => source.enabled)
+      .map((source) => source.path),
   );
 
   for (const [sourcePath, watcher] of sourceWatchers.entries()) {

@@ -107,7 +107,20 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
 
       return finalRows.map(mapRow);
     },
-    async retrieveBySourcePath(sourcePath: string) {
+    async retrieveBySourcePath(sourcePath: string, fromVector: boolean) {
+      if (fromVector) {
+        const rows = await deps.vector.listBySourcePath(sourcePath);
+        return rows.map((row) => ({
+          chunkId: row.chunkId,
+          chunkText: row.metadata.chunkText ?? "",
+          sourcePath: row.metadata.sourcePath,
+          score: row.score,
+          updatedAt: row.metadata.updatedAt,
+          startOffset: row.metadata.startOffset,
+          endOffset: row.metadata.endOffset,
+          tokenEstimate: row.metadata.tokenEstimate,
+        }));
+      }
       const rows = deps.metadata.listChunksBySourcePath(sourcePath);
       return Promise.all(
         rows.map(async (row) => {

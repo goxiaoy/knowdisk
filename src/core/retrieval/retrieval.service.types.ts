@@ -37,6 +37,7 @@ export type RetrievalDeps = {
   embedding: EmbeddingProvider;
   vector: {
     search: (query: number[], opts: { topK: number }) => Promise<RetrievalVectorRow[]>;
+    listBySourcePath: (sourcePath: string) => Promise<RetrievalVectorRow[]>;
   };
   sourceReader?: {
     readRange: (
@@ -71,6 +72,6 @@ export type RetrievalDeps = {
 
 export type RetrievalService = {
   search: (query: string, opts: { topK?: number; titleOnly?: boolean }) => Promise<RetrievalResult[]>;
-  retrieveBySourcePath: (sourcePath: string) => Promise<RetrievalResult[]>;
+  retrieveBySourcePath: (sourcePath: string, fromVector: boolean) => Promise<RetrievalResult[]>;
   getSourceChunkInfoByPath: (sourcePath: string) => Promise<RetrievalChunkInfo[]>;
 };
