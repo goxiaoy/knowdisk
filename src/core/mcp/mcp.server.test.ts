@@ -15,13 +15,19 @@ test("search_local_knowledge returns retrieval payload", async () => {
           updatedAt: "2026-02-21T00:00:00.000Z",
         }));
       },
+      async retrieveBySourcePath(_sourcePath: string) {
+        return [];
+      },
+      async getSourceChunkInfoByPath(_sourcePath: string) {
+        return [];
+      },
     },
   });
 
   const res = await server.callTool("search_local_knowledge", {
     query: "setup",
     top_k: 3,
-  });
+  }) as { results: Array<{ sourcePath: string }> };
 
   expect(res.results).toHaveLength(3);
   expect(res.results[0]).toHaveProperty("sourcePath");
@@ -31,6 +37,12 @@ test("search_local_knowledge fails when mcp is disabled", async () => {
   const server = createMcpServer({
     retrieval: {
       async search() {
+        return [];
+      },
+      async retrieveBySourcePath(_sourcePath: string) {
+        return [];
+      },
+      async getSourceChunkInfoByPath(_sourcePath: string) {
         return [];
       },
     },
@@ -54,6 +66,30 @@ test("http transport supports listTools and callTool", async () => {
           updatedAt: "2026-02-21T00:00:00.000Z",
         }));
       },
+      async retrieveBySourcePath(sourcePath: string) {
+        return [
+          {
+            chunkId: "c-path-1",
+            sourcePath,
+            chunkText: "chunk from path",
+            score: 0,
+          },
+        ];
+      },
+      async getSourceChunkInfoByPath(sourcePath: string) {
+        return [
+          {
+            chunkId: "c-path-1",
+            fileId: "f1",
+            sourcePath,
+            startOffset: 0,
+            endOffset: 9,
+            chunkHash: "h1",
+            tokenCount: 3,
+            updatedAtMs: 1,
+          },
+        ];
+      },
     },
   });
 
@@ -71,6 +107,8 @@ test("http transport supports listTools and callTool", async () => {
     await withTimeout(client.connect(transport), 3000);
     const tools = await withTimeout(client.listTools(), 3000);
     expect(tools.tools.some((tool) => tool.name === "search_local_knowledge")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "get_source_chunk_info")).toBe(true);
+    expect(tools.tools.some((tool) => tool.name === "retrieve_document_by_path")).toBe(true);
 
     const result = await withTimeout(
       client.callTool({
@@ -85,6 +123,36 @@ test("http transport supports listTools and callTool", async () => {
     expect(firstContent && "text" in firstContent ? (firstContent.text ?? "").includes("docs/setup-0.md") : false).toBe(
       true,
     );
+
+    const chunkInfoResult = await withTimeout(
+      client.callTool({
+        name: "get_source_chunk_info",
+        arguments: { source_path: "docs/setup.md" },
+      }),
+      3000,
+    );
+    const chunkInfoContent = (chunkInfoResult as { content: Array<{ type: string; text?: string }> }).content[0];
+    expect(chunkInfoContent?.type).toBe("text");
+    expect(
+      chunkInfoContent && "text" in chunkInfoContent
+        ? (chunkInfoContent.text ?? "").includes("\"chunkHash\":\"h1\"")
+        : false,
+    ).toBe(true);
+
+    const retrieveDocResult = await withTimeout(
+      client.callTool({
+        name: "retrieve_document_by_path",
+        arguments: { source_path: "docs/setup.md" },
+      }),
+      3000,
+    );
+    const retrieveDocContent = (retrieveDocResult as { content: Array<{ type: string; text?: string }> }).content[0];
+    expect(retrieveDocContent?.type).toBe("text");
+    expect(
+      retrieveDocContent && "text" in retrieveDocContent
+        ? (retrieveDocContent.text ?? "").includes("\"chunkCount\":1")
+        : false,
+    ).toBe(true);
   } finally {
     await transport.close();
     httpServer.stop(true);

@@ -25,6 +25,7 @@ type BridgeRpc = {
     retrieve_source_chunks: (params: { sourcePath: string }) => Promise<RetrievalResult[]>;
     list_source_files: () => Promise<string[]>;
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
+    install_claude_mcp: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     pick_source_directory_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
     pick_file_path_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
   };
@@ -232,6 +233,17 @@ export async function forceResyncInBun(): Promise<{ ok: boolean; error?: string 
   try {
     return await channel.request.force_resync();
   } catch {
+    return null;
+  }
+}
+
+export async function installClaudeMcpInBun(): Promise<{ ok: boolean; path?: string; error?: string } | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.install_claude_mcp();
+  } catch (error) {
+    console.error("install_claude_mcp RPC failed:", error);
     return null;
   }
 }

@@ -108,34 +108,48 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
       return finalRows.map(mapRow);
     },
     async retrieveBySourcePath(sourcePath: string) {
-      const rows = await deps.vector.listBySourcePath(sourcePath);
+      const rows = deps.metadata.listChunksBySourcePath(sourcePath);
       return Promise.all(
         rows.map(async (row) => {
-          let chunkText = row.metadata.chunkText ?? "";
+          let chunkText = "";
           if (
             deps.sourceReader &&
-            row.metadata.startOffset !== undefined &&
-            row.metadata.endOffset !== undefined
+            row.startOffset !== null &&
+            row.endOffset !== null
           ) {
             try {
               chunkText = await deps.sourceReader.readRange(
-                row.metadata.sourcePath,
-                row.metadata.startOffset,
-                row.metadata.endOffset,
+                row.sourcePath,
+                row.startOffset,
+                row.endOffset,
               );
             } catch {
-              // fallback to preview from vector metadata
+              // fallback to empty string
             }
           }
-          return mapRow({
-            ...row,
-            metadata: {
-              ...row.metadata,
-              chunkText,
-            },
-          });
+          return {
+            chunkId: row.chunkId,
+            chunkText,
+            sourcePath: row.sourcePath,
+            score: 0,
+            startOffset: row.startOffset ?? undefined,
+            endOffset: row.endOffset ?? undefined,
+            tokenEstimate: row.tokenCount ?? undefined,
+          };
         }),
       );
+    },
+    async getSourceChunkInfoByPath(sourcePath: string) {
+      return deps.metadata.listChunksBySourcePath(sourcePath).map((row) => ({
+        chunkId: row.chunkId,
+        fileId: row.fileId,
+        sourcePath: row.sourcePath,
+        startOffset: row.startOffset ?? undefined,
+        endOffset: row.endOffset ?? undefined,
+        chunkHash: row.chunkHash,
+        tokenCount: row.tokenCount ?? undefined,
+        updatedAtMs: row.updatedAtMs,
+      }));
     },
   };
 }

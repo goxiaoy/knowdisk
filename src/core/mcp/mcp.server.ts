@@ -20,33 +20,102 @@ export function createMcpServer(deps: McpServerDeps): McpServerService {
     return { results };
   };
 
+  const runGetSourceChunkInfo = async (args: { source_path: string }) => {
+    if (!(deps.isEnabled?.() ?? true)) {
+      throw new Error("MCP_DISABLED");
+    }
+    const sourcePath = args.source_path.trim();
+    const chunks = await deps.retrieval.getSourceChunkInfoByPath(sourcePath);
+    return { sourcePath, chunks };
+  };
+
+  const runRetrieveDocumentByPath = async (args: { source_path: string }) => {
+    if (!(deps.isEnabled?.() ?? true)) {
+      throw new Error("MCP_DISABLED");
+    }
+    const sourcePath = args.source_path.trim();
+    const chunks = await deps.retrieval.retrieveBySourcePath(sourcePath);
+    return {
+      sourcePath,
+      chunkCount: chunks.length,
+      content: chunks.map((chunk) => chunk.chunkText).join("\n\n"),
+      chunks,
+    };
+  };
+
   const registerSearchTool = (server: McpServer) =>
     server.registerTool(
-    "search_local_knowledge",
-    {
-      description: "Search local indexed knowledge chunks by semantic similarity.",
-      inputSchema: {
-        query: z.string().min(1),
-        top_k: z.number().int().positive().optional(),
+      "search_local_knowledge",
+      {
+        description: "Search local indexed knowledge chunks by semantic similarity.",
+        inputSchema: {
+          query: z.string().min(1),
+          top_k: z.number().int().positive().optional(),
+        },
       },
-    },
-    async (args) => {
-      const payload = await runSearch({
-        query: args.query,
-        top_k: args.top_k,
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(payload),
-          },
-        ],
-      };
-    },
-  );
+      async (args) => {
+        const payload = await runSearch({
+          query: args.query,
+          top_k: args.top_k,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(payload),
+            },
+          ],
+        };
+      },
+    );
+
+  const registerSourceChunkInfoTool = (server: McpServer) =>
+    server.registerTool(
+      "get_source_chunk_info",
+      {
+        description: "Get raw indexed chunk metadata by source path.",
+        inputSchema: {
+          source_path: z.string().min(1),
+        },
+      },
+      async (args) => {
+        const payload = await runGetSourceChunkInfo({ source_path: args.source_path });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(payload),
+            },
+          ],
+        };
+      },
+    );
+
+  const registerRetrieveDocumentTool = (server: McpServer) =>
+    server.registerTool(
+      "retrieve_document_by_path",
+      {
+        description: "Retrieve all indexed chunks and merged content by source path.",
+        inputSchema: {
+          source_path: z.string().min(1),
+        },
+      },
+      async (args) => {
+        const payload = await runRetrieveDocumentByPath({ source_path: args.source_path });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(payload),
+            },
+          ],
+        };
+      },
+    );
 
   registerSearchTool(server);
+  registerSourceChunkInfoTool(server);
+  registerRetrieveDocumentTool(server);
 
   return {
     async handleHttpRequest(request: Request) {
@@ -72,11 +141,17 @@ export function createMcpServer(deps: McpServerDeps): McpServerService {
     async close() {
       await server.close();
     },
-    async callTool(name: string, args: { query: string; top_k?: number }) {
-      if (name !== "search_local_knowledge") {
-        throw new Error("TOOL_NOT_FOUND");
+    async callTool(name: string, args: { query?: string; top_k?: number; source_path?: string }) {
+      if (name === "search_local_knowledge") {
+        return runSearch({ query: args.query ?? "", top_k: args.top_k });
       }
-      return runSearch(args);
+      if (name === "get_source_chunk_info") {
+        return runGetSourceChunkInfo({ source_path: args.source_path ?? "" });
+      }
+      if (name === "retrieve_document_by_path") {
+        return runRetrieveDocumentByPath({ source_path: args.source_path ?? "" });
+      }
+      throw new Error("TOOL_NOT_FOUND");
     },
   };
 }

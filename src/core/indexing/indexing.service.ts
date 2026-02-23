@@ -21,7 +21,8 @@ export function createSourceIndexingService(
   configService: ConfigService,
   embedding: EmbeddingProvider,
   chunking: ChunkingService,
-  vector: Pick<VectorRepository, "upsert" | "deleteBySourcePath">,
+  vector: Pick<VectorRepository, "upsert" | "deleteBySourcePath"> &
+    Partial<Pick<VectorRepository, "optimize">>,
   logger?: LoggerService,
   opts?: {
     metadata?: IndexMetadataRepository;
@@ -204,6 +205,16 @@ export function createSourceIndexingService(
     async runScheduledReconcile() {
       const repaired = await enqueueReconcileJobs("scheduled_reconcile");
       await drainWorkerQueue();
+      if (repaired > 0 && vector.optimize) {
+        try {
+          await vector.optimize();
+          log.info({ repaired }, "vector optimize completed after reconcile");
+        } catch (error) {
+          const message = `vector optimize failed: ${String(error)}`;
+          indexingState.run.errors.push(message);
+          log.error({ error: String(error), repaired }, "vector optimize failed after reconcile");
+        }
+      }
       indexingState.run.lastReconcileAt = new Date().toISOString();
       notify();
       return { repaired };

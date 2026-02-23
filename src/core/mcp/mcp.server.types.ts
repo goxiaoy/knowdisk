@@ -1,7 +1,10 @@
 import type { RetrievalService } from "../retrieval/retrieval.service.types";
 
 export type McpServerDeps = {
-  retrieval: Pick<RetrievalService, "search">;
+  retrieval: Pick<
+    RetrievalService,
+    "search" | "retrieveBySourcePath" | "getSourceChunkInfoByPath"
+  >;
   isEnabled?: () => boolean;
 };
 
@@ -10,6 +13,6 @@ export type McpServerService = {
   close: () => Promise<void>;
   callTool: (
     name: string,
-    args: { query: string; top_k?: number },
-  ) => Promise<{ results: unknown[] }>;
+    args: { query?: string; top_k?: number; source_path?: string },
+  ) => Promise<unknown>;
 };

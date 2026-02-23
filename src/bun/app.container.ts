@@ -144,6 +144,7 @@ function registerDependencies(
       return createRetrievalService({
         embedding,
         vector,
+        metadata,
         fts: metadata,
         sourceReader: {
           readRange(path: string, startOffset: number, endOffset: number) {

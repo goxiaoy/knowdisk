@@ -74,6 +74,7 @@ export type IndexMetadataRepository = {
 
   upsertChunks: (rows: IndexChunkRow[]) => void;
   listChunksByFileId: (fileId: string) => IndexChunkRow[];
+  listChunksBySourcePath: (sourcePath: string) => IndexChunkRow[];
   deleteChunksByIds: (chunkIds: string[]) => void;
 
   upsertFtsChunks: (rows: FtsChunkRow[]) => void;

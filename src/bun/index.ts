@@ -1,8 +1,14 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { opendir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { dirname } from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 import { createAppContainer } from "./app.container";
+import {
+  pickClaudeDesktopConfigPath,
+  upsertKnowDiskMcpServerConfig,
+} from "./claude-desktop-config";
 import { createIncrementalBatcher } from "./incremental-batcher";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
@@ -215,6 +221,36 @@ const rpc = BrowserView.defineRPC({
           container.loggerService.error(
             { subsystem: "indexing", error: String(error) },
             "force resync failed",
+          );
+          return { ok: false, error: String(error) };
+        }
+      },
+      async install_claude_mcp() {
+        try {
+          const cfg = container.configService.getConfig();
+          const endpoint = `http://127.0.0.1:${cfg.mcp.port}/mcp`;
+          const configPath = pickClaudeDesktopConfigPath({
+            homeDir: Utils.paths.home,
+            platform: process.platform,
+          });
+          let raw = "{}";
+          try {
+            raw = await readFile(configPath, "utf8");
+          } catch {
+            raw = "{}";
+          }
+          const next = upsertKnowDiskMcpServerConfig(raw, { endpoint });
+          await mkdir(dirname(configPath), { recursive: true });
+          await writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+          container.loggerService.info(
+            { subsystem: "mcp", endpoint, configPath },
+            "Claude Desktop MCP config updated",
+          );
+          return { ok: true, path: configPath };
+        } catch (error) {
+          container.loggerService.error(
+            { subsystem: "mcp", error: String(error) },
+            "Failed to update Claude Desktop MCP config",
           );
           return { ok: false, error: String(error) };
         }

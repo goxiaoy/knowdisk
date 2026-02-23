@@ -37,4 +37,32 @@ describe("HomePage", () => {
 
     expect(renderer.root.findByProps({ children: "Force resync failed: boom" })).toBeDefined();
   });
+
+  it("configures claude mcp and shows config path", async () => {
+    let called = 0;
+    const renderer = create(
+      <HomePage
+        installClaudeMcp={async () => {
+          called += 1;
+          return {
+            ok: true,
+            path: "/Users/goxy/Library/Application Support/Claude/claude_desktop_config.json",
+          };
+        }}
+      />,
+    );
+
+    const button = renderer.root.findByProps({ "data-testid": "home-configure-claude-mcp" });
+    await act(async () => {
+      await button.props.onClick();
+    });
+
+    expect(called).toBe(1);
+    expect(
+      renderer.root.findByProps({
+        children:
+          "Claude MCP configured: /Users/goxy/Library/Application Support/Claude/claude_desktop_config.json",
+      }),
+    ).toBeDefined();
+  });
 });

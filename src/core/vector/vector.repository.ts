@@ -104,6 +104,20 @@ export function createVectorRepository(
       );
     },
 
+    async optimize() {
+      logger.debug(
+        { subsystem: "vector", collectionPath },
+        "vector.optimize: start",
+      );
+      await withCollectionSelfHeal("optimize", async () => {
+        collection.optimizeSync();
+      });
+      logger.debug(
+        { subsystem: "vector", collectionPath },
+        "vector.optimize: done",
+      );
+    },
+
     async upsert(input: VectorRow[]) {
       logger.debug(
         { subsystem: "vector", collectionPath, chunkCount: input.length },

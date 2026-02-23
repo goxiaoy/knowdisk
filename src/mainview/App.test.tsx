@@ -38,6 +38,7 @@ describe("App", () => {
   it("shows app shell when onboarding is completed", () => {
     const renderer = create(<App configService={makeConfigService(true)} />);
     expect(renderer.root.findByProps({ children: "Home" })).toBeDefined();
+    expect(renderer.root.findByProps({ children: "Status" })).toBeDefined();
     expect(renderer.root.findByProps({ children: "Settings" })).toBeDefined();
   });
 });

@@ -27,7 +27,9 @@ test("hybrid retrieval merges vector and fts rows then reranks once", async () =
           },
         ];
       },
-      async listBySourcePath() {
+    },
+    metadata: {
+      listChunksBySourcePath() {
         return [];
       },
     },

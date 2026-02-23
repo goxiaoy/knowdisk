@@ -153,6 +153,25 @@ export function createIndexMetadataRepository(opts: {
         .all(fileId) as IndexChunkRow[];
     },
 
+    listChunksBySourcePath(sourcePath: string) {
+      return db
+        .query(
+          `SELECT
+            chunk_id AS chunkId,
+            file_id AS fileId,
+            source_path AS sourcePath,
+            start_offset AS startOffset,
+            end_offset AS endOffset,
+            chunk_hash AS chunkHash,
+            token_count AS tokenCount,
+            updated_at_ms AS updatedAtMs
+          FROM chunks
+          WHERE source_path = ?
+          ORDER BY start_offset ASC, chunk_id ASC`,
+        )
+        .all(sourcePath) as IndexChunkRow[];
+    },
+
     deleteChunksByIds(chunkIds: string[]) {
       if (chunkIds.length === 0) {
         return;

@@ -22,11 +22,21 @@ export type RetrievalResult = {
   tokenEstimate?: number;
 };
 
+export type RetrievalChunkInfo = {
+  chunkId: string;
+  fileId?: string;
+  sourcePath: string;
+  startOffset?: number;
+  endOffset?: number;
+  chunkHash?: string;
+  tokenCount?: number;
+  updatedAtMs?: number;
+};
+
 export type RetrievalDeps = {
   embedding: EmbeddingProvider;
   vector: {
     search: (query: number[], opts: { topK: number }) => Promise<RetrievalVectorRow[]>;
-    listBySourcePath: (sourcePath: string) => Promise<RetrievalVectorRow[]>;
   };
   sourceReader?: {
     readRange: (
@@ -34,6 +44,18 @@ export type RetrievalDeps = {
       startOffset: number,
       endOffset: number,
     ) => Promise<string>;
+  };
+  metadata: {
+    listChunksBySourcePath: (sourcePath: string) => Array<{
+      chunkId: string;
+      fileId: string;
+      sourcePath: string;
+      startOffset: number | null;
+      endOffset: number | null;
+      chunkHash: string;
+      tokenCount: number | null;
+      updatedAtMs: number;
+    }>;
   };
   fts?: {
     searchFts: (query: string, limit: number) => FtsSearchRow[];
@@ -50,4 +72,5 @@ export type RetrievalDeps = {
 export type RetrievalService = {
   search: (query: string, opts: { topK?: number; titleOnly?: boolean }) => Promise<RetrievalResult[]>;
   retrieveBySourcePath: (sourcePath: string) => Promise<RetrievalResult[]>;
+  getSourceChunkInfoByPath: (sourcePath: string) => Promise<RetrievalChunkInfo[]>;
 };

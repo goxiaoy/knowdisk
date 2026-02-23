@@ -83,6 +83,8 @@ describe("index metadata repository", () => {
 
     const beforeDelete = repo.listChunksByFileId("f1");
     expect(beforeDelete.map((row) => row.chunkId)).toEqual(["c1", "c2"]);
+    const bySource = repo.listChunksBySourcePath("/docs/a.md");
+    expect(bySource.map((row) => row.chunkId)).toEqual(["c1", "c2"]);
 
     repo.deleteChunksByIds(["c1"]);
     const afterDelete = repo.listChunksByFileId("f1");
