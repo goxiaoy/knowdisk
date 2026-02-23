@@ -114,3 +114,29 @@ test("listBySourcePath returns all chunks of a file ordered by startOffset", asy
 
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("upsert truncates stored chunkText to avoid oversized metadata", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "knowdisk-zvec-"));
+  const repo = createVectorRepository({
+    collectionPath: join(dir, "vectors.zvec"),
+    dimension: 2,
+    indexType: "flat",
+    metric: "ip",
+  });
+
+  const longText = "x".repeat(220);
+  await repo.upsert([
+    {
+      chunkId: "long-1",
+      vector: [1, 0],
+      metadata: { sourcePath: "docs/long.md", chunkText: longText },
+    },
+  ]);
+
+  const rows = await repo.listBySourcePath("docs/long.md");
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.metadata.chunkText.length).toBeLessThanOrEqual(123);
+  expect(rows[0]?.metadata.chunkText.endsWith("...")).toBe(true);
+
+  rmSync(dir, { recursive: true, force: true });
+});

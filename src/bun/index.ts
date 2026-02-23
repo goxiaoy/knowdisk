@@ -170,7 +170,14 @@ const rpc = BrowserView.defineRPC({
         return container.healthService.getComponentHealth();
       },
       get_index_status(): IndexingStatus {
-        return container.indexingService.getIndexStatus().getSnapshot();
+        const snapshot = container.indexingService.getIndexStatus().getSnapshot();
+        return {
+          ...snapshot,
+          run: {
+            ...snapshot.run,
+            indexedFiles: container.indexingService.getIndexedFilesCount(),
+          },
+        };
       },
       get_vector_stats(): Promise<VectorCollectionInspect> {
         return container.vectorRepository.inspect();

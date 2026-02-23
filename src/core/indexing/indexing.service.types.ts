@@ -50,5 +50,6 @@ export type IndexingService = {
     deletedFiles: number;
   }>;
   clearAllIndexData: () => void;
+  getIndexedFilesCount: () => number;
   getIndexStatus: () => IndexingStatusStore;
 };

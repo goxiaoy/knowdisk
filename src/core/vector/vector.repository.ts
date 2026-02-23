@@ -25,6 +25,7 @@ type VectorRepositoryOptions = {
 };
 
 const VECTOR_FIELD = "embedding";
+const MAX_CHUNK_TEXT_CHARS = 120;
 
 export function createVectorRepository(
   opts: VectorRepositoryOptions,
@@ -121,7 +122,7 @@ export function createVectorRepository(
             vectors: { [VECTOR_FIELD]: row.vector },
             fields: {
               sourcePath: row.metadata.sourcePath,
-              chunkText: row.metadata.chunkText ?? "",
+              chunkText: normalizeChunkText(row.metadata.chunkText),
               startOffset:
                 row.metadata.startOffset !== undefined
                   ? String(row.metadata.startOffset)
@@ -325,6 +326,16 @@ export function createVectorRepository(
       return result;
     }
   }
+}
+
+function normalizeChunkText(input: string | undefined): string {
+  if (!input) {
+    return "";
+  }
+  if (input.length <= MAX_CHUNK_TEXT_CHARS) {
+    return input;
+  }
+  return `${input.slice(0, MAX_CHUNK_TEXT_CHARS)}...`;
 }
 
 function mapInspect(

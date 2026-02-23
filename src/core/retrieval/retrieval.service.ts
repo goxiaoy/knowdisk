@@ -26,16 +26,53 @@ export function createRetrievalService(deps: RetrievalDeps): RetrievalService {
 
   return {
     async search(query: string, opts: { topK?: number }) {
+      const startedAt = Date.now();
       const topK = opts.topK ?? deps.defaults.topK;
+      deps.logger?.debug(
+        { subsystem: "retrieval", query, topK, ftsTopN: deps.defaults.ftsTopN ?? topK },
+        "retrieval.search: start",
+      );
       const queryVector = await deps.embedding.embed(query);
       const vectorRows = await deps.vector.search(queryVector, {
         topK,
       });
       const ftsRows = deps.fts?.searchFts(query, deps.defaults.ftsTopN ?? topK) ?? [];
+      deps.logger?.debug(
+        {
+          subsystem: "retrieval",
+          query,
+          topK,
+          vectorRows: vectorRows.map((row) => ({
+            chunkId: row.chunkId,
+            sourcePath: row.metadata.sourcePath,
+            score: row.score,
+          })),
+          ftsRows: ftsRows.map((row) => ({
+            chunkId: row.chunkId,
+            sourcePath: row.sourcePath,
+            score: row.score,
+          })),
+        },
+        "retrieval.search: raw rows",
+      );
       const mergedRows = mergeRows(vectorRows, ftsRows);
       const finalRows = deps.reranker
         ? await deps.reranker.rerank(query, mergedRows, { topK })
         : mergedRows;
+      deps.logger?.debug(
+        {
+          subsystem: "retrieval",
+          query,
+          topK,
+          vectorCount: vectorRows.length,
+          ftsCount: ftsRows.length,
+          mergedCount: mergedRows.length,
+          finalCount: finalRows.length,
+          rerankerEnabled: Boolean(deps.reranker),
+          latencyMs: Date.now() - startedAt,
+        },
+        "retrieval.search: done",
+      );
 
       return finalRows.map(mapRow);
     },

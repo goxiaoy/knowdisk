@@ -139,6 +139,7 @@ function registerDependencies(
       const metadata = c.resolve<IndexMetadataRepository>(
         TOKENS.IndexMetadataRepository,
       );
+      const logger = c.resolve<LoggerService>(TOKENS.LoggerService);
       const reranker = createReranker(cfg.reranker);
       return createRetrievalService({
         embedding,
@@ -186,6 +187,7 @@ function registerDependencies(
           },
         },
         reranker: reranker ?? undefined,
+        logger,
         defaults: {
           topK: cfg.retrieval.hybrid.vectorTopK,
           ftsTopN: cfg.retrieval.hybrid.ftsTopN,

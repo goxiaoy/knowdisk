@@ -260,6 +260,10 @@ export function createSourceIndexingService(
       log.info("index metadata cleared");
     },
 
+    getIndexedFilesCount() {
+      return metadata.listFiles().filter((file) => file.status === "indexed").length;
+    },
+
     getIndexStatus() {
       return statusStore;
     },
