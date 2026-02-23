@@ -490,7 +490,7 @@ function normalizePort(port: unknown, fallback: number) {
 }
 
 function normalizeSources(input: unknown[]): SourceConfig[] {
-  return input
+  const normalized = input
     .map((item) => {
       if (typeof item === "string") {
         return { path: item, enabled: true };
@@ -501,7 +501,54 @@ function normalizeSources(input: unknown[]): SourceConfig[] {
       }
       return null;
     })
-    .filter((item): item is SourceConfig => item !== null);
+    .filter((item): item is SourceConfig => item !== null)
+    .map((item) => ({
+      path: normalizeSourcePath(item.path),
+      enabled: item.enabled,
+    }))
+    .filter((item) => item.path.length > 0);
+
+  return dedupeAndCollapseSources(normalized);
+}
+
+function normalizeSourcePath(path: string) {
+  return path.trim().replace(/\/+$/, "");
+}
+
+function dedupeAndCollapseSources(sources: SourceConfig[]): SourceConfig[] {
+  const mergedByPath = new Map<string, SourceConfig>();
+  for (const source of sources) {
+    const existing = mergedByPath.get(source.path);
+    if (!existing) {
+      mergedByPath.set(source.path, { ...source });
+      continue;
+    }
+    mergedByPath.set(source.path, {
+      path: source.path,
+      enabled: existing.enabled || source.enabled,
+    });
+  }
+
+  const sorted = Array.from(mergedByPath.values()).sort((a, b) =>
+    a.path.localeCompare(b.path) || a.path.length - b.path.length,
+  );
+
+  const collapsed: SourceConfig[] = [];
+  for (const candidate of sorted) {
+    const hasParent = collapsed.some((parent) => isSameOrParentPath(parent.path, candidate.path));
+    if (!hasParent) {
+      collapsed.push(candidate);
+    }
+  }
+  return collapsed;
+}
+
+function isSameOrParentPath(parent: string, child: string) {
+  if (parent === child) {
+    return true;
+  }
+  const prefix = `${parent}/`;
+  return child.startsWith(prefix);
 }
 
 export function createConfigService(opts?: {

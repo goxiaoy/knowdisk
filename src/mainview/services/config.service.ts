@@ -95,7 +95,14 @@ function loadConfig(): AppConfig {
       onboarding: {
         completed: parsed.onboarding?.completed ?? defaults.onboarding.completed,
       },
-      sources: normalizedSources.filter((item) => item.path.length > 0),
+      sources: dedupeAndCollapseSources(
+        normalizedSources
+          .map((item) => ({
+            path: normalizeSourcePath(item.path),
+            enabled: item.enabled,
+          }))
+          .filter((item) => item.path.length > 0),
+      ),
       mcp: {
         enabled: parsed.mcp?.enabled ?? true,
         port:
@@ -209,6 +216,45 @@ function loadConfig(): AppConfig {
   } catch {
     return getDefaultConfig();
   }
+}
+
+function normalizeSourcePath(path: string) {
+  return path.trim().replace(/\/+$/, "");
+}
+
+function dedupeAndCollapseSources(sources: Array<{ path: string; enabled: boolean }>) {
+  const mergedByPath = new Map<string, { path: string; enabled: boolean }>();
+  for (const source of sources) {
+    const existing = mergedByPath.get(source.path);
+    if (!existing) {
+      mergedByPath.set(source.path, { ...source });
+      continue;
+    }
+    mergedByPath.set(source.path, {
+      path: source.path,
+      enabled: existing.enabled || source.enabled,
+    });
+  }
+
+  const sorted = Array.from(mergedByPath.values()).sort((a, b) =>
+    a.path.localeCompare(b.path) || a.path.length - b.path.length,
+  );
+
+  const collapsed: Array<{ path: string; enabled: boolean }> = [];
+  for (const candidate of sorted) {
+    const hasParent = collapsed.some((parent) => isSameOrParentPath(parent.path, candidate.path));
+    if (!hasParent) {
+      collapsed.push(candidate);
+    }
+  }
+  return collapsed;
+}
+
+function isSameOrParentPath(parent: string, child: string) {
+  if (parent === child) {
+    return true;
+  }
+  return child.startsWith(`${parent}/`);
 }
 
 function saveConfig(cfg: AppConfig) {

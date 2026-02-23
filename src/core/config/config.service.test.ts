@@ -133,6 +133,19 @@ describe("getDefaultConfig", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("collapses nested source directories and keeps parent only", () => {
+    const migrated = migrateConfig({
+      version: 1,
+      sources: [
+        { path: "/user/goxy/a/b", enabled: true },
+        { path: "/user/goxy/a", enabled: true },
+        { path: "/user/goxy/a/b/c", enabled: true },
+      ],
+    });
+
+    expect(migrated.sources).toEqual([{ path: "/user/goxy/a", enabled: true }]);
+  });
+
   test("updates embedding and reranker settings", () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-config-"));
     const configPath = join(dir, "app-config.json");
