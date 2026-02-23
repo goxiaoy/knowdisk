@@ -49,6 +49,26 @@ export interface AppConfig {
   indexing: {
     watch: {
       enabled: boolean;
+      debounceMs: number;
+    };
+    reconcile: {
+      enabled: boolean;
+      intervalMs: number;
+    };
+    worker: {
+      concurrency: number;
+      batchSize: number;
+    };
+    retry: {
+      maxAttempts: number;
+      backoffMs: number[];
+    };
+  };
+  retrieval: {
+    hybrid: {
+      ftsTopN: number;
+      vectorTopK: number;
+      rerankTopN: number;
     };
   };
   embedding: {

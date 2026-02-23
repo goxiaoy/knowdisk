@@ -15,8 +15,18 @@ describe("getDefaultConfig", () => {
     expect(cfg.onboarding.completed).toBe(false);
     expect(cfg.ui.mode).toBe("safe");
     expect(cfg.indexing.watch.enabled).toBe(true);
+    expect(cfg.indexing.watch.debounceMs).toBe(500);
+    expect(cfg.indexing.reconcile.enabled).toBe(true);
+    expect(cfg.indexing.reconcile.intervalMs).toBe(15 * 60 * 1000);
+    expect(cfg.indexing.worker.concurrency).toBe(2);
+    expect(cfg.indexing.worker.batchSize).toBe(64);
+    expect(cfg.indexing.retry.maxAttempts).toBe(3);
+    expect(cfg.indexing.retry.backoffMs).toEqual([1000, 5000, 20000]);
     expect(cfg.mcp.enabled).toBe(true);
     expect(cfg.mcp.port).toBe(3467);
+    expect(cfg.retrieval.hybrid.ftsTopN).toBe(30);
+    expect(cfg.retrieval.hybrid.vectorTopK).toBe(20);
+    expect(cfg.retrieval.hybrid.rerankTopN).toBe(10);
     expect(cfg.embedding.local.dimension).toBe(384);
     expect(cfg.embedding.local.hfEndpoint).toBe("https://hf-mirror.com");
     expect(cfg.reranker.local.topN).toBe(5);
@@ -59,6 +69,35 @@ describe("getDefaultConfig", () => {
       sources: [{ path: "/docs", enabled: true }],
     });
     expect(migrated.onboarding.completed).toBe(true);
+  });
+
+  test("normalizes invalid indexing and retrieval values during v1 migration", () => {
+    const migrated = migrateConfig({
+      version: 1,
+      indexing: {
+        watch: { enabled: true, debounceMs: -1 },
+        reconcile: { enabled: true, intervalMs: 0 },
+        worker: { concurrency: 0, batchSize: -10 },
+        retry: { maxAttempts: 0, backoffMs: [0, -1] },
+      },
+      retrieval: {
+        hybrid: {
+          ftsTopN: 0,
+          vectorTopK: -10,
+          rerankTopN: 0,
+        },
+      },
+    });
+
+    expect(migrated.indexing.watch.debounceMs).toBe(500);
+    expect(migrated.indexing.reconcile.intervalMs).toBe(15 * 60 * 1000);
+    expect(migrated.indexing.worker.concurrency).toBe(2);
+    expect(migrated.indexing.worker.batchSize).toBe(64);
+    expect(migrated.indexing.retry.maxAttempts).toBe(3);
+    expect(migrated.indexing.retry.backoffMs).toEqual([1000, 5000, 20000]);
+    expect(migrated.retrieval.hybrid.ftsTopN).toBe(30);
+    expect(migrated.retrieval.hybrid.vectorTopK).toBe(20);
+    expect(migrated.retrieval.hybrid.rerankTopN).toBe(10);
   });
 
   test("persists mcp enabled flag across service instances", () => {

@@ -33,7 +33,19 @@ function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
       port: 3467,
     },
     ui: { mode: "safe" },
-    indexing: { watch: { enabled: true } },
+    indexing: {
+      watch: { enabled: true, debounceMs: 500 },
+      reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
+      worker: { concurrency: 2, batchSize: 64 },
+      retry: { maxAttempts: 3, backoffMs: [1000, 5000, 20000] },
+    },
+    retrieval: {
+      hybrid: {
+        ftsTopN: 30,
+        vectorTopK: 20,
+        rerankTopN: 10,
+      },
+    },
     embedding: {
       provider: "local",
       local: {
@@ -109,6 +121,27 @@ function validateMcp(mcp: AppConfig["mcp"]): string[] {
     errors.push("mcp.port must be an integer between 1 and 65535");
   }
   return errors;
+}
+
+function normalizePositiveInt(
+  value: unknown,
+  fallback: number,
+): number {
+  return Number.isInteger(value) && Number(value) > 0 ? Number(value) : fallback;
+}
+
+function normalizeBackoffMs(
+  value: unknown,
+  fallback: number[],
+): number[] {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  const normalized = value
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item) && item > 0)
+    .map((item) => Math.floor(item));
+  return normalized.length > 0 ? normalized : fallback;
 }
 
 function validateEmbedding(embedding: AppConfig["embedding"]): string[] {
@@ -222,6 +255,60 @@ function migrateConfigWithDefaults(
       mcp: {
         enabled: next.mcp?.enabled ?? true,
         port: normalizePort(next.mcp?.port, defaults.mcp.port),
+      },
+      indexing: {
+        watch: {
+          enabled: next.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
+          debounceMs: normalizePositiveInt(
+            next.indexing?.watch?.debounceMs,
+            defaults.indexing.watch.debounceMs,
+          ),
+        },
+        reconcile: {
+          enabled:
+            next.indexing?.reconcile?.enabled ??
+            defaults.indexing.reconcile.enabled,
+          intervalMs: normalizePositiveInt(
+            next.indexing?.reconcile?.intervalMs,
+            defaults.indexing.reconcile.intervalMs,
+          ),
+        },
+        worker: {
+          concurrency: normalizePositiveInt(
+            next.indexing?.worker?.concurrency,
+            defaults.indexing.worker.concurrency,
+          ),
+          batchSize: normalizePositiveInt(
+            next.indexing?.worker?.batchSize,
+            defaults.indexing.worker.batchSize,
+          ),
+        },
+        retry: {
+          maxAttempts: normalizePositiveInt(
+            next.indexing?.retry?.maxAttempts,
+            defaults.indexing.retry.maxAttempts,
+          ),
+          backoffMs: normalizeBackoffMs(
+            next.indexing?.retry?.backoffMs,
+            defaults.indexing.retry.backoffMs,
+          ),
+        },
+      },
+      retrieval: {
+        hybrid: {
+          ftsTopN: normalizePositiveInt(
+            next.retrieval?.hybrid?.ftsTopN,
+            defaults.retrieval.hybrid.ftsTopN,
+          ),
+          vectorTopK: normalizePositiveInt(
+            next.retrieval?.hybrid?.vectorTopK,
+            defaults.retrieval.hybrid.vectorTopK,
+          ),
+          rerankTopN: normalizePositiveInt(
+            next.retrieval?.hybrid?.rerankTopN,
+            defaults.retrieval.hybrid.rerankTopN,
+          ),
+        },
       },
       embedding,
       reranker,

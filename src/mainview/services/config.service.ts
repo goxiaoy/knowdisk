@@ -15,7 +15,19 @@ function getDefaultConfig(): AppConfig {
     sources: [],
     mcp: { enabled: true, port: 3467 },
     ui: { mode: "safe" },
-    indexing: { watch: { enabled: true } },
+    indexing: {
+      watch: { enabled: true, debounceMs: 500 },
+      reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
+      worker: { concurrency: 2, batchSize: 64 },
+      retry: { maxAttempts: 3, backoffMs: [1000, 5000, 20000] },
+    },
+    retrieval: {
+      hybrid: {
+        ftsTopN: 30,
+        vectorTopK: 20,
+        rerankTopN: 10,
+      },
+    },
     embedding: {
       provider: "local",
       local: {
@@ -90,6 +102,72 @@ function loadConfig(): AppConfig {
           Number.isInteger(parsed.mcp?.port) && (parsed.mcp?.port ?? 0) > 0 && (parsed.mcp?.port ?? 0) <= 65535
             ? (parsed.mcp?.port as number)
             : defaults.mcp.port,
+      },
+      indexing: {
+        watch: {
+          enabled: parsed.indexing?.watch?.enabled ?? defaults.indexing.watch.enabled,
+          debounceMs:
+            Number.isInteger(parsed.indexing?.watch?.debounceMs) &&
+            (parsed.indexing?.watch?.debounceMs ?? 0) > 0
+              ? (parsed.indexing?.watch?.debounceMs as number)
+              : defaults.indexing.watch.debounceMs,
+        },
+        reconcile: {
+          enabled:
+            parsed.indexing?.reconcile?.enabled ??
+            defaults.indexing.reconcile.enabled,
+          intervalMs:
+            Number.isInteger(parsed.indexing?.reconcile?.intervalMs) &&
+            (parsed.indexing?.reconcile?.intervalMs ?? 0) > 0
+              ? (parsed.indexing?.reconcile?.intervalMs as number)
+              : defaults.indexing.reconcile.intervalMs,
+        },
+        worker: {
+          concurrency:
+            Number.isInteger(parsed.indexing?.worker?.concurrency) &&
+            (parsed.indexing?.worker?.concurrency ?? 0) > 0
+              ? (parsed.indexing?.worker?.concurrency as number)
+              : defaults.indexing.worker.concurrency,
+          batchSize:
+            Number.isInteger(parsed.indexing?.worker?.batchSize) &&
+            (parsed.indexing?.worker?.batchSize ?? 0) > 0
+              ? (parsed.indexing?.worker?.batchSize as number)
+              : defaults.indexing.worker.batchSize,
+        },
+        retry: {
+          maxAttempts:
+            Number.isInteger(parsed.indexing?.retry?.maxAttempts) &&
+            (parsed.indexing?.retry?.maxAttempts ?? 0) > 0
+              ? (parsed.indexing?.retry?.maxAttempts as number)
+              : defaults.indexing.retry.maxAttempts,
+          backoffMs:
+            Array.isArray(parsed.indexing?.retry?.backoffMs) &&
+            parsed.indexing.retry.backoffMs.length > 0
+              ? parsed.indexing.retry.backoffMs
+                  .map((item) => Number(item))
+                  .filter((item) => Number.isFinite(item) && item > 0)
+                  .map((item) => Math.floor(item))
+              : defaults.indexing.retry.backoffMs,
+        },
+      },
+      retrieval: {
+        hybrid: {
+          ftsTopN:
+            Number.isInteger(parsed.retrieval?.hybrid?.ftsTopN) &&
+            (parsed.retrieval?.hybrid?.ftsTopN ?? 0) > 0
+              ? (parsed.retrieval?.hybrid?.ftsTopN as number)
+              : defaults.retrieval.hybrid.ftsTopN,
+          vectorTopK:
+            Number.isInteger(parsed.retrieval?.hybrid?.vectorTopK) &&
+            (parsed.retrieval?.hybrid?.vectorTopK ?? 0) > 0
+              ? (parsed.retrieval?.hybrid?.vectorTopK as number)
+              : defaults.retrieval.hybrid.vectorTopK,
+          rerankTopN:
+            Number.isInteger(parsed.retrieval?.hybrid?.rerankTopN) &&
+            (parsed.retrieval?.hybrid?.rerankTopN ?? 0) > 0
+              ? (parsed.retrieval?.hybrid?.rerankTopN as number)
+              : defaults.retrieval.hybrid.rerankTopN,
+        },
       },
       embedding: {
         ...defaults.embedding,
