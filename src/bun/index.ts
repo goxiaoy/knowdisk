@@ -1,8 +1,7 @@
 import { BrowserView, BrowserWindow, Updater, Utils } from "electrobun/bun";
 import { opendir } from "node:fs/promises";
 import { join } from "node:path";
-import { watch, type FSWatcher } from "node:fs";
-import { statSync } from "node:fs";
+import chokidar, { type FSWatcher } from "chokidar";
 import { createAppContainer } from "./app.container";
 import { createIncrementalBatcher } from "./incremental-batcher";
 import type { AppConfig } from "../core/config/config.types";
@@ -94,18 +93,28 @@ if (startupConfig.indexing.watch.enabled) {
     .map((source) => source.path);
   for (const sourcePath of watchSources) {
     try {
-      const watcher = watch(
-        sourcePath,
-        { recursive: true },
-        (_eventType, filename) => {
-          if (!filename) {
-            return;
-          }
-          const fullPath = join(sourcePath, String(filename));
-          const type = classifyFileChange(fullPath);
-          incrementalBatcher.enqueue(fullPath, type);
+      const watcher = chokidar.watch(sourcePath, {
+        ignoreInitial: true,
+        awaitWriteFinish: {
+          stabilityThreshold: 300,
+          pollInterval: 100,
         },
-      );
+      });
+      watcher.on("add", (path) => {
+        incrementalBatcher.enqueue(path, "add");
+      });
+      watcher.on("change", (path) => {
+        incrementalBatcher.enqueue(path, "change");
+      });
+      watcher.on("unlink", (path) => {
+        incrementalBatcher.enqueue(path, "unlink");
+      });
+      watcher.on("error", (error) => {
+        container.loggerService.warn(
+          { sourcePath, error: String(error) },
+          "Source watcher error",
+        );
+      });
       fsWatchers.push(watcher);
     } catch (error) {
       container.loggerService.warn(
@@ -239,7 +248,7 @@ const mainWindow = new BrowserWindow({
 mainWindow.on("close", () => {
   incrementalBatcher.dispose();
   for (const watcher of fsWatchers) {
-    watcher.close();
+    void watcher.close();
   }
   if (reconcileTimer) {
     clearInterval(reconcileTimer);
@@ -285,14 +294,5 @@ async function walkDirectory(dirPath: string, files: string[], maxFiles: number)
     if (entry.isFile()) {
       files.push(fullPath);
     }
-  }
-}
-
-function classifyFileChange(path: string): "add" | "change" | "unlink" {
-  try {
-    statSync(path);
-    return "change";
-  } catch {
-    return "unlink";
   }
 }
