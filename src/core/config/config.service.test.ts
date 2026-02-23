@@ -244,4 +244,32 @@ describe("getDefaultConfig", () => {
 
     rmSync(userDataDir, { recursive: true, force: true });
   });
+
+  test("emits config change events on update and supports unsubscribe", () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-config-"));
+    const configPath = join(dir, "app-config.json");
+    const service = createConfigService({ configPath });
+    const events: Array<{ prevEnabled: boolean; nextEnabled: boolean }> = [];
+
+    const unsubscribe = service.subscribe((event) => {
+      events.push({
+        prevEnabled: event.prev.mcp.enabled,
+        nextEnabled: event.next.mcp.enabled,
+      });
+    });
+
+    service.updateConfig((source) => ({
+      ...source,
+      mcp: { ...source.mcp, enabled: false },
+    }));
+    unsubscribe();
+    service.updateConfig((source) => ({
+      ...source,
+      mcp: { ...source.mcp, enabled: true },
+    }));
+
+    expect(events).toEqual([{ prevEnabled: true, nextEnabled: false }]);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

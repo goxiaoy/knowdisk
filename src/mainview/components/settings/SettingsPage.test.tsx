@@ -48,6 +48,9 @@ function makeConfigService(overrides?: Partial<ConfigService>): ConfigService {
       config = updater(config);
       return config;
     },
+    subscribe() {
+      return () => {};
+    },
   };
   return { ...base, ...overrides };
 }

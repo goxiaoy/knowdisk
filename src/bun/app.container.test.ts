@@ -62,6 +62,9 @@ function makeConfigService(enabled: boolean): ConfigService {
       reranker = next.reranker;
       return next;
     },
+    subscribe() {
+      return () => {};
+    },
   };
 }
 

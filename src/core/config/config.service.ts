@@ -1,9 +1,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
 import { dirname, join } from "node:path";
 import type {
   AppConfig,
   CloudEmbeddingConfig,
   CloudRerankerConfig,
+  ConfigChangeEvent,
   ConfigService,
   LocalEmbeddingConfig,
   LocalRerankerConfig,
@@ -570,6 +572,8 @@ export function createConfigService(opts?: {
       ? join(opts.userDataDir, "app-config.json")
       : "build/app-config.json");
   let cache: AppConfig | null = null;
+  const emitter = new EventEmitter();
+  const CONFIG_CHANGED_EVENT = "config_changed";
 
   function persist(config: AppConfig) {
     mkdirSync(dirname(configPath), { recursive: true });
@@ -610,7 +614,15 @@ export function createConfigService(opts?: {
       const next = updater(current);
       cache = next;
       persist(next);
+      const event: ConfigChangeEvent = { prev: current, next };
+      emitter.emit(CONFIG_CHANGED_EVENT, event);
       return next;
+    },
+    subscribe(listener) {
+      emitter.on(CONFIG_CHANGED_EVENT, listener);
+      return () => {
+        emitter.off(CONFIG_CHANGED_EVENT, listener);
+      };
     },
   };
 }

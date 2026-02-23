@@ -5,6 +5,7 @@ import {
 } from "./bun.rpc";
 
 const STORAGE_KEY = "knowdisk-app-config";
+const listeners = new Set<(event: { prev: AppConfig; next: AppConfig }) => void>();
 
 function getDefaultConfig(): AppConfig {
   return {
@@ -283,6 +284,15 @@ export const defaultMainviewConfigService: ConfigService = {
     const next = updater(current);
     saveConfig(next);
     void updateConfigInBun(next);
+    for (const listener of listeners) {
+      listener({ prev: current, next });
+    }
     return next;
+  },
+  subscribe(listener) {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
   },
 };

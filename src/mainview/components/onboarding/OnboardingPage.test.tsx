@@ -48,6 +48,9 @@ function makeConfigService(): ConfigService {
       config = updater(config);
       return config;
     },
+    subscribe() {
+      return () => {};
+    },
   };
 }
 

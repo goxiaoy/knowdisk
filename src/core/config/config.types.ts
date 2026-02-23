@@ -87,7 +87,13 @@ export interface AppConfig {
   };
 }
 
+export type ConfigChangeEvent = {
+  prev: AppConfig;
+  next: AppConfig;
+};
+
 export type ConfigService = {
   getConfig: () => AppConfig;
   updateConfig: (updater: (source: AppConfig) => AppConfig) => AppConfig;
+  subscribe: (listener: (event: ConfigChangeEvent) => void) => () => void;
 };

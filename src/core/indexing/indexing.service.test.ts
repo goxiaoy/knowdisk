@@ -58,6 +58,9 @@ test("scheduled reconcile repairs missing chunk", async () => {
       config = updater(config);
       return config;
     },
+    subscribe() {
+      return () => {};
+    },
   };
   const embedding = {
     async embed(_input: string) {
@@ -90,6 +93,9 @@ test("index status store is subscribable", async () => {
     },
     updateConfig(updater) {
       return updater(makeConfig());
+    },
+    subscribe() {
+      return () => {};
     },
   };
   const embedding = {
@@ -134,6 +140,9 @@ test("index status includes current file while indexing", async () => {
     updateConfig(updater) {
       cfg = updater(cfg);
       return cfg;
+    },
+    subscribe() {
+      return () => {};
     },
   };
   const embedding = {
@@ -185,6 +194,9 @@ test("incremental run enqueues and processes change events", async () => {
     updateConfig(updater) {
       cfg = updater(cfg);
       return cfg;
+    },
+    subscribe() {
+      return () => {};
     },
   };
   const embedding = {
