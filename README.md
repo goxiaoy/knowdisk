@@ -1,82 +1,240 @@
 # Know Disk
 
-Know Disk is a local desktop RAG app built with Electrobun + React. It indexes local source directories into a vector store, keeps index metadata in SQLite, exposes retrieval over UI and MCP, and supports incremental updates with periodic reconcile.
+[English](./README.md) | [中文](./README.zh-CN.md)
 
-## Stack
+Know Disk is a local-first desktop RAG system designed around one practical idea:
 
-- Bun / Electrobun
-- React + Tailwind + Vite
-- `@zvec/zvec` (vector index)
-- `bun:sqlite` (index metadata + FTS5)
-- pino (structured logs)
+**Use your file system as the source of truth, and treat indexing/vector data as rebuildable runtime state.**
 
-## Development
+It provides a complete loop for local knowledge retrieval:
 
-```bash
-# Install deps
-bun install
+1. Choose local source folders
+2. Parse and chunk files
+3. Embed and index chunks
+4. Retrieve with hybrid scoring (vector + FTS)
+5. Expose retrieval via UI and MCP
 
-# Dev (bundled assets)
-bun run dev
+## Visual Overview
 
-# Dev with HMR
-bun run dev:hmr
-
-# Tests
-bun test
+```mermaid
+flowchart LR
+  UI[React UI] --> Main[Bun/Electrobun Runtime]
+  Main --> CFG[Config Service]
+  Main --> IDX[Indexing Service]
+  Main --> RET[Retrieval Service]
+  IDX --> META[(SQLite Metadata + FTS)]
+  IDX --> VEC[(ZVec Collection)]
+  RET --> META
+  RET --> VEC
+  Main --> MCP[MCP HTTP Endpoint]
 ```
 
-`bun run dev` and `bun run dev:hmr` run with `LOG_LEVEL=debug`.
+## 1. Design Goals
 
-## Runtime Data Paths
+Know Disk is built for a local knowledge workflow where indexing must be reliable, inspectable, and recoverable.
 
-By default (macOS/Linux), Know Disk stores runtime data under:
+Core goals:
 
-- `~/.knowdisk/app-config.json`
-- `~/.knowdisk/zvec/...` (vector collection)
-- `~/.knowdisk/metadata/index.db` (SQLite metadata + FTS)
-- `~/.knowdisk/cache/...` (local model caches)
+- Local-first: data and indexing run on your machine
+- Rebuildable cache model: vector/index state can be destroyed and regenerated
+- Operational transparency: explicit health/status/logging for indexing and retrieval
+- Practical extensibility: provider-based embedding/reranker and MCP endpoint
 
-## Indexing Model
+## 2. Core Concepts
 
-Indexing uses three truths:
+### 2.1 Three Truths Model
 
-1. File system is source of truth.
-2. SQLite metadata tracks files/chunks/jobs.
-3. Vector index is a rebuildable cache of embeddings.
+Know Disk maintains three layers of truth:
 
-### Incremental behavior
+1. **File System (truth)**
+   Local files are always authoritative.
+2. **SQLite Metadata (index state)**
+   Tracks files, chunks, jobs, FTS rows, and source tombstones.
+3. **Vector Collection (retrieval cache)**
+   Stores embeddings + retrieval metadata for semantic search.
 
-- File changes are enqueued as jobs.
-- Worker processes jobs with retry/backoff.
-- Chunk-level diff uses hash-based updates.
-- Scheduled reconcile scans sources periodically and repairs drift.
+If metadata or vector state becomes stale/corrupt, it is expected to be rebuilt.
 
-## Retrieval
+### 2.2 Source Lifecycle
 
-Search uses hybrid recall:
+Sources are configured folders (`config.sources`).
 
-- vector recall from zvec
-- keyword recall from SQLite FTS5
-- merge + dedupe by `chunkId`
-- optional reranker final ordering
+- Add/enable source: starts indexing path into metadata + vector
+- Disable/remove source: marks deferred deletion (tombstone behavior)
+- Startup cleanup + reconcile: applies deferred cleanup and catches drift
 
-## MCP Endpoint
+### 2.3 Indexing Pipeline
 
-When enabled in config, MCP is exposed via HTTP:
+Per file, the indexing flow is:
+
+1. Parse stream from parser
+2. Chunk stream with configured chunking policy
+3. Embed each chunk
+4. Upsert vector rows
+5. Upsert metadata chunk rows + FTS rows
+
+Metadata records offsets and token estimates so chunks can be reconstructed from source files later.
+
+```mermaid
+flowchart TD
+  F[Source File] --> P[Parser.parseStream]
+  P --> C[Chunker.chunkParsedStream]
+  C --> E[Embedding Provider]
+  E --> V[VectorRepository.upsert]
+  C --> M[MetadataRepository.upsertChunks]
+  C --> T[MetadataRepository.upsertFtsChunks]
+```
+
+### 2.4 Retrieval Model
+
+Retrieval is hybrid and configurable by request mode.
+
+- Normal mode:
+  - vector search
+  - content FTS search
+  - plus title FTS when query is a single keyword
+  - merged into one score space
+- Title-only mode:
+  - only title FTS contributes scoring
+
+Results can be reranked if reranker is enabled.
+
+```mermaid
+flowchart TD
+  Q[Query] --> Mode{titleOnly?}
+  Mode -- yes --> TF[Title FTS]
+  Mode -- no --> VS[Vector Search]
+  Mode -- no --> CF[Content FTS]
+  Mode -- single keyword --> TF2[Title FTS]
+  TF --> Merge[Merge + score blend]
+  VS --> Merge
+  CF --> Merge
+  TF2 --> Merge
+  Merge --> RR{Reranker enabled?}
+  RR -- yes --> Rerank[Rerank]
+  RR -- no --> Out[Results]
+  Rerank --> Out
+```
+
+### 2.5 Onboarding Model
+
+On first use:
+
+1. user must configure at least one source
+2. embedding/reranker defaults can be reviewed
+3. user enters Home once baseline config is valid
+
+This forces a usable minimum state before normal operation.
+
+## 3. Runtime Architecture
+
+- **UI (React)**
+  Settings, onboarding, status, retrieval interaction
+- **Bun runtime (Electrobun main)**
+  DI container, config persistence, indexing orchestration, MCP endpoint
+- **Core services**
+  Config, indexing, retrieval, embedding, reranker, vector repo, metadata repo
+- **Storage**
+  - `bun:sqlite` for metadata + FTS
+  - `@zvec/zvec` for vector collection
+
+## 4. Configuration Strategy
+
+Config is persisted and normalized on startup/update.
+
+Key sections:
+
+- `sources`: watched/indexed directories
+- `indexing`: chunking, watch debounce, reconcile interval, retry policy
+- `embedding`: provider-specific config (local / cloud)
+- `reranker`: provider-specific config (local / cloud)
+- `mcp`: enable flag + port
+
+Design choice:
+
+- Config is the operational contract
+- Runtime data (`metadata`, `vector`) is disposable and reconstructable
+
+## 5. Health and Observability
+
+Know Disk exposes health and indexing status in UI.
+
+Status includes:
+
+- run phase/reason/errors
+- scheduler queue depth
+- worker current files / running workers / last error
+- indexed file count from metadata
+
+Logging uses structured pino logs with subsystem tags (`indexing`, `vector`, `retrieval`, etc.).
+
+## 6. MCP Integration
+
+When enabled, Know Disk exposes an HTTP MCP endpoint:
 
 - `http://127.0.0.1:<port>/mcp`
 
-Default port is `3467`.
+This allows external MCP clients (e.g. ChatGPT/Claude/Desktop tools) to call local retrieval.
 
-## Verification
+## 7. Data Paths
 
-Recommended verification before merge/release:
+Default runtime root (macOS/Linux):
+
+- `~/.knowdisk/app-config.json`
+- `~/.knowdisk/metadata/index.db`
+- `~/.knowdisk/zvec/...`
+- `~/.knowdisk/cache/...`
+
+## 8. Typical User Flow
+
+1. Open app, complete onboarding
+2. Add source folders in Settings
+3. Wait for indexing/reconcile to settle
+4. Run search from Home (normal or title-only)
+5. Use force resync when you want full rebuild
+
+## 9. Development
 
 ```bash
-bun test
-bun run build
+bun install
 bun run dev
 ```
 
-Record outcomes in `docs/plans/verification-checklist-local-rag-mcp.md`.
+HMR mode:
+
+```bash
+bun run dev:hmr
+```
+
+Build:
+
+```bash
+bun run build
+```
+
+Test:
+
+```bash
+bun test
+```
+
+Typecheck (project-safe config):
+
+```bash
+bunx tsc --noEmit -p tsconfig.typecheck.json
+```
+
+## 10. Current Scope and Future Direction
+
+Current scope is optimized for reliable local text-centric RAG.
+
+Natural future extensions:
+
+- richer parser set (pdf/docx/code-aware parsing)
+- stronger source-level scheduling/priority
+- advanced retrieval scoring policies
+- deeper MCP tool surface
+
+---
+
+If you want a quick start mentally: **Know Disk is a local indexing engine + hybrid retriever with a desktop control plane.**
