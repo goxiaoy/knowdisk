@@ -35,6 +35,7 @@ export type FtsSearchRow = {
   chunkId: string;
   fileId: string;
   sourcePath: string;
+  text: string;
   score: number;
 };
 

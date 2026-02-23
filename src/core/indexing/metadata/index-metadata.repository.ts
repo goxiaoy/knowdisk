@@ -175,6 +175,7 @@ export function createIndexMetadataRepository(opts: {
             chunk_id AS chunkId,
             file_id AS fileId,
             source_path AS sourcePath,
+            text,
             bm25(fts_chunks) AS score
           FROM fts_chunks
           WHERE fts_chunks MATCH ?
