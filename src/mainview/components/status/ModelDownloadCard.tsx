@@ -12,7 +12,10 @@ const EMPTY_STATUS: ModelDownloadStatus = {
   lastFinishedAt: "",
   progressPct: 0,
   error: "",
-  tasks: [],
+  tasks: {
+    embedding: null,
+    reranker: null,
+  },
   retry: {
     attempt: 0,
     maxAttempts: 3,
@@ -73,6 +76,11 @@ export function ModelDownloadCard({
     }
     return "bg-slate-100 text-slate-700";
   }, [status.phase]);
+
+  const taskList = useMemo(
+    () => [status.tasks.embedding, status.tasks.reranker].filter((task) => task !== null),
+    [status.tasks.embedding, status.tasks.reranker],
+  );
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -150,11 +158,11 @@ export function ModelDownloadCard({
         <div>
           <dt className="text-slate-500">Tasks</dt>
           <dd data-testid="model-download-tasks" className="font-medium text-slate-900">
-            {status.tasks.length === 0 ? (
+            {taskList.length === 0 ? (
               <span>-</span>
             ) : (
               <ul className="list-disc space-y-1 pl-5">
-                {status.tasks.map((task) => (
+                {taskList.map((task) => (
                   <li key={task.id} className="break-all">
                     {task.id} | {task.model} | {task.state} | {task.progressPct}%
                     {task.error ? ` | ${task.error}` : ""}

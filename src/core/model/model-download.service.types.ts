@@ -17,6 +17,11 @@ export type ModelDownloadTask = {
   error: string;
 };
 
+export type ModelDownloadTasks = {
+  embedding: ModelDownloadTask | null;
+  reranker: ModelDownloadTask | null;
+};
+
 export type ModelDownloadStatus = {
   phase: "idle" | "verifying" | "running" | "completed" | "failed";
   triggeredBy: string;
@@ -24,7 +29,7 @@ export type ModelDownloadStatus = {
   lastFinishedAt: string;
   progressPct: number;
   error: string;
-  tasks: ModelDownloadTask[];
+  tasks: ModelDownloadTasks;
   retry: {
     attempt: number;
     maxAttempts: number;

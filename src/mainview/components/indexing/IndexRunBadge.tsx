@@ -35,7 +35,17 @@ const EMPTY_MODEL_STATUS: ModelDownloadStatus = {
   lastFinishedAt: "",
   progressPct: 0,
   error: "",
-  tasks: [],
+  tasks: {
+    embedding: null,
+    reranker: null,
+  },
+  retry: {
+    attempt: 0,
+    maxAttempts: 3,
+    backoffMs: [3000, 10000, 30000],
+    nextRetryAt: "",
+    exhausted: false,
+  },
 };
 
 export function IndexRunBadge({

@@ -20,6 +20,7 @@ import type {
   ModelDownloadService,
   ModelDownloadStatus,
   ModelDownloadTask,
+  ModelDownloadTasks,
 } from "./model-download.service.types";
 
 type DownloadScope = "all" | "embedding-local" | "reranker-local";
@@ -60,8 +61,25 @@ type RepoFile = {
   size: number;
 };
 
+class ModelLoadError extends Error {
+  constructor(
+    readonly spec: LocalTaskSpec,
+    readonly stage:
+      | "verify_embedding"
+      | "verify_reranker"
+      | "load_embedding_runtime"
+      | "load_reranker_runtime",
+    cause: unknown,
+  ) {
+    const causeMessage = String(cause);
+    super(
+      `[${spec.id}] ${spec.kind} model load failed (${spec.model}) at ${stage}: ${causeMessage}`,
+    );
+    this.name = "ModelLoadError";
+  }
+}
+
 type OpenedWriteStream = ReturnType<typeof createWriteStream>;
-const MODEL_TASK_CONCURRENCY = 1;
 const MODEL_FILE_CONCURRENCY = 4;
 const MODEL_RETRY_BACKOFF_MS = [3000, 10000, 30000];
 const MODEL_RETRY_MAX_ATTEMPTS = MODEL_RETRY_BACKOFF_MS.length;
@@ -83,7 +101,10 @@ const EMPTY_STATUS: ModelDownloadStatus = {
   lastFinishedAt: "",
   progressPct: 0,
   error: "",
-  tasks: [],
+  tasks: {
+    embedding: null,
+    reranker: null,
+  },
   retry: {
     attempt: 0,
     maxAttempts: MODEL_RETRY_MAX_ATTEMPTS,
@@ -108,6 +129,8 @@ export function createModelDownloadService(
   const readyGuards = new Map<string, Promise<void>>();
   const embeddingRuntimeGuards = new Map<string, Promise<LocalEmbeddingExtractor>>();
   const rerankerRuntimeGuards = new Map<string, Promise<LocalRerankerRuntime>>();
+  const embeddingAcquireGuards = new Map<string, Promise<LocalEmbeddingExtractor>>();
+  const rerankerAcquireGuards = new Map<string, Promise<LocalRerankerRuntime>>();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFailedRequest: DownloadRequest | null = null;
 
@@ -235,12 +258,39 @@ export function createModelDownloadService(
     }));
   }
 
+  function toTaskStruct(tasks: ModelDownloadTask[]): ModelDownloadTasks {
+    let embedding: ModelDownloadTask | null = null;
+    let reranker: ModelDownloadTask | null = null;
+    for (const task of tasks) {
+      if (task.id === "embedding-local") {
+        embedding = task;
+        continue;
+      }
+      if (task.id === "reranker-local") {
+        reranker = task;
+      }
+    }
+    return { embedding, reranker };
+  }
+
+  function taskStructToList(tasks: ModelDownloadTasks): ModelDownloadTask[] {
+    const result: ModelDownloadTask[] = [];
+    if (tasks.embedding) {
+      result.push(tasks.embedding);
+    }
+    if (tasks.reranker) {
+      result.push(tasks.reranker);
+    }
+    return result;
+  }
+
   function updateTask(
     id: ModelDownloadTask["id"],
     updater: (current: ModelDownloadTask) => ModelDownloadTask,
   ) {
     updateStatus((current) => {
-      const tasks = current.tasks.map((task) =>
+      const currentTasks = taskStructToList(current.tasks);
+      const tasks = currentTasks.map((task) =>
         task.id === id ? updater(task) : task,
       );
       const weightedByBytes = computeWeightedProgressByBytes(tasks);
@@ -274,7 +324,7 @@ export function createModelDownloadService(
       }
       return {
         ...current,
-        tasks,
+        tasks: toTaskStruct(tasks),
         progressPct: Math.max(
           current.progressPct,
           toProgressPct(nextProgress),
@@ -367,6 +417,14 @@ export function createModelDownloadService(
       message.includes("invalid zip") ||
       message.includes("incomplete")
     );
+  }
+
+  function isRetryableModelError(error: unknown) {
+    const message = String(error ?? "").toLowerCase();
+    if (message.includes("unsupported model type")) {
+      return false;
+    }
+    return true;
   }
 
   async function fetchRepoFiles(spec: LocalTaskSpec): Promise<RepoFile[]> {
@@ -492,7 +550,7 @@ export function createModelDownloadService(
         "range request not satisfiable",
       );
       if (strategy === "promote_partial") {
-        await rename(partPath, finalPath);
+        await finalizeDownloadedFile(partPath, finalPath);
         onFileProgress({
           file,
           loaded: remoteTotal,
@@ -588,7 +646,7 @@ export function createModelDownloadService(
       );
     }
 
-    await rename(partPath, finalPath);
+    await finalizeDownloadedFile(partPath, finalPath);
     const done = await stat(finalPath);
     onFileProgress({
       file,
@@ -605,6 +663,22 @@ export function createModelDownloadService(
       },
       "model file download completed",
     );
+  }
+
+  async function finalizeDownloadedFile(partPath: string, finalPath: string) {
+    try {
+      await rename(partPath, finalPath);
+      return;
+    } catch (error) {
+      if (!isEnoent(error)) {
+        throw error;
+      }
+      // Another concurrent flow may have already promoted .part to final.
+      if (await fileExists(finalPath)) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async function probeRemoteFileSize(
@@ -896,10 +970,18 @@ export function createModelDownloadService(
 
   async function verifyModelIntegrity(spec: LocalTaskSpec) {
     if (spec.kind === "embedding") {
-      await loadLocalEmbeddingExtractor(spec, { localFilesOnly: true });
+      try {
+        await loadLocalEmbeddingExtractor(spec, { localFilesOnly: true });
+      } catch (error) {
+        throw new ModelLoadError(spec, "verify_embedding", error);
+      }
       return;
     }
-    await loadLocalRerankerRuntime(spec, { localFilesOnly: true });
+    try {
+      await loadLocalRerankerRuntime(spec, { localFilesOnly: true });
+    } catch (error) {
+      throw new ModelLoadError(spec, "verify_reranker", error);
+    }
   }
 
   function guardKey(spec: LocalTaskSpec) {
@@ -988,7 +1070,10 @@ export function createModelDownloadService(
         lastFinishedAt: new Date().toISOString(),
         progressPct: 100,
         error: "",
-        tasks: [],
+        tasks: {
+          embedding: null,
+          reranker: null,
+        },
         retry: {
           ...current.retry,
           attempt: 0,
@@ -1006,7 +1091,7 @@ export function createModelDownloadService(
       lastFinishedAt: "",
       progressPct: 0,
       error: "",
-      tasks,
+      tasks: toTaskStruct(tasks),
       retry: {
         ...current.retry,
         maxAttempts: MODEL_RETRY_MAX_ATTEMPTS,
@@ -1053,13 +1138,9 @@ export function createModelDownloadService(
           ...current,
           phase: "running",
         }));
-        await runWithConcurrency(
-          missing,
-          MODEL_TASK_CONCURRENCY,
-          async (spec) => {
-            await ensureSpecReadyWithRecovery(spec, req.reason);
-          },
-        );
+        for (const spec of missing) {
+          await ensureSpecReadyWithRecovery(spec, req.reason);
+        }
       }
       updateStatus((current) => ({
         ...current,
@@ -1087,16 +1168,37 @@ export function createModelDownloadService(
         phase: "failed",
         lastFinishedAt: new Date().toISOString(),
         error: message,
-        tasks: current.tasks.map((task) =>
+        tasks: toTaskStruct(taskStructToList(current.tasks).map((task) =>
           task.state === "ready"
             ? task
             : { ...task, state: "failed", error: message },
-        ),
+        )),
       }));
       lastFailedRequest = req;
-      scheduleAutoRetry(req);
+      if (isRetryableModelError(error)) {
+        scheduleAutoRetry(req);
+      } else {
+        updateStatus((current) => ({
+          ...current,
+          retry: {
+            ...current.retry,
+            nextRetryAt: "",
+            exhausted: true,
+          },
+        }));
+      }
+      const loadError =
+        error instanceof ModelLoadError ? error : null;
       logger.error(
-        { subsystem: "models", reason: req.reason, error: message },
+        {
+          subsystem: "models",
+          reason: req.reason,
+          error: message,
+          taskId: loadError?.spec.id ?? "",
+          modelKind: loadError?.spec.kind ?? "",
+          modelName: loadError?.spec.model ?? "",
+          stage: loadError?.stage ?? "",
+        },
         "Model download failed",
       );
       throw error;
@@ -1135,15 +1237,33 @@ export function createModelDownloadService(
     reason: string,
   ): Promise<LocalEmbeddingExtractor> {
     const spec = pickSpec(cfg, "embedding-local");
-    await enqueueAndWait({ cfg, reason, scope: "embedding-local" });
     const key = guardKey(spec);
     const existing = embeddingRuntimeGuards.get(key);
     if (existing) {
       return existing;
     }
-    const created = loadLocalEmbeddingExtractor(spec, { localFilesOnly: true });
-    embeddingRuntimeGuards.set(key, created);
-    return created;
+    const acquiring = embeddingAcquireGuards.get(key);
+    if (acquiring) {
+      return acquiring;
+    }
+    const next = (async () => {
+      await enqueueAndWait({ cfg, reason, scope: "embedding-local" });
+      const afterQueue = embeddingRuntimeGuards.get(key);
+      if (afterQueue) {
+        return afterQueue;
+      }
+      const created = loadLocalEmbeddingExtractor(spec, {
+        localFilesOnly: true,
+      }).catch((error) => {
+        throw new ModelLoadError(spec, "load_embedding_runtime", error);
+      });
+      embeddingRuntimeGuards.set(key, created);
+      return created;
+    })().finally(() => {
+      embeddingAcquireGuards.delete(key);
+    });
+    embeddingAcquireGuards.set(key, next);
+    return next;
   }
 
   async function acquireRerankerRuntime(
@@ -1151,15 +1271,34 @@ export function createModelDownloadService(
     reason: string,
   ): Promise<LocalRerankerRuntime> {
     const spec = pickSpec(cfg, "reranker-local");
-    await enqueueAndWait({ cfg, reason, scope: "reranker-local" });
     const key = guardKey(spec);
     const existing = rerankerRuntimeGuards.get(key);
     if (existing) {
       return existing;
     }
-    const created = loadLocalRerankerRuntime(spec, { localFilesOnly: true });
-    rerankerRuntimeGuards.set(key, created);
-    return created;
+    const acquiring = rerankerAcquireGuards.get(key);
+    if (acquiring) {
+      return acquiring;
+    }
+    const next = (async () => {
+      // Reranker must wait until embedding is settled first.
+      await enqueueAndWait({ cfg, reason, scope: "all" });
+      const afterQueue = rerankerRuntimeGuards.get(key);
+      if (afterQueue) {
+        return afterQueue;
+      }
+      const created = loadLocalRerankerRuntime(spec, {
+        localFilesOnly: true,
+      }).catch((error) => {
+        throw new ModelLoadError(spec, "load_reranker_runtime", error);
+      });
+      rerankerRuntimeGuards.set(key, created);
+      return created;
+    })().finally(() => {
+      rerankerAcquireGuards.delete(key);
+    });
+    rerankerAcquireGuards.set(key, next);
+    return next;
   }
 
   return {
@@ -1325,14 +1464,15 @@ export function selectPreferredRepoFiles(
     "tokenizer.model",
     "sentencepiece.bpe.model",
     "preprocessor_config.json",
-    "onnx/model.onnx",
   ]);
   return siblings
     .filter(
       (item): item is { rfilename: string; size?: number } =>
         typeof item.rfilename === "string" &&
         item.rfilename.length > 0 &&
-        requiredPaths.has(item.rfilename),
+        (requiredPaths.has(item.rfilename) ||
+          item.rfilename === "onnx/model.onnx" ||
+          item.rfilename.startsWith("onnx/model.onnx")),
     )
     .map((item) => ({
       path: item.rfilename,

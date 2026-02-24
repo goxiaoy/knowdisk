@@ -16,13 +16,14 @@ test("resolveRangeNotSatisfiableStrategy restarts when remote size is unknown", 
   expect(resolveRangeNotSatisfiableStrategy(1024, 0)).toBe("restart");
 });
 
-test("selectPreferredRepoFiles keeps only required tokenizer/config and onnx/model.onnx", () => {
+test("selectPreferredRepoFiles keeps required files and onnx/model.onnx sidecars only", () => {
   const selected = selectPreferredRepoFiles([
     { rfilename: "config.json", size: 10 },
     { rfilename: "tokenizer.json", size: 11 },
     { rfilename: "tokenizer_config.json", size: 12 },
     { rfilename: "special_tokens_map.json", size: 13 },
     { rfilename: "onnx/model.onnx", size: 99 },
+    { rfilename: "onnx/model.onnx_data", size: 1234 },
     { rfilename: "onnx/model_int8.onnx", size: 88 },
     { rfilename: "onnx/model_q4.onnx", size: 77 },
     { rfilename: "README.md", size: 1 },
@@ -33,5 +34,6 @@ test("selectPreferredRepoFiles keeps only required tokenizer/config and onnx/mod
     "tokenizer_config.json",
     "special_tokens_map.json",
     "onnx/model.onnx",
+    "onnx/model.onnx_data",
   ]);
 });
