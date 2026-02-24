@@ -10,6 +10,7 @@ import {
   upsertKnowDiskMcpServerConfig,
 } from "./claude-desktop-config";
 import { createIncrementalBatcher } from "./incremental-batcher";
+import { resolveModelDownloadTriggerReason } from "./model-download-trigger";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 import type { IndexingStatus } from "../core/indexing/indexing.service.types";
@@ -69,15 +70,10 @@ const incrementalBatcher = createIncrementalBatcher({
 });
 const stopConfigSubscription = container.configService.subscribe(({ prev, next }) => {
   syncSourceWatchers(next);
-  if (!next.onboarding.completed) {
-    return;
-  }
-  if (
-    !prev.onboarding.completed ||
-    hasLocalModelSettingsChanged(prev, next)
-  ) {
+  const reason = resolveModelDownloadTriggerReason(prev, next);
+  if (reason) {
     void container.modelDownloadService
-      .ensureRequiredModels(next, prev.onboarding.completed ? "config_changed" : "onboarding_completed")
+      .ensureRequiredModels(next, reason)
       .catch((error) => {
         container.loggerService.error(
           { subsystem: "models", error: String(error) },
@@ -233,6 +229,9 @@ const rpc = BrowserView.defineRPC({
       },
       get_model_download_status(): ModelDownloadStatus {
         return container.modelDownloadService.getStatus().getSnapshot();
+      },
+      retry_model_download(): Promise<{ ok: boolean; reason: string }> {
+        return container.modelDownloadService.retryNow();
       },
       search_retrieval(params?: unknown): Promise<RetrievalDebugResult> {
         const { query, topK, titleOnly } = params as {
@@ -489,39 +488,4 @@ function syncSourceWatchers(config: AppConfig) {
       );
     }
   }
-}
-
-function hasLocalModelSettingsChanged(prev: AppConfig, next: AppConfig) {
-  if (prev.embedding.provider !== next.embedding.provider) {
-    return true;
-  }
-  if (next.embedding.provider === "local") {
-    if (prev.embedding.local.model !== next.embedding.local.model) {
-      return true;
-    }
-    if (prev.embedding.local.hfEndpoint !== next.embedding.local.hfEndpoint) {
-      return true;
-    }
-    if (prev.embedding.local.cacheDir !== next.embedding.local.cacheDir) {
-      return true;
-    }
-  }
-  if (prev.reranker.enabled !== next.reranker.enabled) {
-    return true;
-  }
-  if (prev.reranker.provider !== next.reranker.provider) {
-    return true;
-  }
-  if (next.reranker.enabled && next.reranker.provider === "local") {
-    if (prev.reranker.local.model !== next.reranker.local.model) {
-      return true;
-    }
-    if (prev.reranker.local.hfEndpoint !== next.reranker.local.hfEndpoint) {
-      return true;
-    }
-    if (prev.reranker.local.cacheDir !== next.reranker.local.cacheDir) {
-      return true;
-    }
-  }
-  return false;
 }

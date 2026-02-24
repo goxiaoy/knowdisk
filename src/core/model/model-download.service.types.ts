@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config/config.types";
 
 export type ModelDownloadTaskState =
+  | "verifying"
   | "pending"
   | "downloading"
   | "ready"
@@ -19,13 +20,20 @@ export type ModelDownloadTask = {
 };
 
 export type ModelDownloadStatus = {
-  phase: "idle" | "running" | "completed" | "failed";
+  phase: "idle" | "verifying" | "running" | "completed" | "failed";
   triggeredBy: string;
   lastStartedAt: string;
   lastFinishedAt: string;
   progressPct: number;
   error: string;
   tasks: ModelDownloadTask[];
+  retry: {
+    attempt: number;
+    maxAttempts: number;
+    backoffMs: number[];
+    nextRetryAt: string;
+    exhausted: boolean;
+  };
 };
 
 export type ModelDownloadStatusStore = {
@@ -35,5 +43,8 @@ export type ModelDownloadStatusStore = {
 
 export type ModelDownloadService = {
   ensureRequiredModels: (cfg: AppConfig, reason: string) => Promise<void>;
+  ensureLocalEmbeddingModelReady: (cfg: AppConfig, reason: string) => Promise<void>;
+  ensureLocalRerankerModelReady: (cfg: AppConfig, reason: string) => Promise<void>;
+  retryNow: () => Promise<{ ok: boolean; reason: string }>;
   getStatus: () => ModelDownloadStatusStore;
 };

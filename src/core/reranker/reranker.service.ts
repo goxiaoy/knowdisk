@@ -3,14 +3,22 @@ import { join } from "node:path";
 import type { AppConfig } from "../config/config.types";
 import type { RerankRow, RerankerService } from "./reranker.types";
 
-export function createReranker(config: AppConfig["reranker"]): RerankerService | null {
+export function createReranker(
+  config: AppConfig["reranker"],
+  opts?: {
+    ensureLocalModelReady?: () => Promise<void>;
+  },
+): RerankerService | null {
   if (!config.enabled) {
     return null;
   }
 
   const topN = getTopN(config);
   const localRuntimePromise = config.provider === "local"
-    ? initLocalRerankerRuntime(config)
+    ? (async () => {
+      await opts?.ensureLocalModelReady?.();
+      return initLocalRerankerRuntime(config);
+    })()
     : null;
   void localRuntimePromise?.catch(() => {});
 

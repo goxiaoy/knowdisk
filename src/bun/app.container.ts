@@ -137,7 +137,16 @@ function registerDependencies(
         TOKENS.IndexMetadataRepository,
       );
       const logger = c.resolve<LoggerService>(TOKENS.LoggerService);
-      const reranker = createReranker(cfg.reranker);
+      const modelDownloadService = c.resolve<ModelDownloadService>(
+        TOKENS.ModelDownloadService,
+      );
+      const reranker = createReranker(cfg.reranker, {
+        ensureLocalModelReady: () =>
+          modelDownloadService.ensureLocalRerankerModelReady(
+            c.resolve<ConfigService>(TOKENS.ConfigService).getConfig(),
+            "reranker_guard",
+          ),
+      });
       return createRetrievalService({
         embedding,
         vector,
@@ -161,8 +170,12 @@ function registerDependencies(
     },
   });
   di.register(TOKENS.IndexingService, {
-    useFactory: (c) =>
-      createSourceIndexingService(
+    useFactory: (c) => {
+      const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
+      const modelDownloadService = c.resolve<ModelDownloadService>(
+        TOKENS.ModelDownloadService,
+      );
+      return createSourceIndexingService(
         c.resolve<ConfigService>(TOKENS.ConfigService),
         c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
         c.resolve<ChunkingService>(TOKENS.ChunkingService),
@@ -172,8 +185,14 @@ function registerDependencies(
           metadata: c.resolve<IndexMetadataRepository>(
             TOKENS.IndexMetadataRepository,
           ),
+          ensureLocalEmbeddingModelReady: () =>
+            modelDownloadService.ensureLocalEmbeddingModelReady(
+              configService.getConfig(),
+              "indexing_guard",
+            ),
         },
-      ),
+      );
+    },
   });
   di.register(TOKENS.ModelDownloadService, {
     useFactory: (c) =>

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ModelDownloadStatus } from "../../../core/model/model-download.service.types";
-import { getModelDownloadStatusFromBun } from "../../services/bun.rpc";
+import {
+  getModelDownloadStatusFromBun,
+  retryModelDownloadInBun,
+} from "../../services/bun.rpc";
 
 const EMPTY_STATUS: ModelDownloadStatus = {
   phase: "idle",
@@ -10,16 +13,26 @@ const EMPTY_STATUS: ModelDownloadStatus = {
   progressPct: 0,
   error: "",
   tasks: [],
+  retry: {
+    attempt: 0,
+    maxAttempts: 3,
+    backoffMs: [3000, 10000, 30000],
+    nextRetryAt: "",
+    exhausted: false,
+  },
 };
 
 export function ModelDownloadCard({
   pollMs = 1000,
   loadStatus = getModelDownloadStatusFromBun,
+  retryNow = retryModelDownloadInBun,
 }: {
   pollMs?: number;
   loadStatus?: () => Promise<ModelDownloadStatus | null>;
+  retryNow?: () => Promise<{ ok: boolean; reason: string } | null>;
 }) {
   const [status, setStatus] = useState<ModelDownloadStatus>(EMPTY_STATUS);
+  const [retryMessage, setRetryMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +52,15 @@ export function ModelDownloadCard({
     };
   }, [loadStatus, pollMs]);
 
+  const retryCountdownText = useMemo(() => {
+    if (!status.retry.nextRetryAt) {
+      return "-";
+    }
+    const target = new Date(status.retry.nextRetryAt).getTime();
+    const remainingMs = Math.max(0, target - Date.now());
+    return `${Math.ceil(remainingMs / 1000)}s`;
+  }, [status.retry.nextRetryAt, status.lastStartedAt, status.lastFinishedAt, status.progressPct]);
+
   const badgeClass = useMemo(() => {
     if (status.phase === "failed") {
       return "bg-rose-100 text-rose-700";
@@ -56,10 +78,31 @@ export function ModelDownloadCard({
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-slate-900">Model Downloads</h2>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase ${badgeClass}`}>
-          {status.phase}
-        </span>
+        <div className="flex items-center gap-2">
+          {status.phase === "failed" ? (
+            <button
+              data-testid="model-download-retry-now"
+              type="button"
+              onClick={() => {
+                void retryNow().then((result) => {
+                  if (!result) {
+                    setRetryMessage("Retry request failed.");
+                    return;
+                  }
+                  setRetryMessage(result.ok ? "Retry started." : `Retry not started: ${result.reason}`);
+                });
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Retry now
+            </button>
+          ) : null}
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase ${badgeClass}`}>
+            {status.phase}
+          </span>
+        </div>
       </div>
+      {retryMessage ? <p className="mt-2 text-xs text-slate-600">{retryMessage}</p> : null}
       <dl className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700">
         <div>
           <dt className="text-slate-500">Progress</dt>
@@ -89,6 +132,19 @@ export function ModelDownloadCard({
           <dt className="text-slate-500">Error</dt>
           <dd data-testid="model-download-error" className="font-medium text-rose-700 break-all">
             {status.error || "-"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">Retry</dt>
+          <dd data-testid="model-download-retry" className="font-medium text-slate-900">
+            attempt {status.retry.attempt}/{status.retry.maxAttempts}
+            {status.retry.exhausted ? " | exhausted" : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">Next Auto Retry</dt>
+          <dd data-testid="model-download-next-retry" className="font-medium text-slate-900">
+            {status.retry.nextRetryAt ? `${status.retry.nextRetryAt} (${retryCountdownText})` : "-"}
           </dd>
         </div>
         <div>

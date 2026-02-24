@@ -27,6 +27,7 @@ export function createSourceIndexingService(
   opts?: {
     metadata?: IndexMetadataRepository;
     metadataDbPath?: string;
+    ensureLocalEmbeddingModelReady?: () => Promise<void>;
   },
 ): IndexingService {
   const log = logger?.child({ subsystem: "indexing" }) ?? {
@@ -40,6 +41,8 @@ export function createSourceIndexingService(
   const metadata =
     opts?.metadata ??
     createIndexMetadataRepository({ dbPath: opts?.metadataDbPath ?? ":memory:" });
+  const ensureLocalEmbeddingModelReady =
+    opts?.ensureLocalEmbeddingModelReady ?? (async () => {});
   const processor = createFileIndexProcessor({
     embedding,
     chunking,
@@ -175,6 +178,7 @@ export function createSourceIndexingService(
 
   return {
     async runFullRebuild(reason: string) {
+      await ensureLocalEmbeddingModelReady();
       beginRun(reason);
       const repair = await enqueueReconcileJobs(reason);
       await drainWorkerQueue();
@@ -187,6 +191,7 @@ export function createSourceIndexingService(
     },
 
     async runIncremental(changes: FileChange[]) {
+      await ensureLocalEmbeddingModelReady();
       beginRun("incremental");
       const now = Date.now();
       const eventAt = now - cfg.indexing.watch.debounceMs - 1;
@@ -203,6 +208,7 @@ export function createSourceIndexingService(
     },
 
     async runScheduledReconcile() {
+      await ensureLocalEmbeddingModelReady();
       const repaired = await enqueueReconcileJobs("scheduled_reconcile");
       await drainWorkerQueue();
       if (repaired > 0 && vector.optimize) {
@@ -237,6 +243,7 @@ export function createSourceIndexingService(
       }
 
       beginRun("startup_source_cleanup");
+      await ensureLocalEmbeddingModelReady();
       const now = Date.now();
       const knownFiles = metadata
         .listFiles()

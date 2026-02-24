@@ -18,6 +18,7 @@ type BridgeRpc = {
     get_index_status: () => Promise<IndexingStatus>;
     get_vector_stats: () => Promise<VectorCollectionInspect>;
     get_model_download_status: () => Promise<ModelDownloadStatus>;
+    retry_model_download: () => Promise<{ ok: boolean; reason: string }>;
     search_retrieval: (params: {
       query: string;
       topK: number;
@@ -205,6 +206,16 @@ export async function getModelDownloadStatusFromBun(): Promise<ModelDownloadStat
   if (!channel) return null;
   try {
     return await channel.request.get_model_download_status();
+  } catch {
+    return null;
+  }
+}
+
+export async function retryModelDownloadInBun(): Promise<{ ok: boolean; reason: string } | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.retry_model_download();
   } catch {
     return null;
   }
