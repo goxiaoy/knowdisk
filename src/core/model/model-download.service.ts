@@ -390,35 +390,6 @@ export function createModelDownloadService(
     }));
   }
 
-  async function clearModelCache(cacheDir: string, model: string) {
-    await rm(toModelRoot(cacheDir, model), {
-      recursive: true,
-      force: true,
-    });
-    for (const key of embeddingRuntimeGuards.keys()) {
-      if (key.includes(`::${model}::`) && key.includes(`::${cacheDir}`)) {
-        embeddingRuntimeGuards.delete(key);
-      }
-    }
-    for (const key of rerankerRuntimeGuards.keys()) {
-      if (key.includes(`::${model}::`) && key.includes(`::${cacheDir}`)) {
-        rerankerRuntimeGuards.delete(key);
-      }
-    }
-  }
-
-  function isCorruptedModelError(error: unknown) {
-    const message = String(error ?? "").toLowerCase();
-    return (
-      message.includes("protobuf parsing failed") ||
-      message.includes("onnxruntime") ||
-      message.includes("could not locate file") ||
-      message.includes("unexpected end of json input") ||
-      message.includes("invalid zip") ||
-      message.includes("incomplete")
-    );
-  }
-
   function isRetryableModelError(error: unknown) {
     const message = String(error ?? "").toLowerCase();
     if (message.includes("unsupported model type")) {
@@ -999,31 +970,13 @@ export function createModelDownloadService(
     }
     const promise = (async () => {
       try {
-        await runSpecWithRecovery(spec, reason);
+        await runSpecDownload(spec, reason);
       } finally {
         readyGuards.delete(key);
       }
     })();
     readyGuards.set(key, promise);
     return promise;
-  }
-
-  async function runSpecWithRecovery(spec: LocalTaskSpec, reason: string) {
-    try {
-      await runSpecDownload(spec, reason);
-      return;
-    } catch (error) {
-      if (!isCorruptedModelError(error)) {
-        throw error;
-      }
-      logger.warn(
-        { subsystem: "models", taskId: spec.id, reason, error: String(error) },
-        "Model download/integrity failed, clearing cache and retrying once",
-      );
-      await clearModelCache(spec.cacheDir, spec.model);
-      taskFileStats.delete(spec.id);
-      await runSpecDownload(spec, reason);
-    }
   }
 
   async function isSpecReady(spec: LocalTaskSpec) {
