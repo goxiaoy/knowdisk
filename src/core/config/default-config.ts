@@ -39,8 +39,8 @@ export function createDefaultConfig(opts?: {
     embedding: {
       provider: "local",
       local: {
-        model: "onnx-community/gte-multilingual-base",
-        dimension: 768,
+        model: "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+        dimension: 384,
       },
       qwen_dense: {
         apiKey: "",
@@ -62,7 +62,7 @@ export function createDefaultConfig(opts?: {
       enabled: true,
       provider: "local",
       local: {
-        model: "onnx-community/gte-multilingual-reranker-base",
+        model: "Xenova/bge-reranker-base",
         topN: 5,
       },
       qwen: {
