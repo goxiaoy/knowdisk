@@ -80,8 +80,12 @@ function registerDependencies(
   });
   di.register(TOKENS.EmbeddingProvider, {
     useFactory: (c) => {
-      const appCfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
-      return makeEmbeddingProvider(appCfg.embedding);
+      const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
+      const modelDownloadService = c.resolve<ModelDownloadService>(
+        TOKENS.ModelDownloadService,
+      );
+      const appCfg = configService.getConfig();
+      return makeEmbeddingProvider(appCfg.embedding, modelDownloadService);
     },
   });
   di.register(TOKENS.ChunkingService, {
@@ -140,13 +144,7 @@ function registerDependencies(
       const modelDownloadService = c.resolve<ModelDownloadService>(
         TOKENS.ModelDownloadService,
       );
-      const reranker = createReranker(cfg.reranker, {
-        ensureLocalModelReady: () =>
-          modelDownloadService.ensureLocalRerankerModelReady(
-            c.resolve<ConfigService>(TOKENS.ConfigService).getConfig(),
-            "reranker_guard",
-          ),
-      });
+      const reranker = createReranker(cfg.reranker, modelDownloadService);
       return createRetrievalService({
         embedding,
         vector,
@@ -170,12 +168,8 @@ function registerDependencies(
     },
   });
   di.register(TOKENS.IndexingService, {
-    useFactory: (c) => {
-      const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
-      const modelDownloadService = c.resolve<ModelDownloadService>(
-        TOKENS.ModelDownloadService,
-      );
-      return createSourceIndexingService(
+    useFactory: (c) =>
+      createSourceIndexingService(
         c.resolve<ConfigService>(TOKENS.ConfigService),
         c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
         c.resolve<ChunkingService>(TOKENS.ChunkingService),
@@ -185,18 +179,15 @@ function registerDependencies(
           metadata: c.resolve<IndexMetadataRepository>(
             TOKENS.IndexMetadataRepository,
           ),
-          ensureLocalEmbeddingModelReady: () =>
-            modelDownloadService.ensureLocalEmbeddingModelReady(
-              configService.getConfig(),
-              "indexing_guard",
-            ),
         },
-      );
-    },
+      ),
   });
   di.register(TOKENS.ModelDownloadService, {
     useFactory: (c) =>
-      createModelDownloadService(c.resolve<LoggerService>(TOKENS.LoggerService)),
+      createModelDownloadService(
+        c.resolve<LoggerService>(TOKENS.LoggerService),
+        c.resolve<ConfigService>(TOKENS.ConfigService),
+      ),
   });
   di.register(TOKENS.AppContainer, {
     useFactory: (c) => {

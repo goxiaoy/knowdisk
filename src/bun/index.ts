@@ -73,7 +73,7 @@ const stopConfigSubscription = container.configService.subscribe(({ prev, next }
   const reason = resolveModelDownloadTriggerReason(prev, next);
   if (reason) {
     void container.modelDownloadService
-      .ensureRequiredModels(next, reason)
+      .ensureRequiredModels()
       .catch((error) => {
         container.loggerService.error(
           { subsystem: "models", error: String(error) },
@@ -153,7 +153,7 @@ if (startupConfig.indexing.reconcile.enabled) {
 syncSourceWatchers(startupConfig);
 if (startupConfig.onboarding.completed) {
   void container.modelDownloadService
-    .ensureRequiredModels(startupConfig, "startup")
+    .ensureRequiredModels()
     .catch((error) => {
       container.loggerService.error(
         { subsystem: "models", error: String(error) },

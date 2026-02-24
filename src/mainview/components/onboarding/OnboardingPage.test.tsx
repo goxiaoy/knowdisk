@@ -39,9 +39,10 @@ describe("OnboardingPage", () => {
     expect(next.props.disabled).toBe(true);
   });
 
-  it("allows moving to step 2 after adding a source", async () => {
+  it("enables completion after adding a source", async () => {
+    const configService = makeConfigService();
     const renderer = create(
-      <OnboardingPage configService={makeConfigService()} pickSourceDirectory={async () => "/docs"} />,
+      <OnboardingPage configService={configService} pickSourceDirectory={async () => "/docs"} />,
     );
     const root = renderer.root;
 
@@ -57,10 +58,10 @@ describe("OnboardingPage", () => {
       next.props.onClick();
     });
 
-    expect(root.findByProps({ children: "Step 2: Embedding & Reranker" })).toBeDefined();
+    expect(configService.getConfig().onboarding.completed).toBe(true);
   });
 
-  it("completes onboarding from step 2 without requiring edits", async () => {
+  it("completes onboarding from source step", async () => {
     let finished = false;
     const configService = makeConfigService();
     const renderer = create(
@@ -77,13 +78,8 @@ describe("OnboardingPage", () => {
     await act(async () => {
       await root.findByProps({ "data-testid": "onboarding-add-source" }).props.onClick();
     });
-
     await act(async () => {
       root.findByProps({ "data-testid": "onboarding-next" }).props.onClick();
-    });
-
-    await act(async () => {
-      await root.findByProps({ "data-testid": "onboarding-complete" }).props.onClick();
     });
 
     expect(configService.getConfig().onboarding.completed).toBe(true);

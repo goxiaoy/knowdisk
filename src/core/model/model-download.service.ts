@@ -11,9 +11,12 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { AppConfig } from "../config/config.types";
+import type { AppConfig, ConfigService } from "../config/config.types";
 import type { LoggerService } from "../logger/logger.service.types";
 import type {
+  LocalEmbeddingExtractor,
+  LocalRerankerInputs,
+  LocalRerankerRuntime,
   ModelDownloadService,
   ModelDownloadStatus,
   ModelDownloadTask,
@@ -63,6 +66,16 @@ const MODEL_FILE_CONCURRENCY = 4;
 const MODEL_RETRY_BACKOFF_MS = [3000, 10000, 30000];
 const MODEL_RETRY_MAX_ATTEMPTS = MODEL_RETRY_BACKOFF_MS.length;
 
+export function resolveRangeNotSatisfiableStrategy(
+  startOffset: number,
+  remoteTotalBytes: number,
+): "promote_partial" | "restart" {
+  if (remoteTotalBytes > 0 && startOffset === remoteTotalBytes) {
+    return "promote_partial";
+  }
+  return "restart";
+}
+
 const EMPTY_STATUS: ModelDownloadStatus = {
   phase: "idle",
   triggeredBy: "",
@@ -82,6 +95,7 @@ const EMPTY_STATUS: ModelDownloadStatus = {
 
 export function createModelDownloadService(
   logger: LoggerService,
+  configService: ConfigService,
 ): ModelDownloadService {
   const emitter = new EventEmitter();
   let status: ModelDownloadStatus = EMPTY_STATUS;
@@ -92,6 +106,8 @@ export function createModelDownloadService(
     Map<string, { loaded: number; total: number }>
   >();
   const readyGuards = new Map<string, Promise<void>>();
+  const embeddingRuntimeGuards = new Map<string, Promise<LocalEmbeddingExtractor>>();
+  const rerankerRuntimeGuards = new Map<string, Promise<LocalRerankerRuntime>>();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFailedRequest: DownloadRequest | null = null;
 
@@ -186,6 +202,20 @@ export function createModelDownloadService(
       });
     }
     return specs;
+  }
+
+  function pickSpec(
+    cfg: AppConfig,
+    id: LocalTaskSpec["id"],
+  ): LocalTaskSpec {
+    const scope: DownloadScope =
+      id === "embedding-local" ? "embedding-local" : "reranker-local";
+    const specs = buildSpecs(cfg, scope);
+    const found = specs.find((spec) => spec.id === id);
+    if (!found) {
+      throw new Error(`Local model spec not enabled for ${id}`);
+    }
+    return found;
   }
 
   function buildTasksFromSpecs(specs: LocalTaskSpec[]): ModelDownloadTask[] {
@@ -311,6 +341,16 @@ export function createModelDownloadService(
       recursive: true,
       force: true,
     });
+    for (const key of embeddingRuntimeGuards.keys()) {
+      if (key.includes(`::${model}::`) && key.includes(`::${cacheDir}`)) {
+        embeddingRuntimeGuards.delete(key);
+      }
+    }
+    for (const key of rerankerRuntimeGuards.keys()) {
+      if (key.includes(`::${model}::`) && key.includes(`::${cacheDir}`)) {
+        rerankerRuntimeGuards.delete(key);
+      }
+    }
   }
 
   function isCorruptedModelError(error: unknown) {
@@ -425,6 +465,52 @@ export function createModelDownloadService(
     });
 
     if (startOffset > 0 && response.status === 200) {
+      await truncate(partPath, 0);
+      startOffset = 0;
+      response = await fetch(baseUrl);
+    }
+
+    if (startOffset > 0 && response.status === 416) {
+      const remoteTotal = await probeRemoteFileSize(baseUrl, {
+        taskId: spec.id,
+        model: spec.model,
+        file,
+      });
+      const strategy = resolveRangeNotSatisfiableStrategy(
+        startOffset,
+        remoteTotal,
+      );
+      logger.debug(
+        {
+          subsystem: "models",
+          taskId: spec.id,
+          model: spec.model,
+          file,
+          startOffset,
+          remoteTotal,
+          strategy,
+        },
+        "range request not satisfiable",
+      );
+      if (strategy === "promote_partial") {
+        await rename(partPath, finalPath);
+        onFileProgress({
+          file,
+          loaded: remoteTotal,
+          total: remoteTotal,
+        });
+        logger.debug(
+          {
+            subsystem: "models",
+            taskId: spec.id,
+            model: spec.model,
+            file,
+            bytes: remoteTotal,
+          },
+          "partial file promoted after 416",
+        );
+        return;
+      }
       await truncate(partPath, 0);
       startOffset = 0;
       response = await fetch(baseUrl);
@@ -704,59 +790,117 @@ export function createModelDownloadService(
     );
   }
 
-  async function verifyModelIntegrity(spec: LocalTaskSpec) {
+  async function loadLocalEmbeddingExtractor(
+    spec: LocalTaskSpec,
+    opts?: { localFilesOnly?: boolean },
+  ): Promise<LocalEmbeddingExtractor> {
     const transformers = await import("@huggingface/transformers");
     const env = (transformers as unknown as {
       env?: {
         allowRemoteModels?: boolean;
+        remoteHost?: string;
         cacheDir?: string;
       };
     }).env;
     if (env) {
-      env.allowRemoteModels = false;
+      env.allowRemoteModels = !opts?.localFilesOnly;
+      env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
+      env.cacheDir = join(spec.cacheDir, "provider-local");
+    }
+    return (
+      transformers as unknown as {
+        pipeline: (
+          task: "feature-extraction",
+          model: string,
+          opts?: { local_files_only?: boolean },
+        ) => Promise<LocalEmbeddingExtractor>;
+      }
+    ).pipeline("feature-extraction", spec.model, {
+      local_files_only: opts?.localFilesOnly,
+    });
+  }
+
+  async function loadLocalRerankerRuntime(
+    spec: LocalTaskSpec,
+    opts?: { localFilesOnly?: boolean },
+  ): Promise<LocalRerankerRuntime> {
+    const transformers = await import("@huggingface/transformers");
+    const env = (transformers as unknown as {
+      env?: {
+        allowRemoteModels?: boolean;
+        remoteHost?: string;
+        cacheDir?: string;
+      };
+    }).env;
+    if (env) {
+      env.allowRemoteModels = !opts?.localFilesOnly;
+      env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
       env.cacheDir = join(spec.cacheDir, "provider-local");
     }
 
-    if (spec.kind === "embedding") {
-      await (
-        transformers as unknown as {
-          pipeline: (
-            task: "feature-extraction",
-            model: string,
-            opts: { local_files_only: boolean },
-          ) => Promise<unknown>;
-        }
-      ).pipeline("feature-extraction", spec.model, {
-        local_files_only: true,
-      });
-      return;
-    }
-
-    await (
+    const tokenizer = await (
       transformers as unknown as {
         AutoTokenizer: {
           from_pretrained: (
             model: string,
-            opts: { local_files_only: boolean },
-          ) => Promise<unknown>;
+            opts?: { local_files_only?: boolean },
+          ) => Promise<{
+            (
+              texts: string[],
+              opts: {
+                text_pair: string[];
+                padding: boolean;
+                truncation: boolean;
+              },
+            ): unknown;
+          }>;
         };
       }
     ).AutoTokenizer.from_pretrained(spec.model, {
-      local_files_only: true,
+      local_files_only: opts?.localFilesOnly,
     });
-    await (
+
+    const model = await (
       transformers as unknown as {
         AutoModelForSequenceClassification: {
           from_pretrained: (
             model: string,
-            opts: { quantized: boolean; local_files_only: boolean },
-          ) => Promise<unknown>;
+            opts: { quantized: boolean; local_files_only?: boolean },
+          ) => Promise<{
+            (inputs: unknown): Promise<{ logits?: { data?: ArrayLike<number> } }>;
+          }>;
         };
       }
     ).AutoModelForSequenceClassification.from_pretrained(spec.model, {
       quantized: false,
-      local_files_only: true,
+      local_files_only: opts?.localFilesOnly,
     });
+
+    return {
+      async tokenizePairs(query: string, docs: string[]) {
+        const queries = Array(docs.length).fill(query);
+        return tokenizer(queries, {
+          text_pair: docs,
+          padding: true,
+          truncation: true,
+        });
+      },
+      async score(inputs: LocalRerankerInputs) {
+        const outputs = await model(inputs);
+        if (!outputs?.logits?.data) {
+          return [];
+        }
+        return Array.from(outputs.logits.data);
+      },
+    };
+  }
+
+  async function verifyModelIntegrity(spec: LocalTaskSpec) {
+    if (spec.kind === "embedding") {
+      await loadLocalEmbeddingExtractor(spec, { localFilesOnly: true });
+      return;
+    }
+    await loadLocalRerankerRuntime(spec, { localFilesOnly: true });
   }
 
   function guardKey(spec: LocalTaskSpec) {
@@ -987,15 +1131,57 @@ export function createModelDownloadService(
     });
   }
 
+  async function acquireEmbeddingExtractor(
+    cfg: AppConfig,
+    reason: string,
+  ): Promise<LocalEmbeddingExtractor> {
+    const spec = pickSpec(cfg, "embedding-local");
+    await enqueueAndWait({ cfg, reason, scope: "embedding-local" });
+    const key = guardKey(spec);
+    const existing = embeddingRuntimeGuards.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created = loadLocalEmbeddingExtractor(spec, { localFilesOnly: true });
+    embeddingRuntimeGuards.set(key, created);
+    return created;
+  }
+
+  async function acquireRerankerRuntime(
+    cfg: AppConfig,
+    reason: string,
+  ): Promise<LocalRerankerRuntime> {
+    const spec = pickSpec(cfg, "reranker-local");
+    await enqueueAndWait({ cfg, reason, scope: "reranker-local" });
+    const key = guardKey(spec);
+    const existing = rerankerRuntimeGuards.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created = loadLocalRerankerRuntime(spec, { localFilesOnly: true });
+    rerankerRuntimeGuards.set(key, created);
+    return created;
+  }
+
   return {
-    async ensureRequiredModels(cfg: AppConfig, reason: string) {
-      await enqueueAndWait({ cfg, reason, scope: "all" });
+    async ensureRequiredModels() {
+      await enqueueAndWait({
+        cfg: configService.getConfig(),
+        reason: "ensure_required_models",
+        scope: "all",
+      });
     },
-    async ensureLocalEmbeddingModelReady(cfg: AppConfig, reason: string) {
-      await enqueueAndWait({ cfg, reason, scope: "embedding-local" });
+    async getLocalEmbeddingExtractor() {
+      return acquireEmbeddingExtractor(
+        configService.getConfig(),
+        "embedding_runtime",
+      );
     },
-    async ensureLocalRerankerModelReady(cfg: AppConfig, reason: string) {
-      await enqueueAndWait({ cfg, reason, scope: "reranker-local" });
+    async getLocalRerankerRuntime() {
+      return acquireRerankerRuntime(
+        configService.getConfig(),
+        "reranker_runtime",
+      );
     },
     async retryNow() {
       if (!lastFailedRequest) {

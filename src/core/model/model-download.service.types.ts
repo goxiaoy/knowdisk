@@ -1,5 +1,3 @@
-import type { AppConfig } from "../config/config.types";
-
 export type ModelDownloadTaskState =
   | "verifying"
   | "pending"
@@ -41,10 +39,22 @@ export type ModelDownloadStatusStore = {
   subscribe: (listener: (status: ModelDownloadStatus) => void) => () => void;
 };
 
+export type LocalEmbeddingExtractor = (
+  text: string,
+  opts: { pooling: "mean"; normalize: true },
+) => Promise<{ data?: ArrayLike<number> }>;
+
+export type LocalRerankerInputs = Record<string, unknown>;
+
+export type LocalRerankerRuntime = {
+  tokenizePairs: (query: string, docs: string[]) => Promise<LocalRerankerInputs>;
+  score: (inputs: LocalRerankerInputs) => Promise<number[]>;
+};
+
 export type ModelDownloadService = {
-  ensureRequiredModels: (cfg: AppConfig, reason: string) => Promise<void>;
-  ensureLocalEmbeddingModelReady: (cfg: AppConfig, reason: string) => Promise<void>;
-  ensureLocalRerankerModelReady: (cfg: AppConfig, reason: string) => Promise<void>;
+  ensureRequiredModels: () => Promise<void>;
+  getLocalEmbeddingExtractor: () => Promise<LocalEmbeddingExtractor>;
+  getLocalRerankerRuntime: () => Promise<LocalRerankerRuntime>;
   retryNow: () => Promise<{ ok: boolean; reason: string }>;
   getStatus: () => ModelDownloadStatusStore;
 };

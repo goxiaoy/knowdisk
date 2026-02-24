@@ -1,10 +1,15 @@
 import { isCloudEmbeddingProvider, type EmbeddingConfig, type EmbeddingProvider } from "./embedding.types";
 import { embedWithCloudProvider } from "./cloud/cloud.embedding";
-import { embedWithLocalProvider, initLocalExtractor } from "./local/local.embedding";
+import type { ModelDownloadService } from "../model/model-download.service.types";
+import { embedWithLocalProvider } from "./local/local.embedding";
 
-export function makeEmbeddingProvider(cfg: EmbeddingConfig): EmbeddingProvider {
+export function makeEmbeddingProvider(
+  cfg: EmbeddingConfig,
+  modelDownloadService?: ModelDownloadService,
+): EmbeddingProvider {
   const localExtractorPromise = !isCloudEmbeddingProvider(cfg.provider)
-    ? initLocalExtractor(cfg)
+    ? modelDownloadService?.getLocalEmbeddingExtractor() ??
+      Promise.reject(new Error("local embedding extractor unavailable"))
     : null;
   void localExtractorPromise?.catch(() => {});
 
