@@ -247,4 +247,38 @@ describe("SettingsPage", () => {
     expect(root.findByProps({ "data-testid": "reranker-cloud-model" }).props.value).toBe("text-rerank-1");
     expect(root.findByProps({ "data-testid": "reranker-cloud-topn" }).props.value).toBe("9");
   });
+
+  it("saves shared model runtime settings", () => {
+    let modelHfEndpoint = "";
+    let modelCacheDir = "";
+    const renderer = create(
+      <SettingsPage
+        pickSourceDirectory={async () => null}
+        configService={makeConfigService({
+          updateConfig(updater) {
+            const next = updater(makeInitialConfig());
+            modelHfEndpoint = next.model.hfEndpoint;
+            modelCacheDir = next.model.cacheDir;
+            return next;
+          },
+        })}
+      />,
+    );
+    const root = renderer.root;
+    const endpoint = root.findByProps({ "data-testid": "model-hf-endpoint" });
+    act(() => {
+      endpoint.props.onChange({ target: { value: "https://example-hf.local" } });
+    });
+    const cacheDir = root.findByProps({ "data-testid": "model-cache-dir" });
+    act(() => {
+      cacheDir.props.onChange({ target: { value: "/tmp/knowdisk-models" } });
+    });
+    const save = root.findByProps({ "data-testid": "save-model" });
+    act(() => {
+      save.props.onClick();
+    });
+
+    expect(modelHfEndpoint).toBe("https://example-hf.local");
+    expect(modelCacheDir).toBe("/tmp/knowdisk-models");
+  });
 });

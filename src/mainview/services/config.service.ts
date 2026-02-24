@@ -9,8 +9,7 @@ const listeners = new Set<
 
 function getDefaultConfig(): AppConfig {
   return createDefaultConfig({
-    embeddingCacheDir: "models/embedding/local",
-    rerankerCacheDir: "models/reranker/local",
+    modelCacheDir: "models",
   });
 }
 
@@ -136,17 +135,27 @@ function loadConfig(): AppConfig {
               : defaults.retrieval.hybrid.rerankTopN,
         },
       },
+      model: {
+        ...defaults.model,
+        ...(parsed.model ?? {}),
+        cacheDir: normalizeLegacyModelCacheDir(
+          parsed.model?.cacheDir ??
+            parsed.embedding?.local?.cacheDir ??
+            parsed.reranker?.local?.cacheDir,
+          defaults.model.cacheDir,
+        ),
+        hfEndpoint:
+          parsed.model?.hfEndpoint ??
+          parsed.embedding?.local?.hfEndpoint ??
+          parsed.reranker?.local?.hfEndpoint ??
+          defaults.model.hfEndpoint,
+      },
       embedding: {
         ...defaults.embedding,
         ...(parsed.embedding ?? {}),
         local: {
           ...defaults.embedding.local,
           ...(parsed.embedding?.local ?? {}),
-          cacheDir: normalizeLegacyModelCacheDir(
-            parsed.embedding?.local?.cacheDir,
-            "embedding",
-            defaults.embedding.local.cacheDir,
-          ),
         },
         qwen_dense: {
           ...defaults.embedding.qwen_dense,
@@ -167,11 +176,6 @@ function loadConfig(): AppConfig {
         local: {
           ...defaults.reranker.local,
           ...(parsed.reranker?.local ?? {}),
-          cacheDir: normalizeLegacyModelCacheDir(
-            parsed.reranker?.local?.cacheDir,
-            "reranker",
-            defaults.reranker.local.cacheDir,
-          ),
         },
         qwen: {
           ...defaults.reranker.qwen,
@@ -239,14 +243,16 @@ function isSameOrParentPath(parent: string, child: string) {
 
 function normalizeLegacyModelCacheDir(
   cacheDir: string | undefined,
-  kind: "embedding" | "reranker",
   fallback: string,
 ) {
   if (!cacheDir || cacheDir.trim().length === 0) {
     return fallback;
   }
-  if (cacheDir === `cache/${kind}/local`) {
-    return `models/${kind}/local`;
+  if (cacheDir === "cache/embedding/local" || cacheDir === "cache/reranker/local") {
+    return "models";
+  }
+  if (cacheDir === "models/embedding/local" || cacheDir === "models/reranker/local") {
+    return "models";
   }
   return cacheDir;
 }

@@ -29,7 +29,8 @@ describe("getDefaultConfig", () => {
     expect(cfg.retrieval.hybrid.rerankTopN).toBe(10);
     expect(cfg.embedding.local.model).toBe("onnx-community/gte-multilingual-base");
     expect(cfg.embedding.local.dimension).toBe(768);
-    expect(cfg.embedding.local.hfEndpoint).toBe("https://hf-mirror.com");
+    expect(cfg.model.hfEndpoint).toBe("https://hf-mirror.com");
+    expect(cfg.model.cacheDir).toBe("build/models");
     expect(cfg.reranker.local.model).toBe("onnx-community/gte-multilingual-reranker-base");
     expect(cfg.reranker.local.topN).toBe(5);
   });
@@ -241,8 +242,7 @@ describe("getDefaultConfig", () => {
     const config = service.getConfig();
 
     expect(existsSync(join(userDataDir, "app-config.json"))).toBe(true);
-    expect(config.embedding.local.cacheDir).toBe(join(userDataDir, "models", "embedding", "local"));
-    expect(config.reranker.local.cacheDir).toBe(join(userDataDir, "models", "reranker", "local"));
+    expect(config.model.cacheDir).toBe(join(userDataDir, "models"));
 
     rmSync(userDataDir, { recursive: true, force: true });
   });

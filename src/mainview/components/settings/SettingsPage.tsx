@@ -21,10 +21,10 @@ export function SettingsPage({
   const [mcpPort, setMcpPort] = useState(String(config.mcp.port));
   const [sources, setSources] = useState(config.sources);
   const [activity, setActivity] = useState("");
+  const [modelHfEndpoint, setModelHfEndpoint] = useState(config.model.hfEndpoint);
+  const [modelCacheDir, setModelCacheDir] = useState(config.model.cacheDir);
 
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
-  const [embeddingLocalHfEndpoint, setEmbeddingLocalHfEndpoint] = useState(config.embedding.local.hfEndpoint);
-  const [embeddingLocalCacheDir, setEmbeddingLocalCacheDir] = useState(config.embedding.local.cacheDir);
   const [embeddingLocalModel, setEmbeddingLocalModel] = useState(config.embedding.local.model);
   const [embeddingLocalDimension, setEmbeddingLocalDimension] = useState(String(config.embedding.local.dimension));
   const initialEmbeddingCloud =
@@ -37,8 +37,6 @@ export function SettingsPage({
 
   const [rerankerEnabled, setRerankerEnabled] = useState(config.reranker.enabled);
   const [rerankerProvider, setRerankerProvider] = useState(config.reranker.provider);
-  const [rerankerLocalHfEndpoint, setRerankerLocalHfEndpoint] = useState(config.reranker.local.hfEndpoint);
-  const [rerankerLocalCacheDir, setRerankerLocalCacheDir] = useState(config.reranker.local.cacheDir);
   const [rerankerLocalModel, setRerankerLocalModel] = useState(config.reranker.local.model);
   const [rerankerLocalTopN, setRerankerLocalTopN] = useState(String(config.reranker.local.topN));
   const initialRerankerCloud =
@@ -97,6 +95,20 @@ export function SettingsPage({
     setMcpEnabled(updated.mcp.enabled);
     setMcpPort(String(updated.mcp.port));
     setActivity("MCP settings saved. Restart app to apply new endpoint port.");
+  };
+
+  const saveModelConfig = () => {
+    const next = configService.updateConfig((source) => ({
+      ...source,
+      model: {
+        hfEndpoint: modelHfEndpoint.trim() || source.model.hfEndpoint,
+        cacheDir: modelCacheDir.trim() || source.model.cacheDir,
+      },
+    }));
+    setConfig(next);
+    setModelHfEndpoint(next.model.hfEndpoint);
+    setModelCacheDir(next.model.cacheDir);
+    setActivity("Model runtime settings saved.");
   };
 
   const addSource = async () => {
@@ -166,8 +178,6 @@ export function SettingsPage({
               ...source.embedding,
               provider: "local",
               local: {
-                hfEndpoint: embeddingLocalHfEndpoint.trim() || "https://hf-mirror.com",
-                cacheDir: embeddingLocalCacheDir.trim() || source.embedding.local.cacheDir,
                 model: embeddingLocalModel.trim() || source.embedding.local.model,
                 dimension:
                   Math.max(
@@ -205,8 +215,6 @@ export function SettingsPage({
               enabled: rerankerEnabled,
               provider: "local",
               local: {
-                hfEndpoint: rerankerLocalHfEndpoint.trim() || "https://hf-mirror.com",
-                cacheDir: rerankerLocalCacheDir.trim() || source.reranker.local.cacheDir,
                 model: rerankerLocalModel.trim() || source.reranker.local.model,
                 topN: Math.max(1, Number.parseInt(rerankerLocalTopN, 10) || 5),
               },
@@ -249,6 +257,39 @@ export function SettingsPage({
 
         <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr]">
           <div className="space-y-6">
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">Model Runtime</h2>
+              <p className="mt-1 text-sm text-slate-500">Shared local model settings for embedding and reranker</p>
+              <div className="mt-4 grid gap-4">
+                <label className="grid gap-1 text-sm text-slate-700">
+                  HF Endpoint
+                  <input
+                    data-testid="model-hf-endpoint"
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                    value={modelHfEndpoint}
+                    onChange={(event) => setModelHfEndpoint(event.target.value)}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm text-slate-700">
+                  Cache Dir
+                  <input
+                    data-testid="model-cache-dir"
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                    value={modelCacheDir}
+                    onChange={(event) => setModelCacheDir(event.target.value)}
+                  />
+                </label>
+              </div>
+              <button
+                data-testid="save-model"
+                type="button"
+                onClick={saveModelConfig}
+                className="mt-4 rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-800"
+              >
+                Save Model Runtime
+              </button>
+            </article>
+
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -385,24 +426,6 @@ export function SettingsPage({
 
                 {embeddingProvider === "local" ? (
                   <div className="grid gap-4 md:grid-cols-2">
-                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
-                      HF Endpoint
-                      <input
-                        data-testid="embedding-local-hf-endpoint"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
-                        value={embeddingLocalHfEndpoint}
-                        onChange={(event) => setEmbeddingLocalHfEndpoint(event.target.value)}
-                      />
-                    </label>
-                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
-                      Cache Dir
-                      <input
-                        data-testid="embedding-local-cache-dir"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
-                        value={embeddingLocalCacheDir}
-                        onChange={(event) => setEmbeddingLocalCacheDir(event.target.value)}
-                      />
-                    </label>
                     <label className="grid gap-1 text-sm text-slate-700">
                       Model
                       <input
@@ -496,24 +519,6 @@ export function SettingsPage({
 
                 {rerankerProvider === "local" ? (
                   <div className="grid gap-4 md:grid-cols-2">
-                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
-                      HF Endpoint
-                      <input
-                        data-testid="reranker-local-hf-endpoint"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
-                        value={rerankerLocalHfEndpoint}
-                        onChange={(event) => setRerankerLocalHfEndpoint(event.target.value)}
-                      />
-                    </label>
-                    <label className="grid gap-1 text-sm text-slate-700 md:col-span-2">
-                      Cache Dir
-                      <input
-                        data-testid="reranker-local-cache-dir"
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
-                        value={rerankerLocalCacheDir}
-                        onChange={(event) => setRerankerLocalCacheDir(event.target.value)}
-                      />
-                    </label>
                     <label className="grid gap-1 text-sm text-slate-700">
                       Model
                       <input

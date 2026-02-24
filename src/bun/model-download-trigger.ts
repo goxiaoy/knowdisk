@@ -27,12 +27,6 @@ function hasLocalModelSettingsChanged(prev: AppConfig, next: AppConfig) {
     if (prev.embedding.local.model !== next.embedding.local.model) {
       return true;
     }
-    if (prev.embedding.local.hfEndpoint !== next.embedding.local.hfEndpoint) {
-      return true;
-    }
-    if (prev.embedding.local.cacheDir !== next.embedding.local.cacheDir) {
-      return true;
-    }
   }
   if (prev.reranker.enabled !== next.reranker.enabled) {
     return true;
@@ -44,12 +38,12 @@ function hasLocalModelSettingsChanged(prev: AppConfig, next: AppConfig) {
     if (prev.reranker.local.model !== next.reranker.local.model) {
       return true;
     }
-    if (prev.reranker.local.hfEndpoint !== next.reranker.local.hfEndpoint) {
-      return true;
-    }
-    if (prev.reranker.local.cacheDir !== next.reranker.local.cacheDir) {
-      return true;
-    }
+  }
+  if (prev.model.hfEndpoint !== next.model.hfEndpoint) {
+    return true;
+  }
+  if (prev.model.cacheDir !== next.model.cacheDir) {
+    return true;
   }
   return false;
 }

@@ -8,6 +8,7 @@ import type {
   ConfigChangeEvent,
   ConfigService,
   LocalEmbeddingConfig,
+  ModelConfig,
   LocalRerankerConfig,
   SourceConfig,
 } from "./config.types";
@@ -19,15 +20,11 @@ export function getDefaultConfig(): AppConfig {
 }
 
 function getDefaultConfigWithPaths(opts: { userDataDir?: string }): AppConfig {
-  const embeddingCacheDir = opts.userDataDir
-    ? join(opts.userDataDir, "models", "embedding", "local")
-    : undefined;
-  const rerankerCacheDir = opts.userDataDir
-    ? join(opts.userDataDir, "models", "reranker", "local")
+  const modelCacheDir = opts.userDataDir
+    ? join(opts.userDataDir, "models")
     : undefined;
   return createDefaultConfig({
-    embeddingCacheDir,
-    rerankerCacheDir,
+    modelCacheDir,
   });
 }
 
@@ -38,6 +35,11 @@ export function validateConfig(cfg: AppConfig): {
   const mcpErrors = validateMcp(cfg.mcp);
   if (mcpErrors.length > 0) {
     return { ok: false, errors: mcpErrors };
+  }
+
+  const modelErrors = validateModel(cfg.model);
+  if (modelErrors.length > 0) {
+    return { ok: false, errors: modelErrors };
   }
 
   const embeddingErrors = validateEmbedding(cfg.embedding);
@@ -51,6 +53,17 @@ export function validateConfig(cfg: AppConfig): {
   }
 
   return { ok: true, errors: [] };
+}
+
+function validateModel(model: AppConfig["model"]): string[] {
+  const errors: string[] = [];
+  if (!model.hfEndpoint) {
+    errors.push("model.hfEndpoint is required");
+  }
+  if (!model.cacheDir) {
+    errors.push("model.cacheDir is required");
+  }
+  return errors;
 }
 
 function validateMcp(mcp: AppConfig["mcp"]): string[] {
@@ -84,12 +97,6 @@ function validateEmbedding(embedding: AppConfig["embedding"]): string[] {
     if (embedding.local.dimension <= 0) {
       errors.push("embedding.local.dimension must be > 0");
     }
-    if (!embedding.local.hfEndpoint) {
-      errors.push("embedding.local.hfEndpoint is required");
-    }
-    if (!embedding.local.cacheDir) {
-      errors.push("embedding.local.cacheDir is required");
-    }
     return errors;
   }
 
@@ -114,12 +121,6 @@ function validateReranker(reranker: AppConfig["reranker"]): string[] {
   if (reranker.provider === "local") {
     if (reranker.local.topN <= 0) {
       errors.push("reranker.local.topN must be > 0");
-    }
-    if (!reranker.local.hfEndpoint) {
-      errors.push("reranker.local.hfEndpoint is required");
-    }
-    if (!reranker.local.cacheDir) {
-      errors.push("reranker.local.cacheDir is required");
     }
     return errors;
   }
@@ -146,6 +147,7 @@ function migrateConfigWithDefaults(
   if (version === 1) {
     const next = input as Partial<AppConfig> & {
       modelHub?: { hfEndpoint?: string };
+      model?: Partial<ModelConfig>;
       embedding?: {
         provider?: AppConfig["embedding"]["provider"];
         endpoint?: string;
@@ -169,12 +171,17 @@ function migrateConfigWithDefaults(
     const embedding = mergeEmbedding(
       defaults.embedding,
       next.embedding,
-      next.modelHub?.hfEndpoint,
     );
     const reranker = mergeReranker(
       defaults.reranker,
       next.reranker,
+    );
+    const model = mergeModel(
+      defaults.model,
+      next.model,
       next.modelHub?.hfEndpoint,
+      next.embedding?.local,
+      next.reranker?.local,
     );
 
     return {
@@ -259,6 +266,7 @@ function migrateConfigWithDefaults(
           ),
         },
       },
+      model,
       embedding,
       reranker,
     };
@@ -271,6 +279,29 @@ function migrateConfigWithDefaults(
     sources: normalizeSources(
       Array.isArray(legacy.sources) ? legacy.sources : [],
     ),
+  };
+}
+
+function mergeModel(
+  defaults: AppConfig["model"],
+  legacy: Partial<ModelConfig> | undefined,
+  legacyHfEndpoint?: string,
+  legacyEmbeddingLocal?: { hfEndpoint?: string; cacheDir?: string },
+  legacyRerankerLocal?: { hfEndpoint?: string; cacheDir?: string },
+): AppConfig["model"] {
+  const resolvedCacheDir =
+    legacy?.cacheDir ??
+    legacyEmbeddingLocal?.cacheDir ??
+    legacyRerankerLocal?.cacheDir ??
+    defaults.cacheDir;
+  return {
+    hfEndpoint:
+      legacy?.hfEndpoint ??
+      legacyHfEndpoint ??
+      legacyEmbeddingLocal?.hfEndpoint ??
+      legacyRerankerLocal?.hfEndpoint ??
+      defaults.hfEndpoint,
+    cacheDir: resolvedCacheDir,
   };
 }
 
@@ -290,7 +321,6 @@ function mergeEmbedding(
         openai_dense?: Partial<CloudEmbeddingConfig>;
       }
     | undefined,
-  legacyHfEndpoint?: string,
 ): AppConfig["embedding"] {
   const provider = legacy?.provider ?? defaults.provider;
   const normalizedApiKeys = normalizeLegacyApiKeys(
@@ -304,15 +334,6 @@ function mergeEmbedding(
     local: {
       ...defaults.local,
       ...(legacy?.local ?? {}),
-      cacheDir: normalizeLegacyModelCacheDir(
-        legacy?.local?.cacheDir,
-        "embedding",
-        defaults.local.cacheDir,
-      ),
-      hfEndpoint:
-        legacy?.local?.hfEndpoint ??
-        legacyHfEndpoint ??
-        defaults.local.hfEndpoint,
       model: legacy?.local?.model ?? legacy?.model ?? defaults.local.model,
       dimension:
         legacy?.local?.dimension ??
@@ -382,7 +403,6 @@ function mergeReranker(
         openai?: Partial<CloudRerankerConfig>;
       }
     | undefined,
-  legacyHfEndpoint?: string,
 ): AppConfig["reranker"] {
   const provider =
     legacy?.provider ?? (legacy?.mode === "none" ? "local" : defaults.provider);
@@ -394,15 +414,6 @@ function mergeReranker(
     local: {
       ...defaults.local,
       ...(legacy?.local ?? {}),
-      cacheDir: normalizeLegacyModelCacheDir(
-        legacy?.local?.cacheDir,
-        "reranker",
-        defaults.local.cacheDir,
-      ),
-      hfEndpoint:
-        legacy?.local?.hfEndpoint ??
-        legacyHfEndpoint ??
-        defaults.local.hfEndpoint,
       model: legacy?.local?.model ?? legacy?.model ?? defaults.local.model,
       topN: legacy?.local?.topN ?? legacy?.topN ?? defaults.local.topN,
     },
@@ -440,24 +451,6 @@ function normalizeLegacyApiKeys(
     result[provider] = apiKey;
   }
   return result;
-}
-
-function normalizeLegacyModelCacheDir(
-  cacheDir: string | undefined,
-  kind: "embedding" | "reranker",
-  fallback: string,
-) {
-  if (!cacheDir || cacheDir.trim().length === 0) {
-    return fallback;
-  }
-  const oldSuffix = `/cache/${kind}/local`;
-  if (cacheDir.endsWith(oldSuffix)) {
-    return cacheDir.slice(0, -oldSuffix.length) + `/models/${kind}/local`;
-  }
-  if (cacheDir === `build/cache/${kind}/local`) {
-    return `build/models/${kind}/local`;
-  }
-  return cacheDir;
 }
 
 function normalizePort(port: unknown, fallback: number) {

@@ -172,7 +172,11 @@ export function createModelDownloadService(
   }
 
   function toModelRoot(cacheDir: string, model: string) {
-    return join(cacheDir, "provider-local", model);
+    return join(cacheDir, model);
+  }
+
+  function getLocalModelCacheDir(cfg: AppConfig, kind: "embedding" | "reranker") {
+    return join(cfg.model.cacheDir, kind);
   }
 
   function buildSpecs(cfg: AppConfig, scope: DownloadScope): LocalTaskSpec[] {
@@ -182,8 +186,8 @@ export function createModelDownloadService(
         id: "embedding-local",
         model: cfg.embedding.local.model,
         provider: "local",
-        hfEndpoint: cfg.embedding.local.hfEndpoint,
-        cacheDir: cfg.embedding.local.cacheDir,
+        hfEndpoint: cfg.model.hfEndpoint,
+        cacheDir: getLocalModelCacheDir(cfg, "embedding"),
         kind: "embedding",
       });
     }
@@ -196,8 +200,8 @@ export function createModelDownloadService(
         id: "reranker-local",
         model: cfg.reranker.local.model,
         provider: "local",
-        hfEndpoint: cfg.reranker.local.hfEndpoint,
-        cacheDir: cfg.reranker.local.cacheDir,
+        hfEndpoint: cfg.model.hfEndpoint,
+        cacheDir: getLocalModelCacheDir(cfg, "reranker"),
         kind: "reranker",
       });
     }
@@ -372,17 +376,12 @@ export function createModelDownloadService(
       throw new Error(`Failed to list model files: ${response.status} ${response.statusText}`);
     }
     const payload = (await response.json()) as RepoInfoResponse;
-    const files = (payload.siblings ?? [])
-      .filter(
-        (item): item is { rfilename: string; size?: number } =>
-          typeof item.rfilename === "string" && item.rfilename.length > 0,
-      )
-      .map((item) => ({
-        path: item.rfilename,
-        size: Number.isFinite(item.size) && (item.size ?? 0) > 0 ? Number(item.size) : 0,
-      }));
+    const files = selectPreferredRepoFiles(payload.siblings ?? []);
     if (files.length === 0) {
       throw new Error(`Model file list is empty for ${spec.model}`);
+    }
+    if (!files.some((file) => file.path === "onnx/model.onnx")) {
+      throw new Error(`onnx/model.onnx not found for ${spec.model}`);
     }
     return files;
   }
@@ -805,7 +804,7 @@ export function createModelDownloadService(
     if (env) {
       env.allowRemoteModels = !opts?.localFilesOnly;
       env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
-      env.cacheDir = join(spec.cacheDir, "provider-local");
+      env.cacheDir = spec.cacheDir;
     }
     return (
       transformers as unknown as {
@@ -835,7 +834,7 @@ export function createModelDownloadService(
     if (env) {
       env.allowRemoteModels = !opts?.localFilesOnly;
       env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
-      env.cacheDir = join(spec.cacheDir, "provider-local");
+      env.cacheDir = spec.cacheDir;
     }
 
     const tokenizer = await (
@@ -1311,6 +1310,36 @@ function normalizeHostUrl(hfEndpoint: string) {
   return hfEndpoint.replace(/\/+$/, "");
 }
 
+export function selectPreferredRepoFiles(
+  siblings: Array<{ rfilename?: string; size?: number }>,
+): Array<{ path: string; size: number }> {
+  const requiredPaths = new Set([
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "added_tokens.json",
+    "vocab.txt",
+    "vocab.json",
+    "merges.txt",
+    "tokenizer.model",
+    "sentencepiece.bpe.model",
+    "preprocessor_config.json",
+    "onnx/model.onnx",
+  ]);
+  return siblings
+    .filter(
+      (item): item is { rfilename: string; size?: number } =>
+        typeof item.rfilename === "string" &&
+        item.rfilename.length > 0 &&
+        requiredPaths.has(item.rfilename),
+    )
+    .map((item) => ({
+      path: item.rfilename,
+      size: Number.isFinite(item.size) && (item.size ?? 0) > 0 ? Number(item.size) : 0,
+    }));
+}
+
 async function cleanupPartFilesForRequest(
   req: DownloadRequest,
   logger: LoggerService,
@@ -1322,8 +1351,8 @@ async function cleanupPartFilesForRequest(
   ) {
     roots.push(
       join(
-        req.cfg.embedding.local.cacheDir,
-        "provider-local",
+        req.cfg.model.cacheDir,
+        "embedding",
         req.cfg.embedding.local.model,
       ),
     );
@@ -1335,8 +1364,8 @@ async function cleanupPartFilesForRequest(
   ) {
     roots.push(
       join(
-        req.cfg.reranker.local.cacheDir,
-        "provider-local",
+        req.cfg.model.cacheDir,
+        "reranker",
         req.cfg.reranker.local.model,
       ),
     );

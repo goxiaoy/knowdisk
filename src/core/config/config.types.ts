@@ -7,9 +7,12 @@ export type SourceConfig = {
 export type EmbeddingProviderId = "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
 export type RerankerProviderId = "local" | "qwen" | "openai";
 
-export type LocalEmbeddingConfig = {
+export type ModelConfig = {
   hfEndpoint: string;
   cacheDir: string;
+};
+
+export type LocalEmbeddingConfig = {
   model: string;
   dimension: number;
 };
@@ -21,8 +24,6 @@ export type CloudEmbeddingConfig = {
 };
 
 export type LocalRerankerConfig = {
-  hfEndpoint: string;
-  cacheDir: string;
   model: string;
   topN: number;
 };
@@ -76,6 +77,7 @@ export interface AppConfig {
       rerankTopN: number;
     };
   };
+  model: ModelConfig;
   embedding: {
     provider: EmbeddingProviderId;
     local: LocalEmbeddingConfig;

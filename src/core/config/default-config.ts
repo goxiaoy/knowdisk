@@ -1,13 +1,11 @@
 import type { AppConfig } from "./config.types";
 
 export function createDefaultConfig(opts?: {
-  embeddingCacheDir?: string;
-  rerankerCacheDir?: string;
+  modelCacheDir?: string;
+  modelHfEndpoint?: string;
 }): AppConfig {
-  const embeddingCacheDir =
-    opts?.embeddingCacheDir ?? "build/models/embedding/local";
-  const rerankerCacheDir =
-    opts?.rerankerCacheDir ?? "build/models/reranker/local";
+  const modelCacheDir = opts?.modelCacheDir ?? "build/models";
+  const modelHfEndpoint = opts?.modelHfEndpoint ?? "https://hf-mirror.com";
 
   return {
     version: 1,
@@ -34,11 +32,13 @@ export function createDefaultConfig(opts?: {
         rerankTopN: 10,
       },
     },
+    model: {
+      hfEndpoint: modelHfEndpoint,
+      cacheDir: modelCacheDir,
+    },
     embedding: {
       provider: "local",
       local: {
-        hfEndpoint: "https://hf-mirror.com",
-        cacheDir: embeddingCacheDir,
         model: "onnx-community/gte-multilingual-base",
         dimension: 768,
       },
@@ -62,8 +62,6 @@ export function createDefaultConfig(opts?: {
       enabled: true,
       provider: "local",
       local: {
-        hfEndpoint: "https://hf-mirror.com",
-        cacheDir: rerankerCacheDir,
         model: "onnx-community/gte-multilingual-reranker-base",
         topN: 5,
       },
