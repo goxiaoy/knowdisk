@@ -1,7 +1,11 @@
 import "reflect-metadata";
 import { join } from "node:path";
 import { extname } from "node:path";
-import { container as rootContainer, type DependencyContainer } from "tsyringe";
+import {
+  container as rootContainer,
+  instanceCachingFactory,
+  type DependencyContainer,
+} from "tsyringe";
 import { defaultConfigService } from "../core/config/config.service";
 import type { ConfigService } from "../core/config/config.types";
 import { makeEmbeddingProvider } from "../core/embedding/embedding.service";
@@ -69,42 +73,38 @@ function registerDependencies(
     vectorBaseDir?: string;
   },
 ) {
-  let vectorRepo: VectorRepository | null = null;
   let metadataRepo: IndexMetadataRepository | null = null;
   di.registerInstance<ConfigService>(
     TOKENS.ConfigService,
     deps?.configService ?? defaultConfigService,
   );
   di.register(TOKENS.LoggerService, {
-    useFactory: () => createLoggerService({ name: "knowdisk" }),
+    useFactory: instanceCachingFactory(() => createLoggerService({ name: "knowdisk" })),
   });
   di.register(TOKENS.EmbeddingProvider, {
-    useFactory: (c) => {
+    useFactory: instanceCachingFactory((c) => {
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
       const modelDownloadService = c.resolve<ModelDownloadService>(
         TOKENS.ModelDownloadService,
       );
       const appCfg = configService.getConfig();
       return makeEmbeddingProvider(appCfg.embedding, modelDownloadService);
-    },
+    }),
   });
   di.register(TOKENS.ChunkingService, {
-    useFactory: (c) => {
+    useFactory: instanceCachingFactory((c) => {
       const appCfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
       return createChunkingService(appCfg.indexing.chunking);
-    },
+    }),
   });
   di.register(TOKENS.VectorRepository, {
-    useFactory: (c) => {
-      if (vectorRepo) {
-        return vectorRepo;
-      }
+    useFactory: instanceCachingFactory((c) => {
       const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
       const embeddingDimension =
         cfg.embedding.provider === "local"
           ? cfg.embedding.local.dimension
           : cfg.embedding[cfg.embedding.provider].dimension;
-      vectorRepo = createVectorRepository({
+      return createVectorRepository({
         collectionPath:
           deps?.vectorCollectionPath ??
           join(
@@ -118,22 +118,19 @@ function registerDependencies(
         indexType: "hnsw",
         metric: "cosine",
       });
-      return vectorRepo;
-    },
+    }),
   });
   di.register(TOKENS.IndexMetadataRepository, {
-    useFactory: () => {
-      if (metadataRepo) {
-        return metadataRepo;
-      }
-      metadataRepo = createIndexMetadataRepository({
+    useFactory: instanceCachingFactory(() => {
+      const created = createIndexMetadataRepository({
         dbPath: join(deps?.userDataDir ?? "build", "metadata", "index.db"),
       });
-      return metadataRepo;
-    },
+      metadataRepo = created;
+      return created;
+    }),
   });
   di.register(TOKENS.RetrievalService, {
-    useFactory: (c) => {
+    useFactory: instanceCachingFactory((c) => {
       const cfg = c.resolve<ConfigService>(TOKENS.ConfigService).getConfig();
       const embedding = c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider);
       const vector = c.resolve<VectorRepository>(TOKENS.VectorRepository);
@@ -165,10 +162,10 @@ function registerDependencies(
           ftsTopN: cfg.retrieval.hybrid.ftsTopN,
         },
       });
-    },
+    }),
   });
   di.register(TOKENS.IndexingService, {
-    useFactory: (c) =>
+    useFactory: instanceCachingFactory((c) =>
       createSourceIndexingService(
         c.resolve<ConfigService>(TOKENS.ConfigService),
         c.resolve<EmbeddingProvider>(TOKENS.EmbeddingProvider),
@@ -181,16 +178,18 @@ function registerDependencies(
           ),
         },
       ),
+    ),
   });
   di.register(TOKENS.ModelDownloadService, {
-    useFactory: (c) =>
+    useFactory: instanceCachingFactory((c) =>
       createModelDownloadService(
         c.resolve<LoggerService>(TOKENS.LoggerService),
         c.resolve<ConfigService>(TOKENS.ConfigService),
       ),
+    ),
   });
   di.register(TOKENS.AppContainer, {
-    useFactory: (c) => {
+    useFactory: instanceCachingFactory((c) => {
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
       const loggerService = c.resolve<LoggerService>(TOKENS.LoggerService);
       const vectorRepository = c.resolve<VectorRepository>(
@@ -223,6 +222,6 @@ function registerDependencies(
         },
         mcpServer,
       } satisfies AppContainer;
-    },
+    }),
   });
 }

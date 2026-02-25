@@ -130,6 +130,7 @@ export function createModelDownloadService(
   let status: ModelDownloadStatus = EMPTY_STATUS;
   const queue: QueueEntry[] = [];
   let drainPromise: Promise<void> | null = null;
+  const ensureGuards = new Map<string, Promise<void>>();
   const taskFileStats = new Map<
     ModelDownloadTask["id"],
     Map<string, { loaded: number; total: number }>
@@ -151,8 +152,18 @@ export function createModelDownloadService(
     string,
     Promise<LocalRerankerRuntime>
   >();
+  let verifyChain: Promise<void> = Promise.resolve();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFailedRequest: DownloadRequest | null = null;
+
+  function runModelVerifySerial<T>(work: () => Promise<T>): Promise<T> {
+    const run = verifyChain.then(work, work);
+    verifyChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
 
   function emit() {
     emitter.emit("change", status);
@@ -307,6 +318,17 @@ export function createModelDownloadService(
     };
   }
 
+  function taskStructToList(tasks: ModelDownloadTasks): ModelDownloadTask[] {
+    const list: ModelDownloadTask[] = [];
+    if (tasks.embedding) {
+      list.push(tasks.embedding);
+    }
+    if (tasks.reranker) {
+      list.push(tasks.reranker);
+    }
+    return list;
+  }
+
   function updateTask(
     id: ModelDownloadTask["id"],
     updater: (current: ModelDownloadTask) => ModelDownloadTask,
@@ -322,9 +344,7 @@ export function createModelDownloadService(
             ? updater(current.tasks.reranker)
             : current.tasks.reranker,
       };
-      const tasks = [nextTasks.embedding, nextTasks.reranker].filter(
-        (task): task is ModelDownloadTask => task !== null,
-      );
+      const tasks = taskStructToList(nextTasks);
       const weightedByBytes = computeWeightedProgressByBytes(tasks);
       const fallbackByTaskProgress = tasks.length
         ? tasks.reduce((sum, task) => sum + task.progressPct, 0) / tasks.length
@@ -423,11 +443,7 @@ export function createModelDownloadService(
   }
 
   function isRetryableModelError(error: unknown) {
-    const message = String(error ?? "").toLowerCase();
-    if (message.includes("unsupported model type")) {
-      return false;
-    }
-    return true;
+    return !String(error ?? "").toLowerCase().includes("unsupported model type");
   }
 
   async function fetchRepoFiles(spec: LocalTaskSpec): Promise<RepoFile[]> {
@@ -473,6 +489,7 @@ export function createModelDownloadService(
   async function downloadOneFileWithResume(
     spec: LocalTaskSpec,
     file: string,
+    expectedSize: number,
     onFileProgress: (payload: DownloadProgressPayload) => void,
   ) {
     const baseUrl = buildModelFileUrl(spec, file);
@@ -480,6 +497,27 @@ export function createModelDownloadService(
     const finalPath = join(modelRoot, file);
     const partPath = `${finalPath}.part`;
     await mkdir(dirname(finalPath), { recursive: true });
+
+    if (await fileExists(finalPath)) {
+      const done = await stat(finalPath);
+      if (expectedSize > 0 && done.size !== expectedSize) {
+        logger.warn(
+          {
+            subsystem: "models",
+            taskId: spec.id,
+            model: spec.model,
+            file,
+            actualSize: done.size,
+            expectedSize,
+          },
+          "existing model file size mismatch, deleting and redownloading",
+        );
+        await rm(finalPath, { force: true });
+      } else {
+        onFileProgress({ file, loaded: done.size, total: done.size });
+        return;
+      }
+    }
     logger.debug(
       {
         subsystem: "models",
@@ -490,26 +528,25 @@ export function createModelDownloadService(
       "model file download started",
     );
 
-    if (await fileExists(finalPath)) {
-      const done = await stat(finalPath);
-      onFileProgress({ file, loaded: done.size, total: done.size });
-      logger.debug(
-        {
-          subsystem: "models",
-          taskId: spec.id,
-          model: spec.model,
-          file,
-          bytes: done.size,
-        },
-        "model file already exists, skip download",
-      );
-      return;
-    }
-
     let startOffset = 0;
     if (await fileExists(partPath)) {
       const partial = await stat(partPath);
       startOffset = partial.size;
+      if (expectedSize > 0 && startOffset > expectedSize) {
+        logger.warn(
+          {
+            subsystem: "models",
+            taskId: spec.id,
+            model: spec.model,
+            file,
+            partialSize: startOffset,
+            expectedSize,
+          },
+          "partial file larger than expected size, truncating and restarting",
+        );
+        await truncate(partPath, 0);
+        startOffset = 0;
+      }
       logger.debug(
         {
           subsystem: "models",
@@ -554,7 +591,10 @@ export function createModelDownloadService(
         },
         "range request not satisfiable",
       );
-      if (strategy === "promote_partial") {
+      if (
+        strategy === "promote_partial" &&
+        (expectedSize <= 0 || expectedSize === startOffset)
+      ) {
         await finalizeDownloadedFile(partPath, finalPath);
         onFileProgress({
           file,
@@ -587,13 +627,20 @@ export function createModelDownloadService(
     if (!response.body) {
       throw new Error(`Failed to download ${file}: empty response body`);
     }
+    if (file.endsWith(".onnx")) {
+      const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+      if (contentType.includes("text/html")) {
+        throw new Error(`Failed to download ${file}: unexpected content-type ${contentType}`);
+      }
+    }
 
     const contentLength = Number(response.headers.get("content-length") ?? "0");
     const parsedTotal = parseContentRangeTotal(
       response.headers.get("content-range"),
     );
     const totalBytes =
-      parsedTotal ?? (contentLength > 0 ? startOffset + contentLength : 0);
+      parsedTotal ??
+      (contentLength > 0 ? startOffset + contentLength : expectedSize > 0 ? expectedSize : 0);
     onFileProgress({ file, loaded: startOffset, total: totalBytes });
     logger.debug(
       {
@@ -638,7 +685,7 @@ export function createModelDownloadService(
       }
     } finally {
       await new Promise<void>((resolve, reject) => {
-        writer.end((error) => {
+        writer.end((error: Error | null | undefined) => {
           if (error) {
             reject(error);
             return;
@@ -656,10 +703,16 @@ export function createModelDownloadService(
 
     await finalizeDownloadedFile(partPath, finalPath);
     const done = await stat(finalPath);
+    if (expectedSize > 0 && done.size !== expectedSize) {
+      await rm(finalPath, { force: true });
+      throw new Error(
+        `Downloaded file size mismatch: ${file} (${done.size}/${expectedSize})`,
+      );
+    }
     onFileProgress({
       file,
       loaded: done.size,
-      total: totalBytes > 0 ? totalBytes : done.size,
+      total: expectedSize > 0 ? expectedSize : totalBytes > 0 ? totalBytes : done.size,
     });
     logger.debug(
       {
@@ -871,10 +924,7 @@ export function createModelDownloadService(
     );
   }
 
-  async function loadLocalEmbeddingExtractor(
-    spec: LocalTaskSpec,
-    opts?: { localFilesOnly?: boolean },
-  ): Promise<LocalEmbeddingExtractor> {
+  async function configureTransformersEnv(spec: LocalTaskSpec) {
     const transformers = await import("@huggingface/transformers");
     const env = (
       transformers as unknown as {
@@ -886,10 +936,16 @@ export function createModelDownloadService(
       }
     ).env;
     if (env) {
-      env.allowRemoteModels = !opts?.localFilesOnly;
+      env.allowRemoteModels = false;
       env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
       env.cacheDir = spec.cacheDir;
     }
+  }
+
+  async function loadLocalEmbeddingExtractor(
+    spec: LocalTaskSpec,
+  ): Promise<LocalEmbeddingExtractor> {
+    const transformers = await import("@huggingface/transformers");
     return (
       transformers as unknown as {
         pipeline: (
@@ -899,29 +955,14 @@ export function createModelDownloadService(
         ) => Promise<LocalEmbeddingExtractor>;
       }
     ).pipeline("feature-extraction", spec.model, {
-      local_files_only: opts?.localFilesOnly,
+      local_files_only: true,
     });
   }
 
   async function loadLocalRerankerRuntime(
     spec: LocalTaskSpec,
-    opts?: { localFilesOnly?: boolean },
   ): Promise<LocalRerankerRuntime> {
     const transformers = await import("@huggingface/transformers");
-    const env = (
-      transformers as unknown as {
-        env?: {
-          allowRemoteModels?: boolean;
-          remoteHost?: string;
-          cacheDir?: string;
-        };
-      }
-    ).env;
-    if (env) {
-      env.allowRemoteModels = !opts?.localFilesOnly;
-      env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
-      env.cacheDir = spec.cacheDir;
-    }
 
     const tokenizer = await (
       transformers as unknown as {
@@ -942,7 +983,7 @@ export function createModelDownloadService(
         };
       }
     ).AutoTokenizer.from_pretrained(spec.model, {
-      local_files_only: opts?.localFilesOnly,
+      local_files_only: true,
     });
 
     const model = await (
@@ -960,7 +1001,7 @@ export function createModelDownloadService(
       }
     ).AutoModelForSequenceClassification.from_pretrained(spec.model, {
       quantized: false,
-      local_files_only: opts?.localFilesOnly,
+      local_files_only: true,
     });
 
     return {
@@ -983,19 +1024,23 @@ export function createModelDownloadService(
   }
 
   async function verifyModelIntegrity(spec: LocalTaskSpec) {
-    if (spec.kind === "embedding") {
-      try {
-        await loadLocalEmbeddingExtractor(spec, { localFilesOnly: true });
-      } catch (error) {
-        throw new ModelLoadError(spec, "verify_embedding", error);
+    await runModelVerifySerial(async () => {
+      if (spec.kind === "embedding") {
+        try {
+          await configureTransformersEnv(spec);
+          await loadLocalEmbeddingExtractor(spec);
+        } catch (error) {
+          throw new ModelLoadError(spec, "verify_embedding", error);
+        }
+        return;
       }
-      return;
-    }
-    try {
-      await loadLocalRerankerRuntime(spec, { localFilesOnly: true });
-    } catch (error) {
-      throw new ModelLoadError(spec, "verify_reranker", error);
-    }
+      try {
+        await configureTransformersEnv(spec);
+        await loadLocalRerankerRuntime(spec);
+      } catch (error) {
+        throw new ModelLoadError(spec, "verify_reranker", error);
+      }
+    });
   }
 
   function guardKey(spec: LocalTaskSpec) {
@@ -1026,16 +1071,30 @@ export function createModelDownloadService(
     try {
       await verifyModelIntegrity(spec);
       return true;
-    } catch {
+    } catch (error) {
+      logger.warn(
+        {
+          subsystem: "models",
+          taskId: spec.id,
+          model: spec.model,
+          kind: spec.kind,
+          error: String(error),
+        },
+        "Model verify failed",
+      );
       return false;
     }
   }
 
   async function runSpecDownload(spec: LocalTaskSpec, _reason: string) {
+    logger.info(
+      { subsystem: "models", taskId: spec.id, model: spec.model, kind: spec.kind },
+      "Model task download started",
+    );
     const files = await fetchRepoFiles(spec);
     await initializeTaskFileStats(spec, files);
     await runWithConcurrency(files, MODEL_FILE_CONCURRENCY, async (file) => {
-      await downloadOneFileWithResume(spec, file.path, (payload) => {
+      await downloadOneFileWithResume(spec, file.path, file.size, (payload) => {
         onProgress(spec.id, payload);
       });
     });
@@ -1050,9 +1109,20 @@ export function createModelDownloadService(
       progressPct: 100,
       error: "",
     }));
+    logger.info(
+      {
+        subsystem: "models",
+        taskId: spec.id,
+        model: spec.model,
+        kind: spec.kind,
+        downloadedFiles: files.length,
+      },
+      "Model task download completed",
+    );
   }
 
   async function processDownload(req: DownloadRequest) {
+    const runId = `ensure-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const specs = buildSpecs(req.cfg, req.scope);
     const tasks = buildTasksFromSpecs(specs);
     taskFileStats.clear();
@@ -1077,12 +1147,14 @@ export function createModelDownloadService(
           exhausted: false,
         },
       }));
+      logger.info(
+        { subsystem: "models", runId, reason: req.reason, scope: req.scope },
+        "Model ensure skipped: no local model tasks",
+      );
       return;
     }
 
-    const taskList = [tasks.embedding, tasks.reranker].filter(
-      (task): task is ModelDownloadTask => task !== null,
-    );
+    const taskList = taskStructToList(tasks);
 
     updateStatus((current) => ({
       phase: "verifying",
@@ -1101,10 +1173,12 @@ export function createModelDownloadService(
     logger.info(
       {
         subsystem: "models",
+        runId,
         reason: req.reason,
+        scope: req.scope,
         tasks: taskList.map((task) => ({ id: task.id, model: task.model })),
       },
-      "Model download started",
+      "Model ensure started",
     );
 
     try {
@@ -1122,8 +1196,8 @@ export function createModelDownloadService(
             error: "",
           }));
           logger.debug(
-            { subsystem: "models", taskId: spec.id, model: spec.model },
-            "model runtime verified, skip download",
+            { subsystem: "models", runId, taskId: spec.id, model: spec.model },
+            "Model verify passed; download skipped",
           );
           continue;
         }
@@ -1133,6 +1207,10 @@ export function createModelDownloadService(
           progressPct: 0,
           error: "",
         }));
+        logger.info(
+          { subsystem: "models", runId, taskId: spec.id, model: spec.model },
+          "Model verify failed; download required",
+        );
         missing.push(spec);
       }
 
@@ -1141,6 +1219,16 @@ export function createModelDownloadService(
           ...current,
           phase: "running",
         }));
+        logger.info(
+          {
+            subsystem: "models",
+            runId,
+            reason: req.reason,
+            scope: req.scope,
+            pendingTasks: missing.map((spec) => ({ id: spec.id, model: spec.model })),
+          },
+          "Model download phase started",
+        );
         for (const spec of missing) {
           await ensureSpecReadyWithRecovery(spec, req.reason);
         }
@@ -1161,8 +1249,16 @@ export function createModelDownloadService(
       clearRetryTimer();
       lastFailedRequest = null;
       logger.info(
-        { subsystem: "models", reason: req.reason },
-        "Model download completed",
+        {
+          subsystem: "models",
+          runId,
+          reason: req.reason,
+          scope: req.scope,
+          verifiedTasks: specs.length - missing.length,
+          downloadedTasks: missing.length,
+          totalTasks: specs.length,
+        },
+        "Model ensure completed",
       );
     } catch (error) {
       const message = String(error);
@@ -1170,7 +1266,6 @@ export function createModelDownloadService(
         ...current,
         phase: "failed",
         lastFinishedAt: new Date().toISOString(),
-        error: message,
         tasks: {
           embedding:
             current.tasks.embedding && current.tasks.embedding.state !== "ready"
@@ -1199,14 +1294,16 @@ export function createModelDownloadService(
       logger.error(
         {
           subsystem: "models",
+          runId,
           reason: req.reason,
+          scope: req.scope,
           error: message,
           taskId: loadError?.spec.id ?? "",
           modelKind: loadError?.spec.kind ?? "",
           modelName: loadError?.spec.model ?? "",
           stage: loadError?.stage ?? "",
         },
-        "Model download failed",
+        "Model ensure failed",
       );
       throw error;
     }
@@ -1233,10 +1330,24 @@ export function createModelDownloadService(
   }
 
   async function enqueueAndWait(req: DownloadRequest) {
-    await new Promise<void>((resolve, reject) => {
+    const key = buildEnsureKey(req);
+    const existing = ensureGuards.get(key);
+    if (existing) {
+      return existing;
+    }
+    const pending = new Promise<void>((resolve, reject) => {
       queue.push({ req, resolve, reject });
       void drainQueue();
     });
+    ensureGuards.set(key, pending);
+    try {
+      await pending;
+    } finally {
+      const latest = ensureGuards.get(key);
+      if (latest === pending) {
+        ensureGuards.delete(key);
+      }
+    }
   }
 
   async function acquireEmbeddingExtractor(
@@ -1259,9 +1370,8 @@ export function createModelDownloadService(
       if (afterQueue) {
         return afterQueue;
       }
-      const created = loadLocalEmbeddingExtractor(spec, {
-        localFilesOnly: true,
-      }).catch((error) => {
+      await configureTransformersEnv(spec);
+      const created = loadLocalEmbeddingExtractor(spec).catch((error) => {
         throw new ModelLoadError(spec, "load_embedding_runtime", error);
       });
       embeddingRuntimeGuards.set(key, created);
@@ -1294,9 +1404,8 @@ export function createModelDownloadService(
       if (afterQueue) {
         return afterQueue;
       }
-      const created = loadLocalRerankerRuntime(spec, {
-        localFilesOnly: true,
-      }).catch((error) => {
+      await configureTransformersEnv(spec);
+      const created = loadLocalRerankerRuntime(spec).catch((error) => {
         throw new ModelLoadError(spec, "load_reranker_runtime", error);
       });
       rerankerRuntimeGuards.set(key, created);
@@ -1391,6 +1500,40 @@ export function createModelDownloadService(
       };
     },
   };
+}
+
+function buildEnsureKey(req: DownloadRequest) {
+  const cfg = req.cfg;
+  const payload = {
+    scope: req.scope,
+    reason: req.reason,
+    model: {
+      hfEndpoint: cfg.model.hfEndpoint,
+      cacheDir: cfg.model.cacheDir,
+    },
+    embedding: {
+      provider: cfg.embedding.provider,
+      local:
+        cfg.embedding.provider === "local"
+          ? {
+              model: cfg.embedding.local.model,
+              dimension: cfg.embedding.local.dimension,
+            }
+          : null,
+    },
+    reranker: {
+      enabled: cfg.reranker.enabled,
+      provider: cfg.reranker.provider,
+      local:
+        cfg.reranker.provider === "local"
+          ? {
+              model: cfg.reranker.local.model,
+              topN: cfg.reranker.local.topN,
+            }
+          : null,
+    },
+  };
+  return JSON.stringify(payload);
 }
 
 function computeCumulativeBytes(
