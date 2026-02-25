@@ -285,6 +285,7 @@ describe("SettingsPage", () => {
   it("saves chat model and api key settings", () => {
     let chatModel = "";
     let chatApiKey = "";
+    let chatDomain = "";
     const renderer = create(
       <SettingsPage
         pickSourceDirectory={async () => null}
@@ -293,6 +294,7 @@ describe("SettingsPage", () => {
             const next = updater(makeInitialConfig());
             chatModel = next.chat.openai.model;
             chatApiKey = next.chat.openai.apiKey;
+            chatDomain = next.chat.openai.domain;
             return next;
           },
         })}
@@ -308,6 +310,10 @@ describe("SettingsPage", () => {
     act(() => {
       key.props.onChange({ target: { value: "sk-chat-test" } });
     });
+    const domain = root.findByProps({ "data-testid": "chat-domain" });
+    act(() => {
+      domain.props.onChange({ target: { value: "https://example-openai.local/" } });
+    });
     const save = root.findByProps({ "data-testid": "save-chat" });
     act(() => {
       save.props.onClick();
@@ -315,5 +321,6 @@ describe("SettingsPage", () => {
 
     expect(chatModel).toBe("gpt-4.1");
     expect(chatApiKey).toBe("sk-chat-test");
+    expect(chatDomain).toBe("https://example-openai.local");
   });
 });

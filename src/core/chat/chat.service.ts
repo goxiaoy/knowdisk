@@ -144,6 +144,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
         const finalText = await generateWithTools({
           apiKey,
+          domain: cfg.chat.openai.domain,
           model: cfg.chat.openai.model,
           messages: transcript,
           fetchImpl,
@@ -185,6 +186,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
 async function generateWithTools(input: {
   apiKey: string;
+  domain: string;
   model: string;
   messages: OpenAiChatMessage[];
   fetchImpl: typeof fetch;
@@ -200,6 +202,7 @@ async function generateWithTools(input: {
     }
     const result = await requestOpenAiChat(input.fetchImpl, {
       apiKey: input.apiKey,
+      domain: input.domain,
       model: input.model,
       messages: transcript,
     });
@@ -329,6 +332,7 @@ async function requestOpenAiChat(
   fetchImpl: typeof fetch,
   input: {
     apiKey: string;
+    domain: string;
     model: string;
     messages: OpenAiChatMessage[];
   },
@@ -341,7 +345,8 @@ async function requestOpenAiChat(
     };
   }>;
 }> {
-  const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+  const url = buildOpenAiChatUrl(input.domain);
+  const response = await fetchImpl(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -370,6 +375,20 @@ async function requestOpenAiChat(
       };
     }>;
   };
+}
+
+function buildOpenAiChatUrl(domain: string): string {
+  const base = domain.trim().replace(/\/+$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(base);
+  } catch {
+    throw new Error(`Invalid OpenAI domain: ${domain}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Invalid OpenAI domain: ${domain}`);
+  }
+  return new URL("/v1/chat/completions", `${base}/`).toString();
 }
 
 function chunkText(content: string): string[] {

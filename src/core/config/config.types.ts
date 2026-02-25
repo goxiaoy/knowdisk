@@ -39,6 +39,7 @@ export type CloudRerankerConfig = {
 export type OpenAiChatConfig = {
   apiKey: string;
   model: OpenAiChatModelId;
+  domain: string;
 };
 
 export interface AppConfig {

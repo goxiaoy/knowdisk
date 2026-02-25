@@ -36,6 +36,7 @@ describe("getDefaultConfig", () => {
     expect(cfg.chat.provider).toBe("openai");
     expect(cfg.chat.openai.model).toBe("gpt-4.1-mini");
     expect(cfg.chat.openai.apiKey).toBe("");
+    expect(cfg.chat.openai.domain).toBe("https://api.openai.com");
   });
 
   test("rejects cloud provider without api key", () => {

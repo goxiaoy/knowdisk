@@ -148,6 +148,9 @@ function validateChat(chat: AppConfig["chat"]): string[] {
   if (chat.openai.model !== "gpt-4.1-mini" && chat.openai.model !== "gpt-4.1") {
     errors.push("chat.openai.model is invalid");
   }
+  if (!isValidHttpUrl(chat.openai.domain)) {
+    errors.push("chat.openai.domain must be a valid http/https URL");
+  }
   return errors;
 }
 
@@ -459,13 +462,35 @@ function mergeChat(
       }
     | undefined,
 ): AppConfig["chat"] {
+  const domain = normalizeOpenAiDomain(
+    legacy?.openai?.domain,
+    defaults.openai.domain,
+  );
   return {
     provider: legacy?.provider ?? defaults.provider,
     openai: {
       ...defaults.openai,
       ...(legacy?.openai ?? {}),
+      domain,
     },
   };
+}
+
+function normalizeOpenAiDomain(value: string | undefined, fallback: string): string {
+  const raw = (value ?? fallback).trim();
+  if (!raw) {
+    return fallback;
+  }
+  return raw.replace(/\/+$/, "");
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function normalizeLegacyApiKeys(

@@ -25,6 +25,7 @@ export function SettingsPage({
   const [modelCacheDir, setModelCacheDir] = useState(config.model.cacheDir);
   const [chatModel, setChatModel] = useState(config.chat.openai.model);
   const [chatApiKey, setChatApiKey] = useState(config.chat.openai.apiKey);
+  const [chatDomain, setChatDomain] = useState(config.chat.openai.domain);
 
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
   const [embeddingLocalModel, setEmbeddingLocalModel] = useState(config.embedding.local.model);
@@ -114,6 +115,7 @@ export function SettingsPage({
   };
 
   const saveChatConfig = () => {
+    const normalizedDomain = chatDomain.trim().replace(/\/+$/, "");
     const next = configService.updateConfig((source) => ({
       ...source,
       chat: {
@@ -123,12 +125,14 @@ export function SettingsPage({
           ...source.chat.openai,
           model: chatModel,
           apiKey: chatApiKey.trim(),
+          domain: normalizedDomain || source.chat.openai.domain,
         },
       },
     }));
     setConfig(next);
     setChatModel(next.chat.openai.model);
     setChatApiKey(next.chat.openai.apiKey);
+    setChatDomain(next.chat.openai.domain);
     setActivity("Chat settings saved.");
   };
 
@@ -452,6 +456,16 @@ export function SettingsPage({
                     value={chatApiKey}
                     onChange={(event) => setChatApiKey(event.target.value)}
                     placeholder="sk-..."
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm text-slate-700">
+                  Domain
+                  <input
+                    data-testid="chat-domain"
+                    value={chatDomain}
+                    onChange={(event) => setChatDomain(event.target.value)}
+                    placeholder="https://api.openai.com"
                     className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
                   />
                 </label>

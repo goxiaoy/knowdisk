@@ -81,6 +81,7 @@ export function createDefaultConfig(opts?: {
       openai: {
         apiKey: "",
         model: "gpt-4.1-mini",
+        domain: "https://api.openai.com",
       },
     },
   };
