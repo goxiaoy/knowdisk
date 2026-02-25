@@ -69,6 +69,42 @@ describe("file index processor", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("reindexes unchanged file when index model marker changes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-file-processor-"));
+    const dbPath = join(dir, "index.db");
+    const filePath = join(dir, "a.txt");
+    writeFileSync(filePath, "alpha");
+
+    let upsertCalls = 0;
+    let indexModel = "embedding:local:model-a:384";
+    const repo = createIndexMetadataRepository({ dbPath });
+    const processor = createFileIndexProcessor({
+      embedding: { async embed() { return [1, 2, 3]; } },
+      chunking,
+      vector: {
+        async upsert(rows) {
+          upsertCalls += rows.length;
+        },
+        async deleteBySourcePath() {},
+      },
+      metadata: repo,
+      getCurrentIndexModel() {
+        return indexModel;
+      },
+    });
+
+    const first = await processor.indexFile(filePath, parser);
+    indexModel = "embedding:local:model-b:768";
+    const second = await processor.indexFile(filePath, parser);
+
+    expect(first.skipped).toBe(false);
+    expect(second.skipped).toBe(false);
+    expect(upsertCalls).toBe(2);
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("replaces vector rows when file content changes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-file-processor-"));
     const dbPath = join(dir, "index.db");

@@ -16,6 +16,7 @@ export type FileIndexProcessorDeps = {
   chunking: ChunkingService;
   vector: FileIndexVectorStore;
   metadata: IndexMetadataRepository;
+  getCurrentIndexModel?: () => string;
   nowMs?: () => number;
   makeChunkId?: (input: { fileId: string; startOffset: number | null; endOffset: number | null; chunkHash: string }) => string;
   makeFileId?: (path: string) => string;

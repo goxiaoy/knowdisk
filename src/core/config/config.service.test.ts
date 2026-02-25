@@ -27,8 +27,8 @@ describe("getDefaultConfig", () => {
     expect(cfg.retrieval.hybrid.ftsTopN).toBe(30);
     expect(cfg.retrieval.hybrid.vectorTopK).toBe(20);
     expect(cfg.retrieval.hybrid.rerankTopN).toBe(10);
-    expect(cfg.embedding.local.model).toBe("Xenova/paraphrase-multilingual-MiniLM-L12-v2");
-    expect(cfg.embedding.local.dimension).toBe(384);
+    expect(cfg.embedding.local.model).toBe("onnx-community/gte-multilingual-base");
+    expect(cfg.embedding.local.dimension).toBe(768);
     expect(cfg.model.hfEndpoint).toBe("https://hf-mirror.com");
     expect(cfg.model.cacheDir).toBe("build/models");
     expect(cfg.reranker.local.model).toBe("Xenova/bge-reranker-base");

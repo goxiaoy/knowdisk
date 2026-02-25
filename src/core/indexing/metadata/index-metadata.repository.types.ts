@@ -8,6 +8,7 @@ export type IndexFileRow = {
   inode: number | null;
   status: IndexFileStatus;
   lastIndexTimeMs: number | null;
+  lastIndexModel: string | null;
   lastError: string | null;
   createdAtMs: number;
   updatedAtMs: number;

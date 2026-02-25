@@ -4,12 +4,6 @@ export function shouldTriggerModelDownload(
   prev: AppConfig,
   next: AppConfig,
 ): boolean {
-  if (!next.onboarding.completed) {
-    return false;
-  }
-  if (!prev.onboarding.completed) {
-    return true;
-  }
   if (hasLocalModelSettingsChanged(prev, next)) {
     return true;
   }

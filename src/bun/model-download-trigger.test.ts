@@ -8,14 +8,14 @@ test("returns true when onboarding flips to completed", () => {
   expect(shouldTriggerModelDownload(prev, next)).toBe(true);
 });
 
-test("returns false when onboarding is still incomplete", () => {
+test("returns false when config object is unchanged", () => {
   const prev = getDefaultConfig();
-  const next = { ...prev };
+  const next = prev;
   expect(shouldTriggerModelDownload(prev, next)).toBe(false);
 });
 
-test("returns true when local model config changes after onboarding", () => {
-  const prev = { ...getDefaultConfig(), onboarding: { completed: true } };
+test("returns true when local model config changes", () => {
+  const prev = getDefaultConfig();
   const next = {
     ...prev,
     embedding: {
@@ -26,8 +26,8 @@ test("returns true when local model config changes after onboarding", () => {
   expect(shouldTriggerModelDownload(prev, next)).toBe(true);
 });
 
-test("returns true for other config changes after onboarding", () => {
-  const prev = { ...getDefaultConfig(), onboarding: { completed: true } };
+test("returns true for other config changes", () => {
+  const prev = getDefaultConfig();
   const next = {
     ...prev,
     sources: [...prev.sources, { path: "/docs", enabled: true }],

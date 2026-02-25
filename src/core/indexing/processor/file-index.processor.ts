@@ -17,37 +17,48 @@ export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileInde
     async indexFile(path: string, parser: Parser) {
       const fileStat = await stat(path);
       const existing = deps.metadata.getFileByPath(path);
+      const currentIndexModel = deps.getCurrentIndexModel?.() ?? "unknown";
+      const modelChanged = !!existing && existing.lastIndexModel !== currentIndexModel;
       if (
         existing &&
         existing.status === "indexed" &&
         existing.size === fileStat.size &&
-        existing.mtimeMs === fileStat.mtimeMs
+        existing.mtimeMs === fileStat.mtimeMs &&
+        existing.lastIndexModel === currentIndexModel
       ) {
         return { skipped: true, indexedChunks: 0 };
       }
 
-      const fileId = existing?.fileId ?? makeFileId(path);
+      const tentativeFileId = existing?.fileId ?? makeFileId(path);
       const startedAt = nowMs();
       deps.metadata.upsertFile({
-        fileId,
+        fileId: tentativeFileId,
         path,
         size: fileStat.size,
         mtimeMs: fileStat.mtimeMs,
         inode: toNullableNumber((fileStat as unknown as { ino?: number }).ino),
         status: "indexing",
         lastIndexTimeMs: existing?.lastIndexTimeMs ?? null,
+        lastIndexModel: existing?.lastIndexModel ?? null,
         lastError: null,
         createdAtMs: existing?.createdAtMs ?? startedAt,
         updatedAtMs: startedAt,
       });
+      const persistedFile = deps.metadata.getFileByPath(path);
+      const fileId = persistedFile?.fileId ?? tentativeFileId;
 
       const spans = await parseFile(path, parser, deps);
       const previous = deps.metadata.listChunksByFileId(fileId);
       const diff = buildDiff(spans, previous);
       const previousChunkIds = previous.map((row) => row.chunkId);
+      const spansToUpsert = modelChanged
+        ? diff.all
+        : diff.hasStructuralChange
+          ? diff.all
+          : diff.changedOrNew;
 
       const upsertRows = await buildVectorAndMetadataRows(
-        diff.hasStructuralChange ? diff.all : diff.changedOrNew,
+        spansToUpsert,
         fileId,
         path,
         makeChunkId,
@@ -80,6 +91,7 @@ export function createFileIndexProcessor(deps: FileIndexProcessorDeps): FileInde
         inode: toNullableNumber((fileStat as unknown as { ino?: number }).ino),
         status: "indexed",
         lastIndexTimeMs: finishedAt,
+        lastIndexModel: currentIndexModel,
         lastError: null,
         createdAtMs: existing?.createdAtMs ?? startedAt,
         updatedAtMs: finishedAt,

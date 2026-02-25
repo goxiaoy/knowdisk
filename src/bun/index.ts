@@ -70,6 +70,14 @@ const incrementalBatcher = createIncrementalBatcher({
 });
 const stopConfigSubscription = container.configService.subscribe(({ prev, next }) => {
   syncSourceWatchers(next);
+  if (next.onboarding.completed && hasEmbeddingChanged(prev, next)) {
+    void container.indexingService.runFullRebuild("embedding_changed").catch((error) => {
+      container.loggerService.error(
+        { subsystem: "indexing", error: String(error) },
+        "embedding change reindex failed",
+      );
+    });
+  }
   if (shouldTriggerModelDownload(prev, next)) {
     void container.modelDownloadService
       .ensureRequiredModels()
@@ -150,16 +158,14 @@ if (startupConfig.indexing.reconcile.enabled) {
   );
 }
 syncSourceWatchers(startupConfig);
-if (startupConfig.onboarding.completed) {
-  void container.modelDownloadService
-    .ensureRequiredModels()
-    .catch((error) => {
-      container.loggerService.error(
-        { subsystem: "models", error: String(error) },
-        "startup model download failed",
-      );
-    });
-}
+void container.modelDownloadService
+  .ensureRequiredModels()
+  .catch((error) => {
+    container.loggerService.error(
+      { subsystem: "models", error: String(error) },
+      "startup model download failed",
+    );
+  });
 
 const rpc = BrowserView.defineRPC({
   handlers: {
@@ -491,4 +497,21 @@ function syncSourceWatchers(config: AppConfig) {
       );
     }
   }
+}
+
+function hasEmbeddingChanged(prev: AppConfig, next: AppConfig): boolean {
+  if (prev.embedding.provider !== next.embedding.provider) {
+    return true;
+  }
+  const provider = next.embedding.provider;
+  if (provider === "local") {
+    return (
+      prev.embedding.local.model !== next.embedding.local.model ||
+      prev.embedding.local.dimension !== next.embedding.local.dimension
+    );
+  }
+  return (
+    prev.embedding[provider].model !== next.embedding[provider].model ||
+    prev.embedding[provider].dimension !== next.embedding[provider].dimension
+  );
 }

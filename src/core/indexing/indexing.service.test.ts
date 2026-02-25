@@ -287,3 +287,71 @@ test("incremental run enqueues and processes change events", async () => {
   expect((result as { indexedFiles: number }).indexedFiles).toBeGreaterThan(0);
   expect(upserts.length).toBeGreaterThan(0);
 });
+
+test("full rebuild with embedding_changed reindexes unchanged files", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "knowdisk-indexing-embedding-change-"));
+  const filePath = join(dir, "a.txt");
+  await writeFile(filePath, "hello embedding");
+  let cfg = makeConfig();
+  cfg.sources = [{ path: dir, enabled: true }];
+  const configService: ConfigService = {
+    getConfig() {
+      return cfg;
+    },
+    updateConfig(updater) {
+      cfg = updater(cfg);
+      return cfg;
+    },
+    subscribe() {
+      return () => {};
+    },
+  };
+  const embedding = {
+    async embed(_input: string) {
+      return [0.1, 0.2, 0.3];
+    },
+  };
+  const chunking = {
+    async chunkParsedStream(input: AsyncIterable<{ text: string; startOffset: number }>) {
+      const chunks = [];
+      for await (const part of input) {
+        chunks.push({
+          text: part.text,
+          startOffset: part.startOffset,
+          endOffset: part.startOffset + part.text.length,
+          tokenCount: 1,
+          chunkHash: String(part.startOffset),
+        });
+      }
+      return chunks;
+    },
+  };
+  const upserts: Array<unknown[]> = [];
+  const vectorRepo = {
+    async upsert(rows: unknown[]) {
+      upserts.push(rows);
+    },
+    async deleteBySourcePath(_sourcePath: string) {
+      return;
+    },
+  };
+
+  const svc = createSourceIndexingService(configService, embedding, chunking, vectorRepo);
+  const first = await svc.runFullRebuild("manual");
+  cfg = {
+    ...cfg,
+    embedding: {
+      ...cfg.embedding,
+      local: {
+        ...cfg.embedding.local,
+        model: "onnx-community/gte-multilingual-base",
+        dimension: 768,
+      },
+    },
+  };
+  const second = await svc.runFullRebuild("embedding_changed");
+
+  expect(first.indexedFiles).toBeGreaterThan(0);
+  expect(second.indexedFiles).toBeGreaterThan(0);
+  expect(upserts.length).toBeGreaterThanOrEqual(2);
+});

@@ -2,20 +2,25 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { createIndexMetadataRepository } from "./index-metadata.repository";
 
 function makeRepo() {
   const dir = mkdtempSync(join(tmpdir(), "knowdisk-index-meta-"));
   const dbPath = join(dir, "index.db");
   const repo = createIndexMetadataRepository({ dbPath });
-  return { dir, repo };
+  return { dir, dbPath, repo };
 }
 
 describe("index metadata repository", () => {
   test("initializes schema and version", () => {
-    const { dir, repo } = makeRepo();
+    const { dir, repo, dbPath } = makeRepo();
     expect(repo.getSchemaVersion()).toBe(1);
     repo.close();
+    const db = new Database(dbPath, { readonly: true });
+    const fks = db.query("PRAGMA foreign_key_list(chunks)").all();
+    expect(fks).toHaveLength(0);
+    db.close();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -29,6 +34,7 @@ describe("index metadata repository", () => {
       inode: 1,
       status: "indexed",
       lastIndexTimeMs: 200,
+      lastIndexModel: "embedding:local:test:384",
       lastError: null,
       createdAtMs: 10,
       updatedAtMs: 20,
@@ -54,6 +60,7 @@ describe("index metadata repository", () => {
       inode: 1,
       status: "indexed",
       lastIndexTimeMs: 200,
+      lastIndexModel: "embedding:local:test:384",
       lastError: null,
       createdAtMs: 10,
       updatedAtMs: 20,
@@ -89,6 +96,59 @@ describe("index metadata repository", () => {
     repo.deleteChunksByIds(["c1"]);
     const afterDelete = repo.listChunksByFileId("f1");
     expect(afterDelete.map((row) => row.chunkId)).toEqual(["c2"]);
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("upsertFile keeps existing file_id for same path when chunks already reference it", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertFile({
+      fileId: "f1",
+      path: "/docs/a.md",
+      size: 100,
+      mtimeMs: 123,
+      inode: 1,
+      status: "indexed",
+      lastIndexTimeMs: 200,
+      lastIndexModel: "embedding:local:test:384",
+      lastError: null,
+      createdAtMs: 10,
+      updatedAtMs: 20,
+    });
+    repo.upsertChunks([
+      {
+        chunkId: "c1",
+        fileId: "f1",
+        sourcePath: "/docs/a.md",
+        startOffset: 0,
+        endOffset: 10,
+        chunkHash: "h1",
+        tokenCount: 4,
+        updatedAtMs: 100,
+      },
+    ]);
+
+    expect(() =>
+      repo.upsertFile({
+        fileId: "f2",
+        path: "/docs/a.md",
+        size: 120,
+        mtimeMs: 124,
+        inode: 1,
+        status: "indexing",
+        lastIndexTimeMs: 201,
+        lastIndexModel: "embedding:local:test:384",
+        lastError: null,
+        createdAtMs: 10,
+        updatedAtMs: 30,
+      }),
+    ).not.toThrow();
+
+    const file = repo.getFileByPath("/docs/a.md");
+    expect(file?.fileId).toBe("f1");
+    expect(file?.size).toBe(120);
+    expect(repo.listChunksByFileId("f1")).toHaveLength(1);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

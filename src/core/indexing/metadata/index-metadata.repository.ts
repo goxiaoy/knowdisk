@@ -36,15 +36,15 @@ export function createIndexMetadataRepository(opts: {
     upsertFile(row: IndexFileRow) {
       db.query(
         `INSERT INTO files (
-          file_id, path, size, mtime_ms, inode, status, last_index_time_ms, last_error, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          file_id, path, size, mtime_ms, inode, status, last_index_time_ms, last_index_model, last_error, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(path) DO UPDATE SET
-          file_id=excluded.file_id,
           size=excluded.size,
           mtime_ms=excluded.mtime_ms,
           inode=excluded.inode,
           status=excluded.status,
           last_index_time_ms=excluded.last_index_time_ms,
+          last_index_model=excluded.last_index_model,
           last_error=excluded.last_error,
           updated_at_ms=excluded.updated_at_ms`,
       ).run(
@@ -55,6 +55,7 @@ export function createIndexMetadataRepository(opts: {
         row.inode,
         row.status,
         row.lastIndexTimeMs,
+        row.lastIndexModel,
         row.lastError,
         row.createdAtMs,
         row.updatedAtMs,
@@ -72,6 +73,7 @@ export function createIndexMetadataRepository(opts: {
             inode,
             status,
             last_index_time_ms AS lastIndexTimeMs,
+            last_index_model AS lastIndexModel,
             last_error AS lastError,
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
@@ -93,6 +95,7 @@ export function createIndexMetadataRepository(opts: {
             inode,
             status,
             last_index_time_ms AS lastIndexTimeMs,
+            last_index_model AS lastIndexModel,
             last_error AS lastError,
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
@@ -405,7 +408,7 @@ export function createIndexMetadataRepository(opts: {
 
 function migrate(db: Database) {
   db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
+  db.exec("PRAGMA foreign_keys = OFF");
 
   db.exec(
     `CREATE TABLE IF NOT EXISTS meta (
@@ -423,6 +426,7 @@ function migrate(db: Database) {
       inode INTEGER,
       status TEXT NOT NULL,
       last_index_time_ms INTEGER,
+      last_index_model TEXT,
       last_error TEXT,
       created_at_ms INTEGER NOT NULL,
       updated_at_ms INTEGER NOT NULL
@@ -441,7 +445,6 @@ function migrate(db: Database) {
       chunk_hash TEXT NOT NULL,
       token_count INTEGER,
       updated_at_ms INTEGER NOT NULL,
-      FOREIGN KEY(file_id) REFERENCES files(file_id) ON DELETE CASCADE,
       UNIQUE(file_id, start_offset, end_offset)
     )`,
   );
@@ -488,6 +491,48 @@ function migrate(db: Database) {
     `INSERT INTO meta(key, value) VALUES ('schema_version', ?)
       ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
   ).run(String(SCHEMA_VERSION));
+
+  const fileCols = db
+    .query("PRAGMA table_info(files)")
+    .all() as Array<{ name?: string }>;
+  const hasLastIndexModel = fileCols.some((col) => col.name === "last_index_model");
+  if (!hasLastIndexModel) {
+    db.exec("ALTER TABLE files ADD COLUMN last_index_model TEXT");
+  }
+
+  const chunkForeignKeys = db
+    .query("PRAGMA foreign_key_list(chunks)")
+    .all() as Array<Record<string, unknown>>;
+  if (chunkForeignKeys.length > 0) {
+    const tx = db.transaction(() => {
+      db.exec(
+        `CREATE TABLE chunks_v2 (
+          chunk_id TEXT PRIMARY KEY,
+          file_id TEXT NOT NULL,
+          source_path TEXT NOT NULL,
+          start_offset INTEGER,
+          end_offset INTEGER,
+          chunk_hash TEXT NOT NULL,
+          token_count INTEGER,
+          updated_at_ms INTEGER NOT NULL,
+          UNIQUE(file_id, start_offset, end_offset)
+        )`,
+      );
+      db.exec(
+        `INSERT INTO chunks_v2 (
+          chunk_id, file_id, source_path, start_offset, end_offset, chunk_hash, token_count, updated_at_ms
+        )
+        SELECT
+          chunk_id, file_id, source_path, start_offset, end_offset, chunk_hash, token_count, updated_at_ms
+        FROM chunks`,
+      );
+      db.exec("DROP TABLE chunks");
+      db.exec("ALTER TABLE chunks_v2 RENAME TO chunks");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_chunks_file ON chunks(file_id)");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(chunk_hash)");
+    });
+    tx();
+  }
 }
 
 function escapeFtsToken(token: string) {

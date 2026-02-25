@@ -45,6 +45,15 @@ export function createSourceIndexingService(
     chunking,
     vector,
     metadata,
+    getCurrentIndexModel() {
+      const current = configService.getConfig();
+      const provider = current.embedding.provider;
+      if (provider === "local") {
+        return `embedding:${provider}:${current.embedding.local.model}:${current.embedding.local.dimension}`;
+      }
+      const active = current.embedding[provider];
+      return `embedding:${provider}:${active.model}:${active.dimension}`;
+    },
   });
 
   const indexingState: IndexingStatus = {
@@ -315,6 +324,7 @@ export function createSourceIndexingService(
   }
 
   async function enqueueReconcileJobs(reason: string): Promise<number> {
+    const forceIndexAll = reason === "embedding_changed";
     const sources = configService
       .getConfig()
       .sources.filter((source) => source.enabled);
@@ -354,7 +364,11 @@ export function createSourceIndexingService(
 
     for (const [path, fsRow] of sourceFileStats.entries()) {
       const known = knownByPath.get(path);
-      const changed = !known || known.size !== fsRow.size || known.mtimeMs !== fsRow.mtimeMs;
+      const changed =
+        forceIndexAll ||
+        !known ||
+        known.size !== fsRow.size ||
+        known.mtimeMs !== fsRow.mtimeMs;
       if (!changed) {
         continue;
       }
