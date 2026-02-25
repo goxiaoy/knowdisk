@@ -41,6 +41,7 @@ type BridgeRpc = {
     chat_list_messages: (params: { sessionId: string }) => Promise<Array<ChatMessage & { citations?: ChatCitation[] }>>;
     chat_send_message_start: (params: { requestId: string; sessionId: string; content: string }) => Promise<{ ok: boolean }>;
     chat_stop_stream: (params: { requestId: string }) => Promise<{ ok: boolean }>;
+    chat_fetch_openai_models: (params: { apiKey: string; domain: string }) => Promise<{ models: string[] }>;
   };
 };
 
@@ -498,5 +499,20 @@ export async function stopChatStreamInBun(requestId: string): Promise<boolean> {
   } catch (error) {
     console.error("chat_stop_stream RPC failed:", error);
     return false;
+  }
+}
+
+export async function fetchOpenAiChatModelsInBun(
+  apiKey: string,
+  domain: string,
+): Promise<string[] | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    const result = await channel.request.chat_fetch_openai_models({ apiKey, domain });
+    return result.models;
+  } catch (error) {
+    console.error("chat_fetch_openai_models RPC failed:", error);
+    return null;
   }
 }

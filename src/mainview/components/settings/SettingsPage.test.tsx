@@ -282,7 +282,7 @@ describe("SettingsPage", () => {
     expect(modelCacheDir).toBe("/tmp/knowdisk-models");
   });
 
-  it("saves chat model and api key settings", () => {
+  it("saves chat model and api key settings", async () => {
     let chatModel = "";
     let chatApiKey = "";
     let chatDomain = "";
@@ -303,20 +303,21 @@ describe("SettingsPage", () => {
 
     const root = renderer.root;
     const model = root.findByProps({ "data-testid": "chat-model" });
-    act(() => {
+    await act(async () => {
       model.props.onChange({ target: { value: "gpt-4.1" } });
     });
     const key = root.findByProps({ "data-testid": "chat-api-key" });
-    act(() => {
+    await act(async () => {
       key.props.onChange({ target: { value: "sk-chat-test" } });
     });
     const domain = root.findByProps({ "data-testid": "chat-domain" });
-    act(() => {
+    await act(async () => {
       domain.props.onChange({ target: { value: "https://example-openai.local/" } });
     });
     const save = root.findByProps({ "data-testid": "save-chat" });
-    act(() => {
+    await act(async () => {
       save.props.onClick();
+      await Promise.resolve();
     });
 
     expect(chatModel).toBe("gpt-4.1");

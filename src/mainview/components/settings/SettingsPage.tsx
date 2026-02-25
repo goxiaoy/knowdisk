@@ -3,6 +3,7 @@ import type { ConfigService } from "../../../core/config/config.types";
 import { defaultMainviewConfigService } from "../../services/config.service";
 import {
   addSourceInBun,
+  fetchOpenAiChatModelsInBun,
   pickSourceDirectoryFromBun,
   removeSourceInBun,
   updateSourceInBun,
@@ -11,9 +12,11 @@ import {
 export function SettingsPage({
   configService = defaultMainviewConfigService,
   pickSourceDirectory = pickSourceDirectoryFromBun,
+  fetchChatModels = fetchOpenAiChatModelsInBun,
 }: {
   configService?: ConfigService;
   pickSourceDirectory?: () => Promise<string | null>;
+  fetchChatModels?: (apiKey: string, domain: string) => Promise<string[] | null>;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [config, setConfig] = useState(configService.getConfig());
@@ -26,6 +29,8 @@ export function SettingsPage({
   const [chatModel, setChatModel] = useState(config.chat.openai.model);
   const [chatApiKey, setChatApiKey] = useState(config.chat.openai.apiKey);
   const [chatDomain, setChatDomain] = useState(config.chat.openai.domain);
+  const [chatModelOptions, setChatModelOptions] = useState<string[]>([]);
+  const [loadingChatModels, setLoadingChatModels] = useState(false);
 
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
   const [embeddingLocalModel, setEmbeddingLocalModel] = useState(config.embedding.local.model);
@@ -135,6 +140,59 @@ export function SettingsPage({
     setChatDomain(next.chat.openai.domain);
     setActivity("Chat settings saved.");
   };
+
+  useEffect(() => {
+    const apiKey = chatApiKey.trim();
+    const domain = chatDomain.trim().replace(/\/+$/, "");
+    if (!apiKey || !domain) {
+      return;
+    }
+    let cancelled = false;
+    void loadLatestChatModel({ apiKey, domain, preferLatest: chatModel === "gpt-4.1-mini" });
+    return () => {
+      cancelled = true;
+    };
+
+    async function loadLatestChatModel(input: { apiKey: string; domain: string; preferLatest: boolean }) {
+      setLoadingChatModels(true);
+      const cacheKey = `knowdisk-chat-model-cache:${input.domain}`;
+      const now = Date.now();
+      const cachedRaw = globalThis.localStorage?.getItem(cacheKey);
+      let models: string[] | null = null;
+      if (cachedRaw) {
+        try {
+          const cached = JSON.parse(cachedRaw) as { at?: number; models?: string[] };
+          if (
+            typeof cached.at === "number" &&
+            now - cached.at <= 24 * 60 * 60 * 1000 &&
+            Array.isArray(cached.models)
+          ) {
+            models = cached.models;
+          }
+        } catch {
+          // ignore bad cache
+        }
+      }
+      if (!models) {
+        models = await fetchChatModels(input.apiKey, input.domain);
+        if (models && models.length > 0) {
+          globalThis.localStorage?.setItem(
+            cacheKey,
+            JSON.stringify({ at: now, models }),
+          );
+        }
+      }
+      if (cancelled || !models || models.length === 0) {
+        setLoadingChatModels(false);
+        return;
+      }
+      setChatModelOptions(models);
+      if (input.preferLatest) {
+        setChatModel(models[0]!);
+      }
+      setLoadingChatModels(false);
+    }
+  }, [chatApiKey, chatDomain, chatModel, fetchChatModels]);
 
   const addSource = async () => {
     const path = await pickSourceDirectory();
@@ -438,15 +496,19 @@ export function SettingsPage({
                 </label>
                 <label className="grid gap-1 text-sm text-slate-700">
                   Model
-                  <select
+                  <input
                     data-testid="chat-model"
                     value={chatModel}
-                    onChange={(event) => setChatModel(event.target.value as "gpt-4.1-mini" | "gpt-4.1")}
+                    onChange={(event) => setChatModel(event.target.value)}
+                    list="chat-model-options"
+                    placeholder={loadingChatModels ? "Loading latest models..." : "gpt-4.1"}
                     className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
-                  >
-                    <option value="gpt-4.1-mini">gpt-4.1-mini</option>
-                    <option value="gpt-4.1">gpt-4.1</option>
-                  </select>
+                  />
+                  <datalist id="chat-model-options">
+                    {chatModelOptions.map((model) => (
+                      <option key={model} value={model} />
+                    ))}
+                  </datalist>
                 </label>
                 <label className="grid gap-1 text-sm text-slate-700">
                   API Key

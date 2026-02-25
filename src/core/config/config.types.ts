@@ -7,7 +7,7 @@ export type SourceConfig = {
 export type EmbeddingProviderId = "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
 export type RerankerProviderId = "local" | "qwen" | "openai";
 export type ChatProviderId = "openai";
-export type OpenAiChatModelId = "gpt-4.1-mini" | "gpt-4.1";
+export type OpenAiChatModelId = string;
 
 export type ModelConfig = {
   hfEndpoint: string;

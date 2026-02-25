@@ -333,6 +333,34 @@ const rpc = BrowserView.defineRPC({
         }
         return { ok: true };
       },
+      async chat_fetch_openai_models(params?: unknown): Promise<{ models: string[] }> {
+        const { apiKey, domain } = params as { apiKey: string; domain: string };
+        const base = normalizeOpenAiDomain(domain);
+        const endpoint = new URL("/v1/models", `${base}/`).toString();
+        const response = await fetch(endpoint, {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+          },
+        });
+        if (!response.ok) {
+          const detail = await response.text().catch(() => "");
+          throw new Error(`openai_models_fetch_failed_${response.status}:${detail}`);
+        }
+        const payload = (await response.json()) as {
+          data?: Array<{ id?: string; created?: number }>;
+        };
+        const models = (payload.data ?? [])
+          .filter((row) => typeof row.id === "string" && row.id.length > 0)
+          .map((row) => ({
+            id: row.id!,
+            created: typeof row.created === "number" ? row.created : 0,
+          }))
+          .filter((row) => row.id.startsWith("gpt-"))
+          .sort((a, b) => b.created - a.created || a.id.localeCompare(b.id))
+          .map((row) => row.id);
+        return { models };
+      },
       async install_claude_mcp() {
         try {
           const cfg = container.configService.getConfig();
@@ -572,4 +600,13 @@ function hasEmbeddingChanged(prev: AppConfig, next: AppConfig): boolean {
     prev.embedding[provider].model !== next.embedding[provider].model ||
     prev.embedding[provider].dimension !== next.embedding[provider].dimension
   );
+}
+
+function normalizeOpenAiDomain(domain: string): string {
+  const value = domain.trim().replace(/\/+$/, "");
+  const parsed = new URL(value);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("invalid_openai_domain_protocol");
+  }
+  return value;
 }

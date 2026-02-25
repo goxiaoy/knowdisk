@@ -145,8 +145,8 @@ function validateChat(chat: AppConfig["chat"]): string[] {
   if (chat.provider !== "openai") {
     errors.push("chat.provider must be openai");
   }
-  if (chat.openai.model !== "gpt-4.1-mini" && chat.openai.model !== "gpt-4.1") {
-    errors.push("chat.openai.model is invalid");
+  if (!chat.openai.model || !chat.openai.model.trim()) {
+    errors.push("chat.openai.model is required");
   }
   if (!isValidHttpUrl(chat.openai.domain)) {
     errors.push("chat.openai.domain must be a valid http/https URL");
