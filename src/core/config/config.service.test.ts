@@ -33,6 +33,9 @@ describe("getDefaultConfig", () => {
     expect(cfg.model.cacheDir).toBe("build/models");
     expect(cfg.reranker.local.model).toBe("Xenova/bge-reranker-base");
     expect(cfg.reranker.local.topN).toBe(5);
+    expect(cfg.chat.provider).toBe("openai");
+    expect(cfg.chat.openai.model).toBe("gpt-4.1-mini");
+    expect(cfg.chat.openai.apiKey).toBe("");
   });
 
   test("rejects cloud provider without api key", () => {

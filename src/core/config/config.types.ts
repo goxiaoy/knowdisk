@@ -6,6 +6,8 @@ export type SourceConfig = {
 
 export type EmbeddingProviderId = "local" | "qwen_dense" | "qwen_sparse" | "openai_dense";
 export type RerankerProviderId = "local" | "qwen" | "openai";
+export type ChatProviderId = "openai";
+export type OpenAiChatModelId = "gpt-4.1-mini" | "gpt-4.1";
 
 export type ModelConfig = {
   hfEndpoint: string;
@@ -32,6 +34,11 @@ export type CloudRerankerConfig = {
   apiKey: string;
   model: string;
   topN: number;
+};
+
+export type OpenAiChatConfig = {
+  apiKey: string;
+  model: OpenAiChatModelId;
 };
 
 export interface AppConfig {
@@ -91,6 +98,10 @@ export interface AppConfig {
     local: LocalRerankerConfig;
     qwen: CloudRerankerConfig;
     openai: CloudRerankerConfig;
+  };
+  chat: {
+    provider: ChatProviderId;
+    openai: OpenAiChatConfig;
   };
 }
 

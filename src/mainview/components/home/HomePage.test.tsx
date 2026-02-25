@@ -65,4 +65,60 @@ describe("HomePage", () => {
       }),
     ).toBeDefined();
   });
+
+  it("streams chat response and shows assistant text", async () => {
+    let latest: Array<{
+      id: string;
+      sessionId: string;
+      role: "assistant" | "user";
+      content: string;
+      status: "done";
+      createdAt: number;
+      citations?: [];
+    }> = [];
+    const renderer = create(
+      <HomePage
+        hasChatApiKey
+        listSessions={async () => [{ id: "s1", title: "New Chat", createdAt: 1, updatedAt: 1, lastMessageAt: 1 }]}
+        listMessages={async () => latest}
+        startChat={async ({ onChunk }) => {
+          onChunk("hello ");
+          onChunk("world");
+          latest = [
+            {
+              id: "m1",
+              sessionId: "s1",
+              role: "assistant",
+              content: "hello world",
+              status: "done",
+              createdAt: Date.now(),
+              citations: [],
+            },
+          ];
+          return {
+            requestId: "r1",
+            done: Promise.resolve({
+              message: latest[0]!,
+              citations: [],
+            }),
+          };
+        }}
+      />,
+    );
+
+    const composer = renderer.root.findByProps({ "data-testid": "chat-composer" });
+    await act(async () => {
+      composer.props.onChange({ target: { value: "hi" } });
+    });
+    const send = renderer.root.findByProps({ "data-testid": "chat-send" });
+    await act(async () => {
+      await send.props.onClick();
+    });
+
+    expect(
+      renderer.root
+        .findAllByType("p")
+        .some((item) => item.children.map((child) => String(child)).join("").includes("hello world")),
+    ).toBe(true);
+  });
 });

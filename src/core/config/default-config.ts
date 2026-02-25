@@ -76,5 +76,12 @@ export function createDefaultConfig(opts?: {
         topN: 5,
       },
     },
+    chat: {
+      provider: "openai",
+      openai: {
+        apiKey: "",
+        model: "gpt-4.1-mini",
+      },
+    },
   };
 }

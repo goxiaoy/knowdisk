@@ -28,6 +28,10 @@ import type { RetrievalService } from "../core/retrieval/retrieval.service.types
 import { createVectorRepository } from "../core/vector/vector.repository";
 import type { VectorRepository } from "../core/vector/vector.repository.types";
 import { resolveParser } from "../core/parser/parser.registry";
+import { createChatRepository } from "../core/chat/chat.repository";
+import type { ChatRepository } from "../core/chat/chat.repository.types";
+import { createChatService } from "../core/chat/chat.service";
+import type { ChatService } from "../core/chat/chat.service.types";
 
 export type AppContainer = {
   loggerService: LoggerService;
@@ -36,6 +40,7 @@ export type AppContainer = {
   retrievalService: RetrievalService;
   indexingService: IndexingService;
   modelDownloadService: ModelDownloadService;
+  chatService: ChatService;
   close: () => void;
   mcpServer: McpServerService | null;
 };
@@ -49,6 +54,8 @@ const TOKENS = {
   RetrievalService: Symbol("RetrievalService"),
   IndexingService: Symbol("IndexingService"),
   ModelDownloadService: Symbol("ModelDownloadService"),
+  ChatRepository: Symbol("ChatRepository"),
+  ChatService: Symbol("ChatService"),
   IndexMetadataRepository: Symbol("IndexMetadataRepository"),
   AppContainer: Symbol("AppContainer"),
 } as const;
@@ -74,6 +81,7 @@ function registerDependencies(
   },
 ) {
   let metadataRepo: IndexMetadataRepository | null = null;
+  let chatRepo: ChatRepository | null = null;
   di.registerInstance<ConfigService>(
     TOKENS.ConfigService,
     deps?.configService ?? defaultConfigService,
@@ -188,6 +196,24 @@ function registerDependencies(
       ),
     ),
   });
+  di.register(TOKENS.ChatRepository, {
+    useFactory: instanceCachingFactory(() => {
+      const created = createChatRepository({
+        dbPath: join(deps?.userDataDir ?? "build", "chat", "chat.db"),
+      });
+      chatRepo = created;
+      return created;
+    }),
+  });
+  di.register(TOKENS.ChatService, {
+    useFactory: instanceCachingFactory((c) =>
+      createChatService({
+        config: c.resolve<ConfigService>(TOKENS.ConfigService),
+        retrieval: c.resolve<RetrievalService>(TOKENS.RetrievalService),
+        repository: c.resolve<ChatRepository>(TOKENS.ChatRepository),
+      }),
+    ),
+  });
   di.register(TOKENS.AppContainer, {
     useFactory: instanceCachingFactory((c) => {
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
@@ -204,6 +230,7 @@ function registerDependencies(
       const modelDownloadService = c.resolve<ModelDownloadService>(
         TOKENS.ModelDownloadService,
       );
+      const chatService = c.resolve<ChatService>(TOKENS.ChatService);
 
       const mcpServer = createMcpServer({
         retrieval: retrievalService,
@@ -217,8 +244,10 @@ function registerDependencies(
         retrievalService,
         indexingService,
         modelDownloadService,
+        chatService,
         close: () => {
           metadataRepo?.close();
+          chatRepo?.close();
         },
         mcpServer,
       } satisfies AppContainer;

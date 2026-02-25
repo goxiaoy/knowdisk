@@ -18,6 +18,7 @@ import type { ModelDownloadStatus } from "../core/model/model-download.service.t
 import type { RetrievalDebugResult } from "../core/retrieval/retrieval.service.types";
 import type { RetrievalResult } from "../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../core/vector/vector.repository.types";
+import type { ChatCitation, ChatMessage, ChatSession } from "../core/chat/chat.repository.types";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -52,6 +53,7 @@ const startupConfig = container.configService.getConfig();
 let mcpHttpServer: ReturnType<typeof Bun.serve> | null = null;
 let reconcileTimer: ReturnType<typeof setInterval> | null = null;
 const sourceWatchers = new Map<string, FSWatcher>();
+const runningChatStreams = new Map<string, { stop: boolean }>();
 const incrementalBatcher = createIncrementalBatcher({
   debounceMs: startupConfig.indexing.watch.debounceMs,
   runIncremental(changes) {
@@ -274,6 +276,62 @@ const rpc = BrowserView.defineRPC({
           );
           return { ok: false, error: String(error) };
         }
+      },
+      chat_list_sessions(): ChatSession[] {
+        return container.chatService.listSessions();
+      },
+      chat_create_session(params?: unknown): ChatSession {
+        const { title } = (params as { title?: string } | undefined) ?? {};
+        return container.chatService.createSession({ title });
+      },
+      chat_rename_session(params?: unknown): { ok: boolean } {
+        const { sessionId, title } = params as { sessionId: string; title: string };
+        container.chatService.renameSession(sessionId, title);
+        return { ok: true };
+      },
+      chat_delete_session(params?: unknown): { ok: boolean } {
+        const { sessionId } = params as { sessionId: string };
+        container.chatService.deleteSession(sessionId);
+        return { ok: true };
+      },
+      chat_list_messages(params?: unknown): Array<ChatMessage & { citations?: ChatCitation[] }> {
+        const { sessionId } = params as { sessionId: string };
+        return container.chatService.listMessages(sessionId);
+      },
+      chat_send_message_start(params?: unknown): { ok: boolean } {
+        const { requestId, sessionId, content } = params as {
+          requestId: string;
+          sessionId: string;
+          content: string;
+        };
+        const handle = { stop: false };
+        runningChatStreams.set(requestId, handle);
+        void container.chatService
+          .sendMessage(
+            {
+              sessionId,
+              content,
+              shouldStop: () => handle.stop,
+            },
+            (event) => {
+              (rpc.send as any).chat_stream_event({
+                requestId,
+                event,
+              });
+            },
+          )
+          .finally(() => {
+            runningChatStreams.delete(requestId);
+          });
+        return { ok: true };
+      },
+      chat_stop_stream(params?: unknown): { ok: boolean } {
+        const { requestId } = params as { requestId: string };
+        const stream = runningChatStreams.get(requestId);
+        if (stream) {
+          stream.stop = true;
+        }
+        return { ok: true };
       },
       async install_claude_mcp() {
         try {

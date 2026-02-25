@@ -4,64 +4,30 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAppContainer } from "./app.container";
 import type { AppConfig, ConfigService } from "../core/config/config.types";
+import { createDefaultConfig } from "../core/config/default-config";
 
 function makeConfigService(enabled: boolean): ConfigService {
-  let mcpEnabled = enabled;
-  let sources: Array<{ path: string; enabled: boolean }> = [];
-  let embedding: AppConfig["embedding"] = {
-    provider: "local" as const,
-    local: {
-      hfEndpoint: "https://hf-mirror.com",
-      cacheDir: "build/cache/embedding/local",
-      model: "Xenova/all-MiniLM-L6-v2",
-      dimension: 384,
+  let config: AppConfig = {
+    ...createDefaultConfig(),
+    onboarding: { completed: true },
+    mcp: { enabled, port: 3467 },
+    embedding: {
+      ...createDefaultConfig().embedding,
+      provider: "local",
+      local: {
+        ...createDefaultConfig().embedding.local,
+        dimension: 384,
+      },
     },
-    qwen_dense: { apiKey: "", model: "text-embedding-v4", dimension: 1024 },
-    qwen_sparse: { apiKey: "", model: "text-embedding-v4", dimension: 1024 },
-    openai_dense: { apiKey: "", model: "text-embedding-3-small", dimension: 1536 },
-  };
-  let reranker: AppConfig["reranker"] = {
-    enabled: true,
-    provider: "local" as const,
-    local: {
-      hfEndpoint: "https://hf-mirror.com",
-      cacheDir: "build/cache/reranker/local",
-      model: "BAAI/bge-reranker-base",
-      topN: 5,
-    },
-    qwen: { apiKey: "", model: "gte-rerank-v2", topN: 5 },
-    openai: { apiKey: "", model: "text-embedding-3-small", topN: 5 },
   };
 
   return {
     getConfig() {
-      return {
-        version: 1,
-        onboarding: { completed: true },
-        sources,
-        mcp: { enabled: mcpEnabled, port: 3467 },
-        ui: { mode: "safe" as const },
-        indexing: {
-          chunking: { sizeChars: 1200, overlapChars: 200, charsPerToken: 4 },
-          watch: { enabled: true, debounceMs: 500 },
-          reconcile: { enabled: true, intervalMs: 15 * 60 * 1000 },
-          worker: { concurrency: 2, batchSize: 64 },
-          retry: { maxAttempts: 3, backoffMs: [1000, 5000, 20000] },
-        },
-        retrieval: {
-          hybrid: { ftsTopN: 30, vectorTopK: 20, rerankTopN: 10 },
-        },
-        embedding,
-        reranker,
-      };
+      return config;
     },
     updateConfig(updater) {
-      const next = updater(this.getConfig());
-      mcpEnabled = next.mcp.enabled;
-      sources = next.sources;
-      embedding = next.embedding;
-      reranker = next.reranker;
-      return next;
+      config = updater(config);
+      return config;
     },
     subscribe() {
       return () => {};
@@ -112,13 +78,16 @@ test("mcp server delegates search to retrieval service", async () => {
 
 test("uses userDataDir as base path for vector collection", () => {
   const userDataDir = mkdtempSync(join(tmpdir(), "knowdisk-app-container-userdata-"));
-  createAppContainer({
+  const container = createAppContainer({
     configService: makeConfigService(true),
     userDataDir,
   });
+  container.chatService.createSession({ title: "chat-db-check" });
 
   const expectedVectorDir = join(userDataDir, "zvec", "provider-local", "dim-384");
+  const expectedChatDb = join(userDataDir, "chat", "chat.db");
   expect(existsSync(expectedVectorDir)).toBe(true);
+  expect(existsSync(expectedChatDb)).toBe(true);
 
   rmSync(userDataDir, { recursive: true, force: true });
 });

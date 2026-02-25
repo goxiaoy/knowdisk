@@ -4,6 +4,7 @@ import type { ModelDownloadStatus } from "../../core/model/model-download.servic
 import type { RetrievalResult } from "../../core/retrieval/retrieval.service.types";
 import type { RetrievalDebugResult } from "../../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
+import type { ChatCitation, ChatMessage, ChatSession } from "../../core/chat/chat.repository.types";
 
 type BridgeRpc = {
   request: {
@@ -33,6 +34,13 @@ type BridgeRpc = {
     install_claude_mcp: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     pick_source_directory_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
     pick_file_path_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
+    chat_list_sessions: () => Promise<ChatSession[]>;
+    chat_create_session: (params?: { title?: string }) => Promise<ChatSession>;
+    chat_rename_session: (params: { sessionId: string; title: string }) => Promise<{ ok: boolean }>;
+    chat_delete_session: (params: { sessionId: string }) => Promise<{ ok: boolean }>;
+    chat_list_messages: (params: { sessionId: string }) => Promise<Array<ChatMessage & { citations?: ChatCitation[] }>>;
+    chat_send_message_start: (params: { requestId: string; sessionId: string; content: string }) => Promise<{ ok: boolean }>;
+    chat_stop_stream: (params: { requestId: string }) => Promise<{ ok: boolean }>;
   };
 };
 
@@ -44,6 +52,15 @@ const pickSourcePending = new Map<
 const pickFilePending = new Map<
   string,
   { resolve: (path: string | null) => void; timeout: ReturnType<typeof setTimeout> }
+>();
+const chatStreamPending = new Map<
+  string,
+  {
+    onChunk: (chunk: string) => void;
+    resolve: (result: { message: ChatMessage; citations: ChatCitation[] }) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }
 >();
 
 function resolveBridge() {
@@ -115,6 +132,29 @@ async function getRpc() {
             console.error("pick_file_path async result error:", payload.error);
           }
           pending.resolve(payload.path ?? null);
+        },
+        chat_stream_event(payload: {
+          requestId: string;
+          event:
+            | { type: "chunk"; content: string }
+            | { type: "done"; message: ChatMessage; citations: ChatCitation[] }
+            | { type: "error"; error: string };
+        }) {
+          const pending = chatStreamPending.get(payload.requestId);
+          if (!pending) {
+            return;
+          }
+          if (payload.event.type === "chunk") {
+            pending.onChunk(payload.event.content);
+            return;
+          }
+          clearTimeout(pending.timeout);
+          chatStreamPending.delete(payload.requestId);
+          if (payload.event.type === "done") {
+            pending.resolve({ message: payload.event.message, citations: payload.event.citations });
+            return;
+          }
+          pending.reject(new Error(payload.event.error));
         },
       },
     },
@@ -348,5 +388,115 @@ export async function pickFilePathFromBun(): Promise<string | null> {
     }
     console.error("pick_file_path RPC failed:", error);
     return null;
+  }
+}
+
+export async function listChatSessionsInBun(): Promise<ChatSession[] | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.chat_list_sessions();
+  } catch (error) {
+    console.error("chat_list_sessions RPC failed:", error);
+    return null;
+  }
+}
+
+export async function createChatSessionInBun(title?: string): Promise<ChatSession | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.chat_create_session({ title });
+  } catch (error) {
+    console.error("chat_create_session RPC failed:", error);
+    return null;
+  }
+}
+
+export async function renameChatSessionInBun(sessionId: string, title: string): Promise<boolean> {
+  const channel = await getRpc();
+  if (!channel) return false;
+  try {
+    const result = await channel.request.chat_rename_session({ sessionId, title });
+    return result.ok;
+  } catch (error) {
+    console.error("chat_rename_session RPC failed:", error);
+    return false;
+  }
+}
+
+export async function deleteChatSessionInBun(sessionId: string): Promise<boolean> {
+  const channel = await getRpc();
+  if (!channel) return false;
+  try {
+    const result = await channel.request.chat_delete_session({ sessionId });
+    return result.ok;
+  } catch (error) {
+    console.error("chat_delete_session RPC failed:", error);
+    return false;
+  }
+}
+
+export async function listChatMessagesInBun(
+  sessionId: string,
+): Promise<Array<ChatMessage & { citations?: ChatCitation[] }> | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.chat_list_messages({ sessionId });
+  } catch (error) {
+    console.error("chat_list_messages RPC failed:", error);
+    return null;
+  }
+}
+
+export async function startChatStreamInBun(input: {
+  sessionId: string;
+  content: string;
+  onChunk: (chunk: string) => void;
+}): Promise<{ requestId: string; done: Promise<{ message: ChatMessage; citations: ChatCitation[] }> } | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  const requestId = globalThis.crypto.randomUUID();
+  const done = new Promise<{ message: ChatMessage; citations: ChatCitation[] }>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      chatStreamPending.delete(requestId);
+      reject(new Error("chat stream timed out"));
+    }, 10 * 60 * 1000);
+    chatStreamPending.set(requestId, {
+      onChunk: input.onChunk,
+      resolve,
+      reject,
+      timeout,
+    });
+  });
+  try {
+    await channel.request.chat_send_message_start({
+      requestId,
+      sessionId: input.sessionId,
+      content: input.content,
+    });
+    return { requestId, done };
+  } catch (error) {
+    const pending = chatStreamPending.get(requestId);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      chatStreamPending.delete(requestId);
+      pending.reject(new Error(String(error)));
+    }
+    console.error("chat_send_message_start RPC failed:", error);
+    return null;
+  }
+}
+
+export async function stopChatStreamInBun(requestId: string): Promise<boolean> {
+  const channel = await getRpc();
+  if (!channel) return false;
+  try {
+    const result = await channel.request.chat_stop_stream({ requestId });
+    return result.ok;
+  } catch (error) {
+    console.error("chat_stop_stream RPC failed:", error);
+    return false;
   }
 }

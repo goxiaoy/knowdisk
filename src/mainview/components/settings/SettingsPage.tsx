@@ -23,6 +23,8 @@ export function SettingsPage({
   const [activity, setActivity] = useState("");
   const [modelHfEndpoint, setModelHfEndpoint] = useState(config.model.hfEndpoint);
   const [modelCacheDir, setModelCacheDir] = useState(config.model.cacheDir);
+  const [chatModel, setChatModel] = useState(config.chat.openai.model);
+  const [chatApiKey, setChatApiKey] = useState(config.chat.openai.apiKey);
 
   const [embeddingProvider, setEmbeddingProvider] = useState(config.embedding.provider);
   const [embeddingLocalModel, setEmbeddingLocalModel] = useState(config.embedding.local.model);
@@ -109,6 +111,25 @@ export function SettingsPage({
     setModelHfEndpoint(next.model.hfEndpoint);
     setModelCacheDir(next.model.cacheDir);
     setActivity("Model runtime settings saved.");
+  };
+
+  const saveChatConfig = () => {
+    const next = configService.updateConfig((source) => ({
+      ...source,
+      chat: {
+        ...source.chat,
+        provider: "openai",
+        openai: {
+          ...source.chat.openai,
+          model: chatModel,
+          apiKey: chatApiKey.trim(),
+        },
+      },
+    }));
+    setConfig(next);
+    setChatModel(next.chat.openai.model);
+    setChatApiKey(next.chat.openai.apiKey);
+    setActivity("Chat settings saved.");
   };
 
   const addSource = async () => {
@@ -395,6 +416,53 @@ export function SettingsPage({
                 className="mt-3 rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-800"
               >
                 Save MCP
+              </button>
+            </article>
+
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900">Chat (OpenAI)</h2>
+              <p className="mt-1 text-sm text-slate-500">Dedicated chat provider and API key</p>
+              <div className="mt-4 grid gap-4">
+                <label className="grid gap-1 text-sm text-slate-700">
+                  Provider
+                  <input
+                    data-testid="chat-provider"
+                    disabled
+                    value="openai"
+                    className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm text-slate-700">
+                  Model
+                  <select
+                    data-testid="chat-model"
+                    value={chatModel}
+                    onChange={(event) => setChatModel(event.target.value as "gpt-4.1-mini" | "gpt-4.1")}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                  >
+                    <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                    <option value="gpt-4.1">gpt-4.1</option>
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm text-slate-700">
+                  API Key
+                  <input
+                    data-testid="chat-api-key"
+                    type="password"
+                    value={chatApiKey}
+                    onChange={(event) => setChatApiKey(event.target.value)}
+                    placeholder="sk-..."
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                  />
+                </label>
+              </div>
+              <button
+                data-testid="save-chat"
+                type="button"
+                onClick={saveChatConfig}
+                className="mt-4 rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-cyan-800"
+              >
+                Save Chat Settings
               </button>
             </article>
 

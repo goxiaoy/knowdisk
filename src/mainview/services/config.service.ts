@@ -186,6 +186,14 @@ function loadConfig(): AppConfig {
           ...(parsed.reranker?.openai ?? {}),
         },
       },
+      chat: {
+        ...defaults.chat,
+        ...(parsed.chat ?? {}),
+        openai: {
+          ...defaults.chat.openai,
+          ...(parsed.chat?.openai ?? {}),
+        },
+      },
     };
   } catch {
     return getDefaultConfig();

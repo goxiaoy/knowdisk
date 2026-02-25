@@ -52,6 +52,11 @@ export function validateConfig(cfg: AppConfig): {
     return { ok: false, errors: rerankerErrors };
   }
 
+  const chatErrors = validateChat(cfg.chat);
+  if (chatErrors.length > 0) {
+    return { ok: false, errors: chatErrors };
+  }
+
   return { ok: true, errors: [] };
 }
 
@@ -135,6 +140,17 @@ function validateReranker(reranker: AppConfig["reranker"]): string[] {
   return errors;
 }
 
+function validateChat(chat: AppConfig["chat"]): string[] {
+  const errors: string[] = [];
+  if (chat.provider !== "openai") {
+    errors.push("chat.provider must be openai");
+  }
+  if (chat.openai.model !== "gpt-4.1-mini" && chat.openai.model !== "gpt-4.1") {
+    errors.push("chat.openai.model is invalid");
+  }
+  return errors;
+}
+
 export function migrateConfig(input: unknown): AppConfig {
   return migrateConfigWithDefaults(input, getDefaultConfig());
 }
@@ -176,6 +192,7 @@ function migrateConfigWithDefaults(
       defaults.reranker,
       next.reranker,
     );
+    const chat = mergeChat(defaults.chat, next.chat);
     const model = mergeModel(
       defaults.model,
       next.model,
@@ -269,6 +286,7 @@ function migrateConfigWithDefaults(
       model,
       embedding,
       reranker,
+      chat,
     };
   }
 
@@ -428,6 +446,24 @@ function mergeReranker(
       ...(legacy?.openai ?? {}),
       model: legacy?.openai?.model ?? legacy?.model ?? defaults.openai.model,
       topN: legacy?.openai?.topN ?? legacy?.topN ?? defaults.openai.topN,
+    },
+  };
+}
+
+function mergeChat(
+  defaults: AppConfig["chat"],
+  legacy:
+    | {
+        provider?: AppConfig["chat"]["provider"];
+        openai?: Partial<AppConfig["chat"]["openai"]>;
+      }
+    | undefined,
+): AppConfig["chat"] {
+  return {
+    provider: legacy?.provider ?? defaults.provider,
+    openai: {
+      ...defaults.openai,
+      ...(legacy?.openai ?? {}),
     },
   };
 }

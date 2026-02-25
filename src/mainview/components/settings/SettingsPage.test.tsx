@@ -281,4 +281,39 @@ describe("SettingsPage", () => {
     expect(modelHfEndpoint).toBe("https://example-hf.local");
     expect(modelCacheDir).toBe("/tmp/knowdisk-models");
   });
+
+  it("saves chat model and api key settings", () => {
+    let chatModel = "";
+    let chatApiKey = "";
+    const renderer = create(
+      <SettingsPage
+        pickSourceDirectory={async () => null}
+        configService={makeConfigService({
+          updateConfig(updater) {
+            const next = updater(makeInitialConfig());
+            chatModel = next.chat.openai.model;
+            chatApiKey = next.chat.openai.apiKey;
+            return next;
+          },
+        })}
+      />,
+    );
+
+    const root = renderer.root;
+    const model = root.findByProps({ "data-testid": "chat-model" });
+    act(() => {
+      model.props.onChange({ target: { value: "gpt-4.1" } });
+    });
+    const key = root.findByProps({ "data-testid": "chat-api-key" });
+    act(() => {
+      key.props.onChange({ target: { value: "sk-chat-test" } });
+    });
+    const save = root.findByProps({ "data-testid": "save-chat" });
+    act(() => {
+      save.props.onClick();
+    });
+
+    expect(chatModel).toBe("gpt-4.1");
+    expect(chatApiKey).toBe("sk-chat-test");
+  });
 });
