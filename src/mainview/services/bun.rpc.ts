@@ -18,10 +18,10 @@ type BridgeRpc = {
     get_index_status: () => Promise<IndexingStatus>;
     get_vector_stats: () => Promise<VectorCollectionInspect>;
     get_model_download_status: () => Promise<ModelDownloadStatus>;
-    retry_model_download: () => Promise<{ ok: boolean; reason: string }>;
+    retry_model_download: () => Promise<{ ok: boolean }>;
     redownload_model_download: (params: {
       taskId: "embedding-local" | "reranker-local";
-    }) => Promise<{ ok: boolean; reason: string }>;
+    }) => Promise<{ ok: boolean }>;
     search_retrieval: (params: {
       query: string;
       topK: number;
@@ -214,7 +214,7 @@ export async function getModelDownloadStatusFromBun(): Promise<ModelDownloadStat
   }
 }
 
-export async function retryModelDownloadInBun(): Promise<{ ok: boolean; reason: string } | null> {
+export async function retryModelDownloadInBun(): Promise<{ ok: boolean } | null> {
   const channel = await getRpc();
   if (!channel) return null;
   try {
@@ -226,7 +226,7 @@ export async function retryModelDownloadInBun(): Promise<{ ok: boolean; reason: 
 
 export async function redownloadModelInBun(
   taskId: "embedding-local" | "reranker-local",
-): Promise<{ ok: boolean; reason: string } | null> {
+): Promise<{ ok: boolean } | null> {
   const channel = await getRpc();
   if (!channel) return null;
   try {

@@ -30,7 +30,6 @@ const EMPTY_STATUS: IndexingStatus = {
 
 const EMPTY_MODEL_STATUS: ModelDownloadStatus = {
   phase: "idle",
-  triggeredBy: "",
   lastStartedAt: "",
   lastFinishedAt: "",
   progressPct: 0,

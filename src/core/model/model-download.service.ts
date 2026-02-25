@@ -27,7 +27,6 @@ type DownloadScope = "all" | "embedding-local" | "reranker-local";
 
 type DownloadRequest = {
   cfg: AppConfig;
-  reason: string;
   scope: DownloadScope;
 };
 
@@ -104,7 +103,6 @@ export function isModelParseErrorMessage(message: string): boolean {
 
 const EMPTY_STATUS: ModelDownloadStatus = {
   phase: "idle",
-  triggeredBy: "",
   lastStartedAt: "",
   lastFinishedAt: "",
   progressPct: 0,
@@ -152,17 +150,22 @@ export function createModelDownloadService(
     string,
     Promise<LocalRerankerRuntime>
   >();
-  let verifyChain: Promise<void> = Promise.resolve();
+  let verifyLockTail: Promise<void> = Promise.resolve();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFailedRequest: DownloadRequest | null = null;
 
-  function runModelVerifySerial<T>(work: () => Promise<T>): Promise<T> {
-    const run = verifyChain.then(work, work);
-    verifyChain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+  async function runModelVerifySerial<T>(work: () => Promise<T>): Promise<T> {
+    const previous = verifyLockTail;
+    let release: (() => void) | null = null;
+    verifyLockTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await work();
+    } finally {
+      release?.();
+    }
   }
 
   function emit() {
@@ -218,7 +221,6 @@ export function createModelDownloadService(
       void enqueueAndWait({
         cfg: req.cfg,
         scope: req.scope,
-        reason: "auto_retry",
       }).catch(() => {});
     }, delayMs);
   }
@@ -931,6 +933,7 @@ export function createModelDownloadService(
         env?: {
           allowRemoteModels?: boolean;
           remoteHost?: string;
+          localModelPath?: string;
           cacheDir?: string;
         };
       }
@@ -938,6 +941,7 @@ export function createModelDownloadService(
     if (env) {
       env.allowRemoteModels = false;
       env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
+      env.localModelPath = spec.cacheDir;
       env.cacheDir = spec.cacheDir;
     }
   }
@@ -1047,10 +1051,7 @@ export function createModelDownloadService(
     return `${spec.id}::${spec.model}::${normalizeHost(spec.hfEndpoint)}::${spec.cacheDir}`;
   }
 
-  async function ensureSpecReadyWithRecovery(
-    spec: LocalTaskSpec,
-    reason: string,
-  ) {
+  async function ensureSpecReadyWithRecovery(spec: LocalTaskSpec) {
     const key = guardKey(spec);
     const existing = readyGuards.get(key);
     if (existing) {
@@ -1058,7 +1059,7 @@ export function createModelDownloadService(
     }
     const promise = (async () => {
       try {
-        await runSpecDownload(spec, reason);
+        await runSpecDownload(spec);
       } finally {
         readyGuards.delete(key);
       }
@@ -1086,7 +1087,7 @@ export function createModelDownloadService(
     }
   }
 
-  async function runSpecDownload(spec: LocalTaskSpec, _reason: string) {
+  async function runSpecDownload(spec: LocalTaskSpec) {
     logger.info(
       { subsystem: "models", taskId: spec.id, model: spec.model, kind: spec.kind },
       "Model task download started",
@@ -1131,7 +1132,6 @@ export function createModelDownloadService(
       updateStatus((current) => ({
         ...current,
         phase: "completed",
-        triggeredBy: req.reason,
         lastStartedAt: new Date().toISOString(),
         lastFinishedAt: new Date().toISOString(),
         progressPct: 100,
@@ -1148,7 +1148,7 @@ export function createModelDownloadService(
         },
       }));
       logger.info(
-        { subsystem: "models", runId, reason: req.reason, scope: req.scope },
+        { subsystem: "models", runId, scope: req.scope },
         "Model ensure skipped: no local model tasks",
       );
       return;
@@ -1158,7 +1158,6 @@ export function createModelDownloadService(
 
     updateStatus((current) => ({
       phase: "verifying",
-      triggeredBy: req.reason,
       lastStartedAt: new Date().toISOString(),
       lastFinishedAt: "",
       progressPct: 0,
@@ -1174,7 +1173,6 @@ export function createModelDownloadService(
       {
         subsystem: "models",
         runId,
-        reason: req.reason,
         scope: req.scope,
         tasks: taskList.map((task) => ({ id: task.id, model: task.model })),
       },
@@ -1223,14 +1221,13 @@ export function createModelDownloadService(
           {
             subsystem: "models",
             runId,
-            reason: req.reason,
             scope: req.scope,
             pendingTasks: missing.map((spec) => ({ id: spec.id, model: spec.model })),
           },
           "Model download phase started",
         );
         for (const spec of missing) {
-          await ensureSpecReadyWithRecovery(spec, req.reason);
+          await ensureSpecReadyWithRecovery(spec);
         }
       }
       updateStatus((current) => ({
@@ -1252,7 +1249,6 @@ export function createModelDownloadService(
         {
           subsystem: "models",
           runId,
-          reason: req.reason,
           scope: req.scope,
           verifiedTasks: specs.length - missing.length,
           downloadedTasks: missing.length,
@@ -1295,7 +1291,6 @@ export function createModelDownloadService(
         {
           subsystem: "models",
           runId,
-          reason: req.reason,
           scope: req.scope,
           error: message,
           taskId: loadError?.spec.id ?? "",
@@ -1352,7 +1347,6 @@ export function createModelDownloadService(
 
   async function acquireEmbeddingExtractor(
     cfg: AppConfig,
-    reason: string,
   ): Promise<LocalEmbeddingExtractor> {
     const spec = pickSpec(cfg, "embedding-local");
     const key = guardKey(spec);
@@ -1365,7 +1359,7 @@ export function createModelDownloadService(
       return acquiring;
     }
     const next = (async () => {
-      await enqueueAndWait({ cfg, reason, scope: "embedding-local" });
+      await enqueueAndWait({ cfg, scope: "embedding-local" });
       const afterQueue = embeddingRuntimeGuards.get(key);
       if (afterQueue) {
         return afterQueue;
@@ -1385,7 +1379,6 @@ export function createModelDownloadService(
 
   async function acquireRerankerRuntime(
     cfg: AppConfig,
-    reason: string,
   ): Promise<LocalRerankerRuntime> {
     const spec = pickSpec(cfg, "reranker-local");
     const key = guardKey(spec);
@@ -1399,7 +1392,7 @@ export function createModelDownloadService(
     }
     const next = (async () => {
       // Reranker must wait until embedding is settled first.
-      await enqueueAndWait({ cfg, reason, scope: "all" });
+      await enqueueAndWait({ cfg, scope: "all" });
       const afterQueue = rerankerRuntimeGuards.get(key);
       if (afterQueue) {
         return afterQueue;
@@ -1421,25 +1414,18 @@ export function createModelDownloadService(
     async ensureRequiredModels() {
       await enqueueAndWait({
         cfg: configService.getConfig(),
-        reason: "ensure_required_models",
         scope: "all",
       });
     },
     async getLocalEmbeddingExtractor() {
-      return acquireEmbeddingExtractor(
-        configService.getConfig(),
-        "embedding_runtime",
-      );
+      return acquireEmbeddingExtractor(configService.getConfig());
     },
     async getLocalRerankerRuntime() {
-      return acquireRerankerRuntime(
-        configService.getConfig(),
-        "reranker_runtime",
-      );
+      return acquireRerankerRuntime(configService.getConfig());
     },
     async retryNow() {
       if (!lastFailedRequest) {
-        return { ok: false, reason: "no_failed_request" };
+        return { ok: false };
       }
       clearRetryTimer();
       updateStatus((current) => ({
@@ -1451,13 +1437,10 @@ export function createModelDownloadService(
         },
       }));
       try {
-        await enqueueAndWait({
-          ...lastFailedRequest,
-          reason: "manual_retry",
-        });
-        return { ok: true, reason: "manual_retry_triggered" };
+        await enqueueAndWait(lastFailedRequest);
+        return { ok: true };
       } catch {
-        return { ok: false, reason: "manual_retry_failed" };
+        return { ok: false };
       }
     },
     async redownloadModel(taskId) {
@@ -1468,11 +1451,10 @@ export function createModelDownloadService(
         await clearSpecModelCache(spec);
         await enqueueAndWait({
           cfg,
-          reason: "manual_redownload",
           scope:
             taskId === "embedding-local" ? "embedding-local" : "reranker-local",
         });
-        return { ok: true, reason: "manual_redownload_triggered" };
+        return { ok: true };
       } catch (error) {
         logger.error(
           {
@@ -1483,7 +1465,7 @@ export function createModelDownloadService(
           },
           "model redownload failed",
         );
-        return { ok: false, reason: "manual_redownload_failed" };
+        return { ok: false };
       }
     },
     getStatus() {
@@ -1506,7 +1488,6 @@ function buildEnsureKey(req: DownloadRequest) {
   const cfg = req.cfg;
   const payload = {
     scope: req.scope,
-    reason: req.reason,
     model: {
       hfEndpoint: cfg.model.hfEndpoint,
       cacheDir: cfg.model.cacheDir,

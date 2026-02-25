@@ -10,7 +10,7 @@ import {
   upsertKnowDiskMcpServerConfig,
 } from "./claude-desktop-config";
 import { createIncrementalBatcher } from "./incremental-batcher";
-import { resolveModelDownloadTriggerReason } from "./model-download-trigger";
+import { shouldTriggerModelDownload } from "./model-download-trigger";
 import type { AppConfig } from "../core/config/config.types";
 import { createConfigService } from "../core/config/config.service";
 import type { IndexingStatus } from "../core/indexing/indexing.service.types";
@@ -70,8 +70,7 @@ const incrementalBatcher = createIncrementalBatcher({
 });
 const stopConfigSubscription = container.configService.subscribe(({ prev, next }) => {
   syncSourceWatchers(next);
-  const reason = resolveModelDownloadTriggerReason(prev, next);
-  if (reason) {
+  if (shouldTriggerModelDownload(prev, next)) {
     void container.modelDownloadService
       .ensureRequiredModels()
       .catch((error) => {
@@ -230,10 +229,10 @@ const rpc = BrowserView.defineRPC({
       get_model_download_status(): ModelDownloadStatus {
         return container.modelDownloadService.getStatus().getSnapshot();
       },
-      retry_model_download(): Promise<{ ok: boolean; reason: string }> {
+      retry_model_download(): Promise<{ ok: boolean }> {
         return container.modelDownloadService.retryNow();
       },
-      redownload_model_download(params?: unknown): Promise<{ ok: boolean; reason: string }> {
+      redownload_model_download(params?: unknown): Promise<{ ok: boolean }> {
         const { taskId } = params as { taskId: "embedding-local" | "reranker-local" };
         return container.modelDownloadService.redownloadModel(taskId);
       },

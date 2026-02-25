@@ -1,22 +1,22 @@
 import type { AppConfig } from "../core/config/config.types";
 
-export function resolveModelDownloadTriggerReason(
+export function shouldTriggerModelDownload(
   prev: AppConfig,
   next: AppConfig,
-): string | null {
+): boolean {
   if (!next.onboarding.completed) {
-    return null;
+    return false;
   }
   if (!prev.onboarding.completed) {
-    return "onboarding_completed";
+    return true;
   }
   if (hasLocalModelSettingsChanged(prev, next)) {
-    return "config_changed";
+    return true;
   }
   if (prev !== next) {
-    return "config_updated";
+    return true;
   }
-  return null;
+  return false;
 }
 
 function hasLocalModelSettingsChanged(prev: AppConfig, next: AppConfig) {

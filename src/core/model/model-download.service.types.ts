@@ -24,7 +24,6 @@ export type ModelDownloadTasks = {
 
 export type ModelDownloadStatus = {
   phase: "idle" | "verifying" | "running" | "completed" | "failed";
-  triggeredBy: string;
   lastStartedAt: string;
   lastFinishedAt: string;
   progressPct: number;
@@ -60,9 +59,9 @@ export type ModelDownloadService = {
   ensureRequiredModels: () => Promise<void>;
   getLocalEmbeddingExtractor: () => Promise<LocalEmbeddingExtractor>;
   getLocalRerankerRuntime: () => Promise<LocalRerankerRuntime>;
-  retryNow: () => Promise<{ ok: boolean; reason: string }>;
+  retryNow: () => Promise<{ ok: boolean }>;
   redownloadModel: (
     taskId: "embedding-local" | "reranker-local",
-  ) => Promise<{ ok: boolean; reason: string }>;
+  ) => Promise<{ ok: boolean }>;
   getStatus: () => ModelDownloadStatusStore;
 };

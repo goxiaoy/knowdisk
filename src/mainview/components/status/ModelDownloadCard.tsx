@@ -8,7 +8,6 @@ import {
 
 const EMPTY_STATUS: ModelDownloadStatus = {
   phase: "idle",
-  triggeredBy: "",
   lastStartedAt: "",
   lastFinishedAt: "",
   progressPct: 0,
@@ -34,10 +33,10 @@ export function ModelDownloadCard({
 }: {
   pollMs?: number;
   loadStatus?: () => Promise<ModelDownloadStatus | null>;
-  retryNow?: () => Promise<{ ok: boolean; reason: string } | null>;
+  retryNow?: () => Promise<{ ok: boolean } | null>;
   redownloadModel?: (
     taskId: "embedding-local" | "reranker-local",
-  ) => Promise<{ ok: boolean; reason: string } | null>;
+  ) => Promise<{ ok: boolean } | null>;
 }) {
   const [status, setStatus] = useState<ModelDownloadStatus>(EMPTY_STATUS);
   const [retryMessage, setRetryMessage] = useState("");
@@ -153,7 +152,7 @@ export function ModelDownloadCard({
                     setRetryMessage("Retry request failed.");
                     return;
                   }
-                  setRetryMessage(result.ok ? "Retry started." : `Retry not started: ${result.reason}`);
+                  setRetryMessage(result.ok ? "Retry started." : "Retry not started.");
                 });
               }}
               className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -172,12 +171,6 @@ export function ModelDownloadCard({
           <dt className="text-slate-500">Progress</dt>
           <dd data-testid="model-download-progress" className="font-medium text-slate-900">
             {status.progressPct}%
-          </dd>
-        </div>
-        <div>
-          <dt className="text-slate-500">Triggered By</dt>
-          <dd data-testid="model-download-triggered-by" className="font-medium text-slate-900">
-            {status.triggeredBy || "-"}
           </dd>
         </div>
         <div>
@@ -248,7 +241,7 @@ export function ModelDownloadCard({
                             setRetryMessage(
                               result.ok
                                 ? `Redownload started for ${task.id}.`
-                                : `Redownload not started: ${result.reason}`,
+                                : "Redownload not started.",
                             );
                           });
                         }}

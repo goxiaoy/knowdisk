@@ -1,22 +1,20 @@
 import { expect, test } from "bun:test";
 import { getDefaultConfig } from "../core/config/config.service";
-import { resolveModelDownloadTriggerReason } from "./model-download-trigger";
+import { shouldTriggerModelDownload } from "./model-download-trigger";
 
-test("returns onboarding_completed when onboarding flips to completed", () => {
+test("returns true when onboarding flips to completed", () => {
   const prev = getDefaultConfig();
   const next = { ...prev, onboarding: { completed: true } };
-  expect(resolveModelDownloadTriggerReason(prev, next)).toBe(
-    "onboarding_completed",
-  );
+  expect(shouldTriggerModelDownload(prev, next)).toBe(true);
 });
 
-test("returns null when onboarding is still incomplete", () => {
+test("returns false when onboarding is still incomplete", () => {
   const prev = getDefaultConfig();
   const next = { ...prev };
-  expect(resolveModelDownloadTriggerReason(prev, next)).toBeNull();
+  expect(shouldTriggerModelDownload(prev, next)).toBe(false);
 });
 
-test("returns config_changed when local model config changes after onboarding", () => {
+test("returns true when local model config changes after onboarding", () => {
   const prev = { ...getDefaultConfig(), onboarding: { completed: true } };
   const next = {
     ...prev,
@@ -25,14 +23,14 @@ test("returns config_changed when local model config changes after onboarding", 
       local: { ...prev.embedding.local, model: "onnx-community/gte-base" },
     },
   };
-  expect(resolveModelDownloadTriggerReason(prev, next)).toBe("config_changed");
+  expect(shouldTriggerModelDownload(prev, next)).toBe(true);
 });
 
-test("returns config_updated for other config changes after onboarding", () => {
+test("returns true for other config changes after onboarding", () => {
   const prev = { ...getDefaultConfig(), onboarding: { completed: true } };
   const next = {
     ...prev,
     sources: [...prev.sources, { path: "/docs", enabled: true }],
   };
-  expect(resolveModelDownloadTriggerReason(prev, next)).toBe("config_updated");
+  expect(shouldTriggerModelDownload(prev, next)).toBe(true);
 });
