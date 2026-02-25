@@ -80,7 +80,7 @@ export function createDefaultConfig(opts?: {
       provider: "openai",
       openai: {
         apiKey: "",
-        model: "gpt-4.1-mini",
+        model: "",
         domain: "https://api.openai.com",
       },
     },

@@ -148,12 +148,12 @@ export function SettingsPage({
       return;
     }
     let cancelled = false;
-    void loadLatestChatModel({ apiKey, domain, preferLatest: chatModel === "gpt-4.1-mini" });
+    void loadLatestChatModel({ apiKey, domain });
     return () => {
       cancelled = true;
     };
 
-    async function loadLatestChatModel(input: { apiKey: string; domain: string; preferLatest: boolean }) {
+    async function loadLatestChatModel(input: { apiKey: string; domain: string }) {
       setLoadingChatModels(true);
       const cacheKey = `knowdisk-chat-model-cache:${input.domain}`;
       const now = Date.now();
@@ -187,12 +187,24 @@ export function SettingsPage({
         return;
       }
       setChatModelOptions(models);
-      if (input.preferLatest) {
-        setChatModel(models[0]!);
-      }
+      const latest = models[0]!;
+      setChatModel(latest);
+      const next = configService.updateConfig((source) => ({
+        ...source,
+        chat: {
+          ...source.chat,
+          openai: {
+            ...source.chat.openai,
+            apiKey: input.apiKey,
+            domain: input.domain,
+            model: latest,
+          },
+        },
+      }));
+      setConfig(next);
       setLoadingChatModels(false);
     }
-  }, [chatApiKey, chatDomain, chatModel, fetchChatModels]);
+  }, [chatApiKey, chatDomain, fetchChatModels, configService]);
 
   const addSource = async () => {
     const path = await pickSourceDirectory();

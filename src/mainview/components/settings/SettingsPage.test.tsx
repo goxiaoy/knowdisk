@@ -324,4 +324,33 @@ describe("SettingsPage", () => {
     expect(chatApiKey).toBe("sk-chat-test");
     expect(chatDomain).toBe("https://example-openai.local");
   });
+
+  it("syncs latest chat model from api and persists it", async () => {
+    let persistedModel = "";
+    const renderer = create(
+      <SettingsPage
+        pickSourceDirectory={async () => null}
+        fetchChatModels={async () => ["gpt-4.1-latest", "gpt-4.1-mini"]}
+        configService={makeConfigService({
+          updateConfig(updater) {
+            const next = updater(makeInitialConfig());
+            persistedModel = next.chat.openai.model;
+            return next;
+          },
+        })}
+      />,
+    );
+
+    const root = renderer.root;
+    const key = root.findByProps({ "data-testid": "chat-api-key" });
+    const domain = root.findByProps({ "data-testid": "chat-domain" });
+    await act(async () => {
+      key.props.onChange({ target: { value: "sk-chat-test" } });
+      domain.props.onChange({ target: { value: "https://api.openai.com" } });
+      await Promise.resolve();
+    });
+
+    expect(persistedModel).toBe("gpt-4.1-latest");
+    expect(root.findByProps({ "data-testid": "chat-model" }).props.value).toBe("gpt-4.1-latest");
+  });
 });

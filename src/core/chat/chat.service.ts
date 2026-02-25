@@ -104,8 +104,13 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
       const cfg = deps.config.getConfig();
       const apiKey = cfg.chat.openai.apiKey.trim();
+      const model = cfg.chat.openai.model.trim();
       if (!apiKey) {
         onEvent({ type: "error", error: "OpenAI API key is missing." });
+        return;
+      }
+      if (!model) {
+        onEvent({ type: "error", error: "Chat model is missing. Sync latest model in Settings." });
         return;
       }
 
@@ -127,7 +132,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
         role: "assistant",
         content: "",
         status: "streaming",
-        model: cfg.chat.openai.model,
+        model,
       });
 
       const citations: CitationSeed[] = [];
@@ -145,7 +150,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
         const finalText = await generateWithTools({
           apiKey,
           domain: cfg.chat.openai.domain,
-          model: cfg.chat.openai.model,
+          model,
           messages: transcript,
           fetchImpl,
           retrieval: deps.retrieval,
