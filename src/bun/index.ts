@@ -233,6 +233,10 @@ const rpc = BrowserView.defineRPC({
       retry_model_download(): Promise<{ ok: boolean; reason: string }> {
         return container.modelDownloadService.retryNow();
       },
+      redownload_model_download(params?: unknown): Promise<{ ok: boolean; reason: string }> {
+        const { taskId } = params as { taskId: "embedding-local" | "reranker-local" };
+        return container.modelDownloadService.redownloadModel(taskId);
+      },
       search_retrieval(params?: unknown): Promise<RetrievalDebugResult> {
         const { query, topK, titleOnly } = params as {
           query: string;

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelDownloadStatus } from "../../../core/model/model-download.service.types";
 import {
   getModelDownloadStatusFromBun,
+  redownloadModelInBun,
   retryModelDownloadInBun,
 } from "../../services/bun.rpc";
 
@@ -29,13 +30,19 @@ export function ModelDownloadCard({
   pollMs = 1000,
   loadStatus = getModelDownloadStatusFromBun,
   retryNow = retryModelDownloadInBun,
+  redownloadModel = redownloadModelInBun,
 }: {
   pollMs?: number;
   loadStatus?: () => Promise<ModelDownloadStatus | null>;
   retryNow?: () => Promise<{ ok: boolean; reason: string } | null>;
+  redownloadModel?: (
+    taskId: "embedding-local" | "reranker-local",
+  ) => Promise<{ ok: boolean; reason: string } | null>;
 }) {
   const [status, setStatus] = useState<ModelDownloadStatus>(EMPTY_STATUS);
   const [retryMessage, setRetryMessage] = useState("");
+  const [downloadSpeedBps, setDownloadSpeedBps] = useState(0);
+  const lastProgressRef = useRef<{ atMs: number; downloadedBytes: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +88,55 @@ export function ModelDownloadCard({
     () => [status.tasks.embedding, status.tasks.reranker].filter((task) => task !== null),
     [status.tasks.embedding, status.tasks.reranker],
   );
+
+  const totalDownloadedBytes = useMemo(
+    () => taskList.reduce((sum, task) => sum + task.downloadedBytes, 0),
+    [taskList],
+  );
+  const totalBytes = useMemo(
+    () => taskList.reduce((sum, task) => sum + Math.max(0, task.totalBytes), 0),
+    [taskList],
+  );
+  const remainingBytes = Math.max(0, totalBytes - totalDownloadedBytes);
+
+  useEffect(() => {
+    const now = Date.now();
+    const prev = lastProgressRef.current;
+    if (!prev) {
+      lastProgressRef.current = { atMs: now, downloadedBytes: totalDownloadedBytes };
+      setDownloadSpeedBps(0);
+      return;
+    }
+    const elapsedMs = now - prev.atMs;
+    const deltaBytes = totalDownloadedBytes - prev.downloadedBytes;
+    if (elapsedMs <= 0) {
+      return;
+    }
+    const instantBps = deltaBytes > 0 ? (deltaBytes * 1000) / elapsedMs : 0;
+    setDownloadSpeedBps((prevSpeed) =>
+      prevSpeed > 0 ? prevSpeed * 0.65 + instantBps * 0.35 : instantBps,
+    );
+    lastProgressRef.current = { atMs: now, downloadedBytes: totalDownloadedBytes };
+  }, [totalDownloadedBytes]);
+
+  const etaSeconds = useMemo(() => {
+    if (downloadSpeedBps <= 0 || remainingBytes <= 0) {
+      return null;
+    }
+    return Math.ceil(remainingBytes / downloadSpeedBps);
+  }, [downloadSpeedBps, remainingBytes]);
+
+  const hasParseFailure = useMemo(() => {
+    const allErrorText = [status.error, ...taskList.map((task) => task.error)]
+      .join(" ")
+      .toLowerCase();
+    return (
+      allErrorText.includes("protobuf parsing failed") ||
+      allErrorText.includes("invalid protobuf") ||
+      allErrorText.includes("verify_embedding") ||
+      allErrorText.includes("verify_reranker")
+    );
+  }, [status.error, taskList]);
 
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -143,6 +199,19 @@ export function ModelDownloadCard({
           </dd>
         </div>
         <div>
+          <dt className="text-slate-500">Download Speed</dt>
+          <dd data-testid="model-download-speed" className="font-medium text-slate-900">
+            {downloadSpeedBps > 0 ? `${formatBytes(downloadSpeedBps)}/s` : "-"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-slate-500">Remaining Size</dt>
+          <dd data-testid="model-download-remaining-size" className="font-medium text-slate-900">
+            {totalBytes > 0 ? formatBytes(remainingBytes) : "-"}
+            {etaSeconds ? ` (ETA ${formatEta(etaSeconds)})` : ""}
+          </dd>
+        </div>
+        <div>
           <dt className="text-slate-500">Retry</dt>
           <dd data-testid="model-download-retry" className="font-medium text-slate-900">
             attempt {status.retry.attempt}/{status.retry.maxAttempts}
@@ -166,6 +235,27 @@ export function ModelDownloadCard({
                   <li key={task.id} className="break-all">
                     {task.id} | {task.model} | {task.state} | {task.progressPct}%
                     {task.error ? ` | ${task.error}` : ""}
+                    {status.phase === "failed" && task.state === "failed" && hasParseFailure ? (
+                      <button
+                        type="button"
+                        className="ml-2 rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                        onClick={() => {
+                          void redownloadModel(task.id).then((result) => {
+                            if (!result) {
+                              setRetryMessage("Redownload request failed.");
+                              return;
+                            }
+                            setRetryMessage(
+                              result.ok
+                                ? `Redownload started for ${task.id}.`
+                                : `Redownload not started: ${result.reason}`,
+                            );
+                          });
+                        }}
+                      >
+                        Redownload
+                      </button>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -175,4 +265,29 @@ export function ModelDownloadCard({
       </dl>
     </article>
   );
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  const digits = size >= 100 || unit === 0 ? 0 : size >= 10 ? 1 : 2;
+  return `${size.toFixed(digits)} ${units[unit]}`;
+}
+
+function formatEta(seconds: number) {
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  if (seconds < 3600) {
+    return `${Math.ceil(seconds / 60)}m`;
+  }
+  return `${Math.ceil(seconds / 3600)}h`;
 }

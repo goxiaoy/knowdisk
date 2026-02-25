@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  isModelParseErrorMessage,
   resolveRangeNotSatisfiableStrategy,
   selectPreferredRepoFiles,
 } from "./model-download.service";
@@ -36,4 +37,10 @@ test("selectPreferredRepoFiles keeps required files and onnx/model.onnx sidecars
     "onnx/model.onnx",
     "onnx/model.onnx_data",
   ]);
+});
+
+test("isModelParseErrorMessage detects parse/integrity failures", () => {
+  expect(isModelParseErrorMessage("Protobuf parsing failed")).toBe(true);
+  expect(isModelParseErrorMessage("Invalid Protobuf buffer")).toBe(true);
+  expect(isModelParseErrorMessage("network timeout")).toBe(false);
 });

@@ -61,5 +61,8 @@ export type ModelDownloadService = {
   getLocalEmbeddingExtractor: () => Promise<LocalEmbeddingExtractor>;
   getLocalRerankerRuntime: () => Promise<LocalRerankerRuntime>;
   retryNow: () => Promise<{ ok: boolean; reason: string }>;
+  redownloadModel: (
+    taskId: "embedding-local" | "reranker-local",
+  ) => Promise<{ ok: boolean; reason: string }>;
   getStatus: () => ModelDownloadStatusStore;
 };

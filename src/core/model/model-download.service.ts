@@ -94,6 +94,14 @@ export function resolveRangeNotSatisfiableStrategy(
   return "restart";
 }
 
+export function isModelParseErrorMessage(message: string): boolean {
+  const text = message.toLowerCase();
+  return (
+    text.includes("protobuf parsing failed") ||
+    text.includes("invalid protobuf")
+  );
+}
+
 const EMPTY_STATUS: ModelDownloadStatus = {
   phase: "idle",
   triggeredBy: "",
@@ -127,10 +135,22 @@ export function createModelDownloadService(
     Map<string, { loaded: number; total: number }>
   >();
   const readyGuards = new Map<string, Promise<void>>();
-  const embeddingRuntimeGuards = new Map<string, Promise<LocalEmbeddingExtractor>>();
-  const rerankerRuntimeGuards = new Map<string, Promise<LocalRerankerRuntime>>();
-  const embeddingAcquireGuards = new Map<string, Promise<LocalEmbeddingExtractor>>();
-  const rerankerAcquireGuards = new Map<string, Promise<LocalRerankerRuntime>>();
+  const embeddingRuntimeGuards = new Map<
+    string,
+    Promise<LocalEmbeddingExtractor>
+  >();
+  const rerankerRuntimeGuards = new Map<
+    string,
+    Promise<LocalRerankerRuntime>
+  >();
+  const embeddingAcquireGuards = new Map<
+    string,
+    Promise<LocalEmbeddingExtractor>
+  >();
+  const rerankerAcquireGuards = new Map<
+    string,
+    Promise<LocalRerankerRuntime>
+  >();
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFailedRequest: DownloadRequest | null = null;
 
@@ -168,7 +188,9 @@ export function createModelDownloadService(
       return;
     }
     const delayMs =
-      MODEL_RETRY_BACKOFF_MS[Math.min(nextAttempt - 1, MODEL_RETRY_BACKOFF_MS.length - 1)]!;
+      MODEL_RETRY_BACKOFF_MS[
+        Math.min(nextAttempt - 1, MODEL_RETRY_BACKOFF_MS.length - 1)
+      ]!;
     const nextRetryAt = new Date(Date.now() + delayMs).toISOString();
     updateStatus((current) => ({
       ...current,
@@ -198,13 +220,34 @@ export function createModelDownloadService(
     return join(cacheDir, model);
   }
 
-  function getLocalModelCacheDir(cfg: AppConfig, kind: "embedding" | "reranker") {
+  async function clearSpecModelCache(spec: LocalTaskSpec) {
+    const modelRoot = toModelRoot(spec.cacheDir, spec.model);
+    await rm(modelRoot, {
+      recursive: true,
+      force: true,
+    });
+    taskFileStats.delete(spec.id);
+    const key = guardKey(spec);
+    readyGuards.delete(key);
+    embeddingRuntimeGuards.delete(key);
+    rerankerRuntimeGuards.delete(key);
+    embeddingAcquireGuards.delete(key);
+    rerankerAcquireGuards.delete(key);
+  }
+
+  function getLocalModelCacheDir(
+    cfg: AppConfig,
+    kind: "embedding" | "reranker",
+  ) {
     return join(cfg.model.cacheDir, kind);
   }
 
   function buildSpecs(cfg: AppConfig, scope: DownloadScope): LocalTaskSpec[] {
     const specs: LocalTaskSpec[] = [];
-    if ((scope === "all" || scope === "embedding-local") && cfg.embedding.provider === "local") {
+    if (
+      (scope === "all" || scope === "embedding-local") &&
+      cfg.embedding.provider === "local"
+    ) {
       specs.push({
         id: "embedding-local",
         model: cfg.embedding.local.model,
@@ -231,10 +274,7 @@ export function createModelDownloadService(
     return specs;
   }
 
-  function pickSpec(
-    cfg: AppConfig,
-    id: LocalTaskSpec["id"],
-  ): LocalTaskSpec {
+  function pickSpec(cfg: AppConfig, id: LocalTaskSpec["id"]): LocalTaskSpec {
     const scope: DownloadScope =
       id === "embedding-local" ? "embedding-local" : "reranker-local";
     const specs = buildSpecs(cfg, scope);
@@ -245,8 +285,8 @@ export function createModelDownloadService(
     return found;
   }
 
-  function buildTasksFromSpecs(specs: LocalTaskSpec[]): ModelDownloadTask[] {
-    return specs.map((spec) => ({
+  function makeTaskFromSpec(spec: LocalTaskSpec): ModelDownloadTask {
+    return {
       id: spec.id,
       model: spec.model,
       provider: spec.provider,
@@ -255,33 +295,16 @@ export function createModelDownloadService(
       downloadedBytes: 0,
       totalBytes: 0,
       error: "",
-    }));
+    };
   }
 
-  function toTaskStruct(tasks: ModelDownloadTask[]): ModelDownloadTasks {
-    let embedding: ModelDownloadTask | null = null;
-    let reranker: ModelDownloadTask | null = null;
-    for (const task of tasks) {
-      if (task.id === "embedding-local") {
-        embedding = task;
-        continue;
-      }
-      if (task.id === "reranker-local") {
-        reranker = task;
-      }
-    }
-    return { embedding, reranker };
-  }
-
-  function taskStructToList(tasks: ModelDownloadTasks): ModelDownloadTask[] {
-    const result: ModelDownloadTask[] = [];
-    if (tasks.embedding) {
-      result.push(tasks.embedding);
-    }
-    if (tasks.reranker) {
-      result.push(tasks.reranker);
-    }
-    return result;
+  function buildTasksFromSpecs(specs: LocalTaskSpec[]): ModelDownloadTasks {
+    const embeddingSpec = specs.find((spec) => spec.id === "embedding-local") ?? null;
+    const rerankerSpec = specs.find((spec) => spec.id === "reranker-local") ?? null;
+    return {
+      embedding: embeddingSpec ? makeTaskFromSpec(embeddingSpec) : null,
+      reranker: rerankerSpec ? makeTaskFromSpec(rerankerSpec) : null,
+    };
   }
 
   function updateTask(
@@ -289,9 +312,18 @@ export function createModelDownloadService(
     updater: (current: ModelDownloadTask) => ModelDownloadTask,
   ) {
     updateStatus((current) => {
-      const currentTasks = taskStructToList(current.tasks);
-      const tasks = currentTasks.map((task) =>
-        task.id === id ? updater(task) : task,
+      const nextTasks: ModelDownloadTasks = {
+        embedding:
+          current.tasks.embedding && current.tasks.embedding.id === id
+            ? updater(current.tasks.embedding)
+            : current.tasks.embedding,
+        reranker:
+          current.tasks.reranker && current.tasks.reranker.id === id
+            ? updater(current.tasks.reranker)
+            : current.tasks.reranker,
+      };
+      const tasks = [nextTasks.embedding, nextTasks.reranker].filter(
+        (task): task is ModelDownloadTask => task !== null,
       );
       const weightedByBytes = computeWeightedProgressByBytes(tasks);
       const fallbackByTaskProgress = tasks.length
@@ -300,7 +332,9 @@ export function createModelDownloadService(
       const fallbackByCompletion = computeProgressByCompletion(tasks);
       let nextProgress =
         weightedByBytes ??
-        (fallbackByCompletion > 0 ? fallbackByCompletion : fallbackByTaskProgress);
+        (fallbackByCompletion > 0
+          ? fallbackByCompletion
+          : fallbackByTaskProgress);
       if (weightedByBytes !== null) {
         const hasUnknownUnfinished = tasks.some(
           (task) =>
@@ -324,11 +358,8 @@ export function createModelDownloadService(
       }
       return {
         ...current,
-        tasks: toTaskStruct(tasks),
-        progressPct: Math.max(
-          current.progressPct,
-          toProgressPct(nextProgress),
-        ),
+        tasks: nextTasks,
+        progressPct: Math.max(current.progressPct, toProgressPct(nextProgress)),
       };
     });
   }
@@ -340,7 +371,8 @@ export function createModelDownloadService(
     const loaded = Math.max(0, payload.loaded);
     const total = Math.max(0, payload.total);
     const statsByFile =
-      taskFileStats.get(id) ?? new Map<string, { loaded: number; total: number }>();
+      taskFileStats.get(id) ??
+      new Map<string, { loaded: number; total: number }>();
     taskFileStats.set(id, statsByFile);
     const prev = statsByFile.get(payload.file);
     statsByFile.set(payload.file, {
@@ -356,12 +388,12 @@ export function createModelDownloadService(
     updateTask(id, (task) => ({
       ...task,
       state: "downloading",
-      downloadedBytes: Math.max(task.downloadedBytes, cumulative.downloadedBytes),
-      totalBytes: Math.max(task.totalBytes, cumulative.totalBytes),
-      progressPct: Math.max(
-        task.progressPct,
-        toProgressPct(bytesRatio * 100),
+      downloadedBytes: Math.max(
+        task.downloadedBytes,
+        cumulative.downloadedBytes,
       ),
+      totalBytes: Math.max(task.totalBytes, cumulative.totalBytes),
+      progressPct: Math.max(task.progressPct, toProgressPct(bytesRatio * 100)),
     }));
   }
 
@@ -377,12 +409,12 @@ export function createModelDownloadService(
         : 0;
     updateTask(id, (task) => ({
       ...task,
-      downloadedBytes: Math.max(task.downloadedBytes, cumulative.downloadedBytes),
-      totalBytes: Math.max(task.totalBytes, cumulative.totalBytes),
-      progressPct: Math.max(
-        task.progressPct,
-        toProgressPct(ratio * 100),
+      downloadedBytes: Math.max(
+        task.downloadedBytes,
+        cumulative.downloadedBytes,
       ),
+      totalBytes: Math.max(task.totalBytes, cumulative.totalBytes),
+      progressPct: Math.max(task.progressPct, toProgressPct(ratio * 100)),
       state:
         task.state === "ready" || task.state === "failed"
           ? task.state
@@ -402,7 +434,9 @@ export function createModelDownloadService(
     const apiUrl = `${normalizeHost(spec.hfEndpoint)}/api/models/${spec.model}`;
     const response = await fetch(apiUrl);
     if (!response.ok) {
-      throw new Error(`Failed to list model files: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Failed to list model files: ${response.status} ${response.statusText}`,
+      );
     }
     const payload = (await response.json()) as RepoInfoResponse;
     const files = selectPreferredRepoFiles(payload.siblings ?? []);
@@ -555,8 +589,11 @@ export function createModelDownloadService(
     }
 
     const contentLength = Number(response.headers.get("content-length") ?? "0");
-    const parsedTotal = parseContentRangeTotal(response.headers.get("content-range"));
-    const totalBytes = parsedTotal ?? (contentLength > 0 ? startOffset + contentLength : 0);
+    const parsedTotal = parseContentRangeTotal(
+      response.headers.get("content-range"),
+    );
+    const totalBytes =
+      parsedTotal ?? (contentLength > 0 ? startOffset + contentLength : 0);
     onFileProgress({ file, loaded: startOffset, total: totalBytes });
     logger.debug(
       {
@@ -693,13 +730,13 @@ export function createModelDownloadService(
       if (total && total > 0) {
         logger.debug(
           {
-              subsystem: "models",
-              taskId: meta.taskId,
-              model: meta.model,
-              file: meta.file,
-              method: "RANGE",
-              bytes: total,
-            },
+            subsystem: "models",
+            taskId: meta.taskId,
+            model: meta.model,
+            file: meta.file,
+            method: "RANGE",
+            bytes: total,
+          },
           "model file size probed",
         );
         return total;
@@ -708,13 +745,13 @@ export function createModelDownloadService(
       if (Number.isFinite(len) && len > 0) {
         logger.debug(
           {
-              subsystem: "models",
-              taskId: meta.taskId,
-              model: meta.model,
-              file: meta.file,
-              method: "RANGE",
-              bytes: len,
-            },
+            subsystem: "models",
+            taskId: meta.taskId,
+            model: meta.model,
+            file: meta.file,
+            method: "RANGE",
+            bytes: len,
+          },
           "model file size probed",
         );
         return len;
@@ -743,7 +780,10 @@ export function createModelDownloadService(
     return 0;
   }
 
-  async function initializeTaskFileStats(spec: LocalTaskSpec, files: RepoFile[]) {
+  async function initializeTaskFileStats(
+    spec: LocalTaskSpec,
+    files: RepoFile[],
+  ) {
     const statsByFile =
       taskFileStats.get(spec.id) ??
       new Map<string, { loaded: number; total: number }>();
@@ -769,10 +809,10 @@ export function createModelDownloadService(
           file.size > 0
             ? file.size
             : await probeRemoteFileSize(fileUrl, {
-              taskId: spec.id,
-              model: spec.model,
-              file: file.path,
-            });
+                taskId: spec.id,
+                model: spec.model,
+                file: file.path,
+              });
         const total = Math.max(loaded, probed);
         statsByFile.set(file.path, { loaded, total });
       }),
@@ -780,10 +820,7 @@ export function createModelDownloadService(
     syncTaskProgressFromStats(spec.id);
   }
 
-  async function openPartWriterWithRetry(
-    partPath: string,
-    flags: "a" | "w",
-  ) {
+  async function openPartWriterWithRetry(partPath: string, flags: "a" | "w") {
     try {
       return await openPartWriter(partPath, flags);
     } catch (error) {
@@ -839,13 +876,15 @@ export function createModelDownloadService(
     opts?: { localFilesOnly?: boolean },
   ): Promise<LocalEmbeddingExtractor> {
     const transformers = await import("@huggingface/transformers");
-    const env = (transformers as unknown as {
-      env?: {
-        allowRemoteModels?: boolean;
-        remoteHost?: string;
-        cacheDir?: string;
-      };
-    }).env;
+    const env = (
+      transformers as unknown as {
+        env?: {
+          allowRemoteModels?: boolean;
+          remoteHost?: string;
+          cacheDir?: string;
+        };
+      }
+    ).env;
     if (env) {
       env.allowRemoteModels = !opts?.localFilesOnly;
       env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
@@ -869,13 +908,15 @@ export function createModelDownloadService(
     opts?: { localFilesOnly?: boolean },
   ): Promise<LocalRerankerRuntime> {
     const transformers = await import("@huggingface/transformers");
-    const env = (transformers as unknown as {
-      env?: {
-        allowRemoteModels?: boolean;
-        remoteHost?: string;
-        cacheDir?: string;
-      };
-    }).env;
+    const env = (
+      transformers as unknown as {
+        env?: {
+          allowRemoteModels?: boolean;
+          remoteHost?: string;
+          cacheDir?: string;
+        };
+      }
+    ).env;
     if (env) {
       env.allowRemoteModels = !opts?.localFilesOnly;
       env.remoteHost = normalizeHost(spec.hfEndpoint) + "/";
@@ -911,7 +952,9 @@ export function createModelDownloadService(
             model: string,
             opts: { quantized: boolean; local_files_only?: boolean },
           ) => Promise<{
-            (inputs: unknown): Promise<{ logits?: { data?: ArrayLike<number> } }>;
+            (
+              inputs: unknown,
+            ): Promise<{ logits?: { data?: ArrayLike<number> } }>;
           }>;
         };
       }
@@ -1014,7 +1057,7 @@ export function createModelDownloadService(
     const tasks = buildTasksFromSpecs(specs);
     taskFileStats.clear();
 
-    if (tasks.length === 0) {
+    if (!tasks.embedding && !tasks.reranker) {
       updateStatus((current) => ({
         ...current,
         phase: "completed",
@@ -1037,6 +1080,10 @@ export function createModelDownloadService(
       return;
     }
 
+    const taskList = [tasks.embedding, tasks.reranker].filter(
+      (task): task is ModelDownloadTask => task !== null,
+    );
+
     updateStatus((current) => ({
       phase: "verifying",
       triggeredBy: req.reason,
@@ -1044,7 +1091,7 @@ export function createModelDownloadService(
       lastFinishedAt: "",
       progressPct: 0,
       error: "",
-      tasks: toTaskStruct(tasks),
+      tasks,
       retry: {
         ...current.retry,
         maxAttempts: MODEL_RETRY_MAX_ATTEMPTS,
@@ -1055,16 +1102,19 @@ export function createModelDownloadService(
       {
         subsystem: "models",
         reason: req.reason,
-        tasks: tasks.map((task) => ({ id: task.id, model: task.model })),
+        tasks: taskList.map((task) => ({ id: task.id, model: task.model })),
       },
       "Model download started",
     );
 
     try {
+      const readiness = await Promise.all(
+        specs.map((spec) => isSpecReady(spec)),
+      );
       const missing: LocalTaskSpec[] = [];
-      for (const spec of specs) {
-        const ready = await isSpecReady(spec);
-        if (ready) {
+      for (let i = 0; i < specs.length; i += 1) {
+        const spec = specs[i]!;
+        if (readiness[i]) {
           updateTask(spec.id, (task) => ({
             ...task,
             state: "ready",
@@ -1121,11 +1171,16 @@ export function createModelDownloadService(
         phase: "failed",
         lastFinishedAt: new Date().toISOString(),
         error: message,
-        tasks: toTaskStruct(taskStructToList(current.tasks).map((task) =>
-          task.state === "ready"
-            ? task
-            : { ...task, state: "failed", error: message },
-        )),
+        tasks: {
+          embedding:
+            current.tasks.embedding && current.tasks.embedding.state !== "ready"
+              ? { ...current.tasks.embedding, state: "failed", error: message }
+              : current.tasks.embedding,
+          reranker:
+            current.tasks.reranker && current.tasks.reranker.state !== "ready"
+              ? { ...current.tasks.reranker, state: "failed", error: message }
+              : current.tasks.reranker,
+        },
       }));
       lastFailedRequest = req;
       if (isRetryableModelError(error)) {
@@ -1140,8 +1195,7 @@ export function createModelDownloadService(
           },
         }));
       }
-      const loadError =
-        error instanceof ModelLoadError ? error : null;
+      const loadError = error instanceof ModelLoadError ? error : null;
       logger.error(
         {
           subsystem: "models",
@@ -1297,6 +1351,32 @@ export function createModelDownloadService(
         return { ok: false, reason: "manual_retry_failed" };
       }
     },
+    async redownloadModel(taskId) {
+      const cfg = configService.getConfig();
+      const spec = pickSpec(cfg, taskId);
+      try {
+        clearRetryTimer();
+        await clearSpecModelCache(spec);
+        await enqueueAndWait({
+          cfg,
+          reason: "manual_redownload",
+          scope:
+            taskId === "embedding-local" ? "embedding-local" : "reranker-local",
+        });
+        return { ok: true, reason: "manual_redownload_triggered" };
+      } catch (error) {
+        logger.error(
+          {
+            subsystem: "models",
+            taskId,
+            model: spec.model,
+            error: String(error),
+          },
+          "model redownload failed",
+        );
+        return { ok: false, reason: "manual_redownload_failed" };
+      }
+    },
     getStatus() {
       return {
         getSnapshot() {
@@ -1330,7 +1410,10 @@ function computeWeightedProgressByBytes(tasks: ModelDownloadTask[]) {
   if (tasksWithTotals.length === 0) {
     return null;
   }
-  const totalBytes = tasksWithTotals.reduce((sum, task) => sum + task.totalBytes, 0);
+  const totalBytes = tasksWithTotals.reduce(
+    (sum, task) => sum + task.totalBytes,
+    0,
+  );
   if (totalBytes <= 0) {
     return null;
   }
@@ -1429,7 +1512,10 @@ export function selectPreferredRepoFiles(
     )
     .map((item) => ({
       path: item.rfilename,
-      size: Number.isFinite(item.size) && (item.size ?? 0) > 0 ? Number(item.size) : 0,
+      size:
+        Number.isFinite(item.size) && (item.size ?? 0) > 0
+          ? Number(item.size)
+          : 0,
     }));
 }
 
@@ -1443,11 +1529,7 @@ async function cleanupPartFilesForRequest(
     req.cfg.embedding.provider === "local"
   ) {
     roots.push(
-      join(
-        req.cfg.model.cacheDir,
-        "embedding",
-        req.cfg.embedding.local.model,
-      ),
+      join(req.cfg.model.cacheDir, "embedding", req.cfg.embedding.local.model),
     );
   }
   if (
@@ -1456,11 +1538,7 @@ async function cleanupPartFilesForRequest(
     req.cfg.reranker.provider === "local"
   ) {
     roots.push(
-      join(
-        req.cfg.model.cacheDir,
-        "reranker",
-        req.cfg.reranker.local.model,
-      ),
+      join(req.cfg.model.cacheDir, "reranker", req.cfg.reranker.local.model),
     );
   }
 
@@ -1469,10 +1547,7 @@ async function cleanupPartFilesForRequest(
   }
 }
 
-async function removePartFilesRecursively(
-  root: string,
-  logger: LoggerService,
-) {
+async function removePartFilesRecursively(root: string, logger: LoggerService) {
   let entries;
   try {
     entries = await readdir(root, { withFileTypes: true });
