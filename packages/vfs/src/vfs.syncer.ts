@@ -1,6 +1,7 @@
 import { existsSync, createWriteStream, rmSync, statSync } from "node:fs";
 import { mkdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import pino, { type Logger } from "pino";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsRepository } from "./vfs.repository.types";
 import type { ListChildrenItem } from "./vfs.service.types";
@@ -47,12 +48,28 @@ export function createVfsSyncer(input: {
   repository: VfsRepository;
   contentRootParent: string;
   nowMs?: () => number;
+  logger?: Logger;
 }): VfsSyncer {
   const nowMs = input.nowMs ?? (() => Date.now());
+  const logger =
+    input.logger ??
+    pino({
+      name: "knowdisk.vfs.syncer",
+    });
   const listeners = new Set<(event: VfsSyncerEvent) => void>();
   let watchClose: (() => Promise<void>) | null = null;
   let watchQueue: Promise<void> = Promise.resolve();
   const emit = (event: VfsSyncerEvent) => {
+    if (event.type === "status") {
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          phase: event.payload.phase,
+          isSyncing: event.payload.isSyncing,
+        },
+        "syncer status changed",
+      );
+    }
     for (const listener of listeners) {
       listener(event);
     }
@@ -213,6 +230,10 @@ export function createVfsSyncer(input: {
 
       const walked = await walkAllFiles();
       const walkedItems = [...walked.values()];
+      logger.info(
+        { mountId: input.mount.mountId, discoveredCount: walkedItems.length },
+        "syncer discovered remote metadata",
+      );
 
       let processed = 0;
       let added = 0;
@@ -278,6 +299,16 @@ export function createVfsSyncer(input: {
           deleted: deletedRows.length,
         },
       });
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          total: walkedItems.length,
+          added,
+          updated,
+          deleted: deletedRows.length,
+        },
+        "syncer metadata reconcile completed",
+      );
 
       await syncContent(walkedItems, { restartSourceRefs });
       emit({ type: "status", payload: { isSyncing: false, phase: "idle" } });
@@ -287,6 +318,7 @@ export function createVfsSyncer(input: {
       if (!input.provider.watch || watchClose) {
         return;
       }
+      logger.info({ mountId: input.mount.mountId }, "syncer watch started");
       const active = await input.provider.watch({
         mount: input.mount,
         onEvent: (event) => {
@@ -311,6 +343,7 @@ export function createVfsSyncer(input: {
       await watchQueue;
       await watchClose();
       watchClose = null;
+      logger.info({ mountId: input.mount.mountId }, "syncer watch stopped");
     },
 
     subscribe(listener) {
@@ -326,6 +359,14 @@ export function createVfsSyncer(input: {
     sourceRef: string;
     parentSourceRef: string | null;
   }): Promise<void> {
+    logger.info(
+      {
+        mountId: input.mount.mountId,
+        type: event.type,
+        sourceRef: event.sourceRef,
+      },
+      "syncer watch event received",
+    );
     const now = nowMs();
     const all = input.repository.listNodesByMountId(input.mount.mountId);
     const prev = all.find((node) => node.sourceRef === event.sourceRef) ?? null;

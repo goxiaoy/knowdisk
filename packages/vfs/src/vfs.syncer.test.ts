@@ -8,6 +8,19 @@ import { createVfsSyncer } from "./vfs.syncer";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsMount } from "./vfs.types";
 
+function createMockLogger() {
+  const records: Array<{ level: "info" | "warn" | "error" | "debug"; msg: string }> = [];
+  return {
+    logger: {
+      info: (_obj: unknown, msg?: string) => records.push({ level: "info", msg: msg ?? "" }),
+      warn: (_obj: unknown, msg?: string) => records.push({ level: "warn", msg: msg ?? "" }),
+      error: (_obj: unknown, msg?: string) => records.push({ level: "error", msg: msg ?? "" }),
+      debug: (_obj: unknown, msg?: string) => records.push({ level: "debug", msg: msg ?? "" }),
+    },
+    records,
+  };
+}
+
 function makeMount(extra?: Partial<VfsMount>): VfsMount {
   return {
     mountId: "m1",
@@ -287,6 +300,38 @@ describe("vfs syncer", () => {
       }, 2000);
       expect(deleted).toBe(true);
       await syncer.stopWatching();
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fullSync logs status transitions", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-logs-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount();
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: false },
+        async listChildren() {
+          return { items: [] };
+        },
+      };
+      const mock = createMockLogger();
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        logger: mock.logger as never,
+      });
+      await syncer.fullSync();
+      expect(
+        mock.records.some(
+          (record) => record.level === "info" && record.msg.includes("syncer status changed"),
+        ),
+      ).toBe(true);
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });

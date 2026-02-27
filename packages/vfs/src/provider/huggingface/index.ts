@@ -1,6 +1,7 @@
 import type { VfsProviderAdapter } from "../../vfs.provider.types";
 import type { ListChildrenItem } from "../../vfs.service.types";
 import type { VfsMount } from "../../vfs.types";
+import pino, { type Logger } from "pino";
 
 type HuggingFaceRepoResponse = {
   siblings?: Array<{ rfilename?: string; size?: number }>;
@@ -8,6 +9,7 @@ type HuggingFaceRepoResponse = {
 
 type CreateHuggingFaceVfsProviderDeps = {
   fetch?: typeof fetch;
+  logger?: Logger;
 };
 
 const HUGGINGFACE_FILE_WHITELIST = new Set([
@@ -30,11 +32,26 @@ export function createHuggingFaceVfsProvider(
   deps?: CreateHuggingFaceVfsProviderDeps,
 ): VfsProviderAdapter {
   const fetchFn = deps?.fetch ?? fetch;
+  const logger =
+    deps?.logger ??
+    pino({
+      name: "knowdisk.vfs.provider.huggingface",
+    });
   return {
     type: "huggingface",
     capabilities: { watch: false },
     async listChildren(input) {
       const config = parseMountConfig(input.mount);
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          model: config.model,
+          parentSourceRef: input.parentSourceRef,
+          limit: input.limit,
+          cursor: input.cursor,
+        },
+        "huggingface listChildren",
+      );
       const apiUrl = `${normalizeHost(config.endpoint)}/api/models/${encodePathSegment(config.model)}`;
       const response = await fetchFn(apiUrl);
       if (!response.ok) {
@@ -63,6 +80,16 @@ export function createHuggingFaceVfsProvider(
     },
     async createReadStream(input) {
       const config = parseMountConfig(input.mount);
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          model: config.model,
+          sourceRef: input.sourceRef,
+          offset: input.offset,
+          length: input.length,
+        },
+        "huggingface createReadStream",
+      );
       if (!isWhitelistedFile(input.sourceRef)) {
         throw new Error(`sourceRef is not allowed by whitelist: "${input.sourceRef}"`);
       }
@@ -84,6 +111,14 @@ export function createHuggingFaceVfsProvider(
     },
     async getMetadata(input) {
       const config = parseMountConfig(input.mount);
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          model: config.model,
+          sourceRef: input.sourceRef,
+        },
+        "huggingface getMetadata",
+      );
       if (!isWhitelistedFile(input.sourceRef)) {
         return null;
       }
@@ -111,6 +146,14 @@ export function createHuggingFaceVfsProvider(
           : Number.isFinite(found.size) && (found.size ?? 0) >= 0
             ? Number(found.size)
             : undefined;
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          sourceRef: input.sourceRef,
+          size: size ?? 0,
+        },
+        "huggingface getMetadata resolved",
+      );
       return toListChildrenItem(found.rfilename!, size);
     },
   };

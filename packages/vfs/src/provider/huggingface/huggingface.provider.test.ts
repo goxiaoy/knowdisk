@@ -2,6 +2,19 @@ import { describe, expect, test } from "bun:test";
 import type { VfsMount } from "../../vfs.types";
 import { createHuggingFaceVfsProvider } from "./index";
 
+function createMockLogger() {
+  const records: Array<{ level: "info" | "warn" | "error" | "debug"; msg: string }> = [];
+  return {
+    logger: {
+      info: (_obj: unknown, msg?: string) => records.push({ level: "info", msg: msg ?? "" }),
+      warn: (_obj: unknown, msg?: string) => records.push({ level: "warn", msg: msg ?? "" }),
+      error: (_obj: unknown, msg?: string) => records.push({ level: "error", msg: msg ?? "" }),
+      debug: (_obj: unknown, msg?: string) => records.push({ level: "debug", msg: msg ?? "" }),
+    },
+    records,
+  };
+}
+
 function makeMount(providerExtra: Record<string, unknown>): VfsMount {
   return {
     mountId: "m1",
@@ -210,5 +223,36 @@ describe("huggingface vfs provider", () => {
       sourceRef: "README.md",
     });
     expect(denied).toBeNull();
+  });
+
+  test("writes provider operation logs", async () => {
+    const mockFetch: typeof fetch = (async () => {
+      return new Response(
+        JSON.stringify({ siblings: [{ rfilename: "config.json", size: 10 }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const mock = createMockLogger();
+    const mount = makeMount({
+      endpoint: "https://huggingface.co",
+      model: "org/repo",
+    });
+    const provider = createHuggingFaceVfsProvider(mount, {
+      fetch: mockFetch,
+      logger: mock.logger as never,
+    });
+
+    await provider.listChildren({
+      mount,
+      parentSourceRef: null,
+      limit: 10,
+    });
+
+    expect(
+      mock.records.some(
+        (record) =>
+          record.level === "info" && record.msg.includes("huggingface listChildren"),
+      ),
+    ).toBe(true);
   });
 });

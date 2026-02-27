@@ -3,16 +3,38 @@ import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
+import pino, { type Logger } from "pino";
 import type { VfsProviderAdapter } from "../../vfs.provider.types";
 import type { ListChildrenItem } from "../../vfs.service.types";
 import type { VfsMount, VfsMountConfig } from "../../vfs.types";
 
-export function createLocalVfsProvider(mount: VfsMount): VfsProviderAdapter {
+type CreateLocalVfsProviderDeps = {
+  logger?: Logger;
+};
+
+export function createLocalVfsProvider(
+  mount: VfsMount,
+  deps?: CreateLocalVfsProviderDeps,
+): VfsProviderAdapter {
+  const logger =
+    deps?.logger ??
+    pino({
+      name: "knowdisk.vfs.provider.local",
+    });
   return {
     type: "local",
     capabilities: { watch: true },
     async listChildren(input) {
       const config = parseLocalMount(input.mount);
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          parentSourceRef: input.parentSourceRef,
+          limit: input.limit,
+          cursor: input.cursor,
+        },
+        "local listChildren",
+      );
       const dirPath = resolveRefPath(config.directory, input.parentSourceRef);
       const entries = await readdir(dirPath, { withFileTypes: true });
       const items: ListChildrenItem[] = [];
@@ -45,6 +67,15 @@ export function createLocalVfsProvider(mount: VfsMount): VfsProviderAdapter {
     },
     async createReadStream(input) {
       const config = parseLocalMount(input.mount);
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          sourceRef: input.sourceRef,
+          offset: input.offset,
+          length: input.length,
+        },
+        "local createReadStream",
+      );
       const filePath = resolveRefPath(config.directory, input.sourceRef);
       const hasOffset = typeof input.offset === "number";
       const hasLength = typeof input.length === "number";
@@ -63,6 +94,13 @@ export function createLocalVfsProvider(mount: VfsMount): VfsProviderAdapter {
     },
     async getMetadata(input) {
       const config = parseLocalMount(input.mount);
+      logger.info(
+        {
+          mountId: input.mount.mountId,
+          sourceRef: input.sourceRef,
+        },
+        "local getMetadata",
+      );
       const targetPath = resolveRefPath(config.directory, input.sourceRef);
       try {
         const targetStat = await stat(targetPath);
@@ -80,12 +118,21 @@ export function createLocalVfsProvider(mount: VfsMount): VfsProviderAdapter {
     },
     async watch(input) {
       const config = parseLocalMount(input.mount as VfsMountConfig);
+      logger.info({ mountId: input.mount.mountId }, "local watch started");
       const watcher = chokidar.watch(config.directory, {
         ignoreInitial: true,
         persistent: true,
       });
       const emit = (type: "add" | "update" | "delete", absPath: string) => {
         const sourceRef = toSourceRef(config.directory, absPath);
+        logger.info(
+          {
+            mountId: input.mount.mountId,
+            type,
+            sourceRef,
+          },
+          "local watch event",
+        );
         input.onEvent({
           type,
           sourceRef,
@@ -103,6 +150,7 @@ export function createLocalVfsProvider(mount: VfsMount): VfsProviderAdapter {
       return {
         close: async () => {
           await watcher.close();
+          logger.info({ mountId: input.mount.mountId }, "local watch stopped");
         },
       };
     },

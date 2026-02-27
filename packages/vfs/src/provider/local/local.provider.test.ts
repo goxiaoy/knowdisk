@@ -6,6 +6,19 @@ import { join } from "node:path";
 import type { VfsMount } from "../../vfs.types";
 import { createLocalVfsProvider } from "./index";
 
+function createMockLogger() {
+  const records: Array<{ level: "info" | "warn" | "error" | "debug"; msg: string }> = [];
+  return {
+    logger: {
+      info: (_obj: unknown, msg?: string) => records.push({ level: "info", msg: msg ?? "" }),
+      warn: (_obj: unknown, msg?: string) => records.push({ level: "warn", msg: msg ?? "" }),
+      error: (_obj: unknown, msg?: string) => records.push({ level: "error", msg: msg ?? "" }),
+      debug: (_obj: unknown, msg?: string) => records.push({ level: "debug", msg: msg ?? "" }),
+    },
+    records,
+  };
+}
+
 function makeMount(directory: string): VfsMount {
   return {
     mountId: "local-1",
@@ -117,6 +130,32 @@ describe("local vfs provider", () => {
       expect(sawAdd).toBe(true);
       expect(sawUpdate).toBe(true);
       expect(sawDelete).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("writes provider operation logs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-logs-"));
+    try {
+      writeFileSync(join(dir, "a.txt"), "alpha");
+      const mount = makeMount(dir);
+      const mock = createMockLogger();
+      const provider = createLocalVfsProvider(mount, {
+        logger: mock.logger as never,
+      });
+
+      await provider.listChildren({
+        mount,
+        parentSourceRef: null,
+        limit: 10,
+      });
+
+      expect(
+        mock.records.some(
+          (record) => record.level === "info" && record.msg.includes("local listChildren"),
+        ),
+      ).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
