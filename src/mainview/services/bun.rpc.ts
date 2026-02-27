@@ -5,6 +5,7 @@ import type { RetrievalResult } from "../../core/retrieval/retrieval.service.typ
 import type { RetrievalDebugResult } from "../../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
 import type { ChatCitation, ChatMessage, ChatSession } from "../../core/chat/chat.repository.types";
+import type { VfsCursor, VfsMountConfig, VfsNode } from "../../core/vfs/vfs.types";
 
 type BridgeRpc = {
   request: {
@@ -31,6 +32,14 @@ type BridgeRpc = {
     retrieve_source_chunks: (params: { sourcePath: string }) => Promise<RetrievalResult[]>;
     list_source_files: () => Promise<string[]>;
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
+    vfs_mount: (params: { config: VfsMountConfig }) => Promise<{ ok: boolean }>;
+    vfs_walk_children: (params: {
+      path: string;
+      limit: number;
+      cursor?: VfsCursor;
+    }) => Promise<{ items: VfsNode[]; nextCursor?: VfsCursor; source: "local" | "remote" }>;
+    vfs_read_markdown: (params: { path: string }) => Promise<{ node: VfsNode; markdown: string }>;
+    vfs_trigger_reconcile: (params: { mountId: string }) => Promise<{ ok: boolean }>;
     install_claude_mcp: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     pick_source_directory_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
     pick_file_path_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
@@ -300,6 +309,58 @@ export async function forceResyncInBun(): Promise<{ ok: boolean; error?: string 
     return await channel.request.force_resync();
   } catch {
     return null;
+  }
+}
+
+export async function mountVfsInBun(config: VfsMountConfig): Promise<boolean> {
+  const channel = await getRpc();
+  if (!channel) return false;
+  try {
+    const result = await channel.request.vfs_mount({ config });
+    return result.ok;
+  } catch (error) {
+    console.error("vfs_mount RPC failed:", error);
+    return false;
+  }
+}
+
+export async function walkVfsChildrenInBun(input: {
+  path: string;
+  limit: number;
+  cursor?: VfsCursor;
+}): Promise<{ items: VfsNode[]; nextCursor?: VfsCursor; source: "local" | "remote" } | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.vfs_walk_children(input);
+  } catch (error) {
+    console.error("vfs_walk_children RPC failed:", error);
+    return null;
+  }
+}
+
+export async function readVfsMarkdownInBun(
+  path: string,
+): Promise<{ node: VfsNode; markdown: string } | null> {
+  const channel = await getRpc();
+  if (!channel) return null;
+  try {
+    return await channel.request.vfs_read_markdown({ path });
+  } catch (error) {
+    console.error("vfs_read_markdown RPC failed:", error);
+    return null;
+  }
+}
+
+export async function triggerVfsReconcileInBun(mountId: string): Promise<boolean> {
+  const channel = await getRpc();
+  if (!channel) return false;
+  try {
+    const result = await channel.request.vfs_trigger_reconcile({ mountId });
+    return result.ok;
+  } catch (error) {
+    console.error("vfs_trigger_reconcile RPC failed:", error);
+    return false;
   }
 }
 

@@ -165,7 +165,7 @@ export function createVfsService(deps: {
     },
 
     async triggerReconcile() {
-      throw new Error("Not implemented");
+      return;
     },
   };
 }
