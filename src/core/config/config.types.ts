@@ -104,6 +104,12 @@ export interface AppConfig {
     provider: ChatProviderId;
     openai: OpenAiChatConfig;
   };
+  vfs: {
+    sync: {
+      debounceMs: number;
+      retryBackoffMs: number[];
+    };
+  };
 }
 
 export type ConfigChangeEvent = {
