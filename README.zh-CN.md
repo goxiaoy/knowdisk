@@ -213,6 +213,11 @@ UI 提供健康与索引状态可视化。
 
 ## 9. 开发命令
 
+Monorepo 说明：
+
+- 当前仓库使用 Bun workspace（`packages/*`）。
+- VFS 核心已拆分到 `packages/vfs`，应用侧通过 `@knowdisk/vfs` 依赖。
+
 ```bash
 bun install
 bun run dev

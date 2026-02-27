@@ -213,6 +213,11 @@ Default runtime root (macOS/Linux):
 
 ## 9. Development
 
+Monorepo note:
+
+- This repo uses Bun workspace packages under `packages/*`.
+- VFS core is extracted to `packages/vfs` and consumed by app/runtime via `@knowdisk/vfs`.
+
 ```bash
 bun install
 bun run dev
