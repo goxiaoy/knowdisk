@@ -5,7 +5,7 @@ import type { RetrievalResult } from "../../core/retrieval/retrieval.service.typ
 import type { RetrievalDebugResult } from "../../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../../core/vector/vector.repository.types";
 import type { ChatCitation, ChatMessage, ChatSession } from "../../core/chat/chat.repository.types";
-import type { VfsCursor, VfsMountConfig, VfsNode } from "../../core/vfs/vfs.types";
+import type { VfsCursor, VfsMountConfig, VfsNode } from "@knowdisk/vfs";
 
 type BridgeRpc = {
   request: {

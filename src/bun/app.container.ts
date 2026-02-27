@@ -32,11 +32,14 @@ import { createChatRepository } from "../core/chat/chat.repository";
 import type { ChatRepository } from "../core/chat/chat.repository.types";
 import { createChatService } from "../core/chat/chat.service";
 import type { ChatService } from "../core/chat/chat.service.types";
-import { createVfsRepository } from "../core/vfs/vfs.repository";
-import type { VfsRepository } from "../core/vfs/vfs.repository.types";
-import { createVfsProviderRegistry, type VfsProviderRegistry } from "../core/vfs/vfs.provider.registry";
-import { createVfsService } from "../core/vfs/vfs.service";
-import type { VfsService } from "../core/vfs/vfs.service.types";
+import {
+  createVfsProviderRegistry,
+  createVfsRepository,
+  createVfsService,
+  type VfsProviderRegistry,
+  type VfsRepository,
+  type VfsService,
+} from "@knowdisk/vfs";
 
 export type AppContainer = {
   loggerService: LoggerService;
