@@ -237,7 +237,7 @@ function registerDependencies(
     }),
   });
   di.register(TOKENS.VfsProviderRegistry, {
-    useFactory: instanceCachingFactory(() => createVfsProviderRegistry()),
+    useFactory: instanceCachingFactory((c) => createVfsProviderRegistry(c)),
   });
   di.register(TOKENS.VfsService, {
     useFactory: instanceCachingFactory((c) =>

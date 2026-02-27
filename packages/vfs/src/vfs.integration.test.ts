@@ -1,7 +1,9 @@
+import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { container as rootContainer } from "tsyringe";
 import { decodeVfsCursorToken } from "./vfs.cursor";
 import { createVfsProviderRegistry } from "./vfs.provider.registry";
 import { createVfsRepository } from "./vfs.repository";
@@ -10,7 +12,7 @@ import { createVfsService } from "./vfs.service";
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-integration-"));
   const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
-  const registry = createVfsProviderRegistry();
+  const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
   const service = createVfsService({ repository: repo, registry, nowMs: () => 1_000 });
   return {
     dir,
@@ -27,10 +29,10 @@ function setup() {
 describe("vfs integration", () => {
   test("mount local folder and page children from metadata", async () => {
     const ctx = setup();
-    await ctx.service.mount({
-      mountId: "m-local",
+    const mount = await ctx.service.mount({
       mountPath: "/abc/local",
       providerType: "local",
+      providerExtra: {},
       syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
@@ -38,7 +40,7 @@ describe("vfs integration", () => {
     ctx.repo.upsertNodes([
       {
         nodeId: "n1",
-        mountId: "m-local",
+        mountId: mount.mountId,
         parentId: null,
         name: "a.md",
         vpath: "/abc/local/a.md",
@@ -54,7 +56,7 @@ describe("vfs integration", () => {
       },
       {
         nodeId: "n2",
-        mountId: "m-local",
+        mountId: mount.mountId,
         parentId: null,
         name: "b.md",
         vpath: "/abc/local/b.md",
@@ -80,7 +82,7 @@ describe("vfs integration", () => {
   test("mount remote mock provider and page children via remote cursor", async () => {
     const ctx = setup();
     let calls = 0;
-    ctx.registry.register({
+    ctx.registry.register("mock-remote", () => ({
       type: "mock-remote",
       capabilities: { watch: false },
       async listChildren(input) {
@@ -111,12 +113,12 @@ describe("vfs integration", () => {
           ],
         };
       },
-    });
+    }));
 
     await ctx.service.mount({
-      mountId: "m-remote",
       mountPath: "/abc/drive",
       providerType: "mock-remote",
+      providerExtra: { token: "remote-token" },
       syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
@@ -142,15 +144,29 @@ describe("vfs integration", () => {
 
   test("triggerReconcile is callable", async () => {
     const ctx = setup();
-    await ctx.service.mount({
-      mountId: "m",
+    const mount = await ctx.service.mount({
       mountPath: "/abc/m",
       providerType: "mock",
+      providerExtra: {},
       syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
-    await expect(ctx.service.triggerReconcile("m")).resolves.toBeUndefined();
+    await expect(ctx.service.triggerReconcile(mount.mountId)).resolves.toBeUndefined();
+    ctx.cleanup();
+  });
+
+  test("mountInternal uses explicit mountId", async () => {
+    const ctx = setup();
+    const mount = await ctx.service.mountInternal("explicit-id", {
+      mountPath: "/abc/explicit",
+      providerType: "mock",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    expect(mount.mountId).toBe("explicit-id");
     ctx.cleanup();
   });
 });

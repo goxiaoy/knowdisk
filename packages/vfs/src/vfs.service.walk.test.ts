@@ -1,7 +1,9 @@
+import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { container as rootContainer } from "tsyringe";
 import { decodeVfsCursorToken } from "./vfs.cursor";
 import { createVfsProviderRegistry } from "./vfs.provider.registry";
 import { createVfsRepository } from "./vfs.repository";
@@ -11,7 +13,7 @@ import type { VfsProviderAdapter } from "./vfs.provider.types";
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-service-"));
   const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
-  const registry = createVfsProviderRegistry();
+  const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
   let nowMs = 1_000;
   const service = createVfsService({
     repository: repo,
@@ -36,12 +38,11 @@ function setup() {
 describe("vfs service walkChildren", () => {
   test("syncMetadata=true: resolves local page and returns local cursor", async () => {
     const ctx = setup();
-    await ctx.service.mount({
-      mountId: "m1",
+    const mount = await ctx.service.mount({
       mountPath: "/abc/drive",
       providerType: "mock-local",
+      providerExtra: {},
       syncMetadata: true,
-      syncContent: "lazy",
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -49,7 +50,7 @@ describe("vfs service walkChildren", () => {
     ctx.repo.upsertNodes([
       {
         nodeId: "n1",
-        mountId: "m1",
+        mountId: mount.mountId,
         parentId: null,
         name: "a.md",
         vpath: "/abc/drive/a.md",
@@ -59,15 +60,13 @@ describe("vfs service walkChildren", () => {
         mtimeMs: 1,
         sourceRef: "s1",
         providerVersion: "v1",
-        contentHash: null,
-        contentState: "missing",
         deletedAtMs: null,
         createdAtMs: 1,
         updatedAtMs: 1,
       },
       {
         nodeId: "n2",
-        mountId: "m1",
+        mountId: mount.mountId,
         parentId: null,
         name: "b.md",
         vpath: "/abc/drive/b.md",
@@ -77,8 +76,6 @@ describe("vfs service walkChildren", () => {
         mtimeMs: 2,
         sourceRef: "s2",
         providerVersion: "v2",
-        contentHash: null,
-        contentState: "missing",
         deletedAtMs: null,
         createdAtMs: 1,
         updatedAtMs: 1,
@@ -105,7 +102,7 @@ describe("vfs service walkChildren", () => {
     let called = 0;
     const adapter: VfsProviderAdapter = {
       type: "mock-remote",
-      capabilities: { watch: false, exportMarkdown: false, downloadRaw: true },
+      capabilities: { watch: false },
       async listChildren() {
         called += 1;
         return {
@@ -125,14 +122,13 @@ describe("vfs service walkChildren", () => {
         };
       },
     };
-    ctx.registry.register(adapter);
+    ctx.registry.register(adapter.type, () => adapter);
 
-    await ctx.service.mount({
-      mountId: "m2",
+    const mount = await ctx.service.mount({
       mountPath: "/abc/s3",
       providerType: "mock-remote",
+      providerExtra: { token: "s3-token" },
       syncMetadata: false,
-      syncContent: "lazy",
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -143,7 +139,7 @@ describe("vfs service walkChildren", () => {
     expect(page.items.map((item) => item.sourceRef)).toEqual(["remote-1"]);
     expect(page.nextCursor?.mode).toBe("remote");
 
-    const local = ctx.repo.listChildrenPageLocal({ mountId: "m2", parentId: null, limit: 10 });
+    const local = ctx.repo.listChildrenPageLocal({ mountId: mount.mountId, parentId: null, limit: 10 });
     expect(local.items.map((item) => item.sourceRef)).toEqual(["remote-1"]);
 
     ctx.cleanup();
@@ -152,9 +148,9 @@ describe("vfs service walkChildren", () => {
   test("syncMetadata=false with fresh cached page and same cursor: returns cache hit", async () => {
     const ctx = setup();
     let called = 0;
-    ctx.registry.register({
+    ctx.registry.register("mock-remote-cache", () => ({
       type: "mock-remote-cache",
-      capabilities: { watch: false, exportMarkdown: false, downloadRaw: true },
+      capabilities: { watch: false },
       async listChildren() {
         called += 1;
         return {
@@ -171,14 +167,13 @@ describe("vfs service walkChildren", () => {
           nextCursor: "cursor-1",
         };
       },
-    });
+    }));
 
     await ctx.service.mount({
-      mountId: "m3",
       mountPath: "/abc/cache",
       providerType: "mock-remote-cache",
+      providerExtra: {},
       syncMetadata: false,
-      syncContent: "lazy",
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
