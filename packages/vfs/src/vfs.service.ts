@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { decodeVfsCursorToken, encodeVfsLocalCursorToken, encodeVfsRemoteCursorToken } from "./vfs.cursor";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
@@ -99,8 +97,6 @@ export function createVfsService(deps: {
           mtimeMs: item.mtimeMs ?? null,
           sourceRef: item.sourceRef,
           providerVersion: item.providerVersion ?? null,
-          contentHash: null,
-          contentState: "missing",
           deletedAtMs: null,
           createdAtMs: nowMs(),
           updatedAtMs: nowMs(),
@@ -124,41 +120,6 @@ export function createVfsService(deps: {
             }
           : undefined,
         source: "remote",
-      };
-    },
-
-    async readMarkdown(path: string) {
-      const resolved = resolveMountByPath(path, mounts);
-      if (!resolved) {
-        throw new Error(`No mount found for path: ${path}`);
-      }
-      const { mount } = resolved;
-      const node = deps.repository.getNodeByVpath(path);
-      if (!node) {
-        throw new Error(`Node not found for path: ${path}`);
-      }
-      if (node.kind !== "file") {
-        throw new Error(`Cannot read markdown from non-file node: ${path}`);
-      }
-
-      const cached = deps.repository.getMarkdownCache(node.nodeId);
-      if (cached && node.contentState === "cached") {
-        return {
-          node,
-          markdown: cached.markdownFull,
-        };
-      }
-
-      const refreshed = await refreshMarkdown({
-        mount,
-        node,
-        registry: deps.registry,
-        repository: deps.repository,
-        nowMs,
-      });
-      return {
-        node: refreshed.node,
-        markdown: refreshed.markdown,
       };
     },
 
@@ -217,102 +178,4 @@ function buildChildPath(parentPath: string, name: string): string {
     return `${parentPath}${name}`;
   }
   return `${parentPath}/${name}`;
-}
-
-async function refreshMarkdown(input: {
-  mount: VfsMountConfig;
-  node: VfsNode;
-  registry: VfsProviderRegistry;
-  repository: VfsRepository;
-  nowMs: () => number;
-}): Promise<{ node: VfsNode; markdown: string }> {
-  const { mount, node, registry, repository, nowMs } = input;
-  const adapter = registry.get(mount.providerType);
-
-  let markdown: string;
-  let generatedBy: "provider_export" | "parser";
-  let providerVersion = node.providerVersion;
-
-  if (adapter.capabilities.exportMarkdown && adapter.exportMarkdown) {
-    const result = await adapter.exportMarkdown({
-      mount,
-      sourceRef: node.sourceRef,
-    });
-    markdown = result.markdown;
-    generatedBy = "provider_export";
-    providerVersion = result.providerVersion ?? providerVersion;
-  } else if (adapter.capabilities.downloadRaw && adapter.downloadRaw) {
-    const result = await adapter.downloadRaw({
-      mount,
-      sourceRef: node.sourceRef,
-    });
-    const raw = await readFile(result.localPath, "utf8");
-    markdown = await parseRawToMarkdown(raw);
-    generatedBy = "parser";
-    providerVersion = result.providerVersion ?? providerVersion;
-  } else {
-    throw new Error(`Provider "${adapter.type}" cannot produce markdown content`);
-  }
-
-  const contentHash = `sha256:${createHash("sha256").update(markdown).digest("hex")}`;
-  const timestamp = nowMs();
-
-  repository.upsertMarkdownCache({
-    nodeId: node.nodeId,
-    markdownFull: markdown,
-    markdownHash: contentHash,
-    generatedBy,
-    updatedAtMs: timestamp,
-  });
-  repository.upsertChunks(chunkMarkdown(node.nodeId, markdown, timestamp));
-
-  const updatedNode: VfsNode = {
-    ...node,
-    providerVersion,
-    contentHash,
-    contentState: "cached",
-    updatedAtMs: timestamp,
-  };
-  repository.upsertNodes([updatedNode]);
-
-  return {
-    node: updatedNode,
-    markdown,
-  };
-}
-
-async function parseRawToMarkdown(rawText: string): Promise<string> {
-  return rawText;
-}
-
-function chunkMarkdown(nodeId: string, markdown: string, updatedAtMs: number) {
-  if (!markdown) {
-    return [];
-  }
-  const chunkSize = 2000;
-  const chunks: Array<{
-    chunkId: string;
-    nodeId: string;
-    seq: number;
-    markdownChunk: string;
-    tokenCount: number | null;
-    chunkHash: string;
-    updatedAtMs: number;
-  }> = [];
-  let seq = 0;
-  for (let cursor = 0; cursor < markdown.length; cursor += chunkSize) {
-    const markdownChunk = markdown.slice(cursor, cursor + chunkSize);
-    const chunkHash = createHash("sha256").update(markdownChunk).digest("hex");
-    chunks.push({
-      chunkId: `${nodeId}:${seq}`,
-      nodeId,
-      seq,
-      markdownChunk,
-      tokenCount: null,
-      chunkHash,
-      updatedAtMs,
-    });
-    seq += 1;
-  }
-  return chunks;
 }

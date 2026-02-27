@@ -1,9 +1,4 @@
-import type {
-  VfsChunk,
-  VfsMarkdownCache,
-  VfsMountConfig,
-  VfsNode,
-} from "./vfs.types";
+import type { VfsMountConfig, VfsNode } from "./vfs.types";
 
 export type VfsMountRow = VfsMountConfig & {
   lastReconcileAtMs: number | null;
@@ -44,12 +39,6 @@ export type VfsRepository = {
   upsertNodes: (rows: VfsNode[]) => void;
   getNodeByVpath: (vpath: string) => VfsNode | null;
   listChildrenPageLocal: (input: ListChildrenPageLocalInput) => ListChildrenPageLocalOutput;
-
-  upsertChunks: (rows: VfsChunk[]) => void;
-  listChunksByNodeId: (nodeId: string) => VfsChunk[];
-
-  upsertMarkdownCache: (row: VfsMarkdownCache) => void;
-  getMarkdownCache: (nodeId: string) => VfsMarkdownCache | null;
 
   upsertPageCache: (row: VfsPageCacheRow) => void;
   getPageCacheIfFresh: (cacheKey: string, nowMs: number) => VfsPageCacheRow | null;

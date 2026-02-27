@@ -2,7 +2,7 @@
 
 Date: 2026-02-26
 Status: Approved
-Scope: Design a provider-mountable virtual file system under `core`, with SQLite as metadata truth and markdown-centric content cache/chunks.
+Scope: Design a provider-mountable virtual file system under `core`, with SQLite as metadata truth for hierarchical browsing and pagination.
 
 ## 1. Confirmed Decisions
 
@@ -20,29 +20,19 @@ Scope: Design a provider-mountable virtual file system under `core`, with SQLite
 - Provider can configure `syncMetadata`:
   - `true`: list from local metadata
   - `false`: list via provider remote pagination API, with page backfill into local metadata cache (TTL)
-- Provider can configure `syncContent`:
-  - `eager`: proactively sync content
-  - `lazy`: fetch on first read
-- Core content representation is markdown.
-  - If provider can export markdown directly, cache markdown.
-  - Otherwise download raw file and convert via parser to markdown, then cache.
-- Version model stores both:
-  - `provider_version`
-  - `content_hash`
+- VFS only owns metadata responsibilities (mount, node tree, pagination, reconcile trigger).
+- Content extraction/rendering/chunking (e.g. markdown) is out of VFS scope.
 
 ## 2. Interface & Types (First-Class)
 
 ```ts
 export type VfsNodeKind = "file" | "folder";
-export type SyncMode = "eager" | "lazy";
-export type ContentState = "missing" | "cached" | "stale";
 
 export interface VfsMountConfig {
   mountId: string;
   mountPath: string; // e.g. /abc/drive
   providerType: string; // google_drive | s3 | local | gmail ...
   syncMetadata: boolean;
-  syncContent: SyncMode;
   metadataTtlSec: number;
   reconcileIntervalMs: number;
 }
@@ -59,29 +49,9 @@ export interface VfsNode {
   mtimeMs: number | null;
   sourceRef: string; // provider native id
   providerVersion: string | null;
-  contentHash: string | null;
-  contentState: ContentState;
   deletedAtMs: number | null;
   updatedAtMs: number;
   createdAtMs: number;
-}
-
-export interface VfsChunk {
-  chunkId: string;
-  nodeId: string;
-  seq: number; // stable ordering
-  markdownChunk: string;
-  tokenCount: number | null;
-  chunkHash: string;
-  updatedAtMs: number;
-}
-
-export interface VfsMarkdownCache {
-  nodeId: string;
-  markdownFull: string;
-  markdownHash: string;
-  generatedBy: "provider_export" | "parser";
-  updatedAtMs: number;
 }
 
 export interface VfsCursor {
@@ -109,8 +79,6 @@ Capabilities are not persisted in DB. They are declared in a provider registry k
 ```ts
 export interface ProviderCapabilities {
   watch: boolean;
-  exportMarkdown: boolean;
-  downloadRaw: boolean;
 }
 
 export interface ProviderListChildrenResult {
@@ -146,16 +114,6 @@ export interface VfsProviderAdapter {
       parentSourceRef: string | null;
     }) => void;
   }): Promise<{ close: () => Promise<void> }>;
-
-  exportMarkdown?(input: {
-    mount: VfsMountConfig;
-    sourceRef: string;
-  }): Promise<{ markdown: string; providerVersion?: string }>;
-
-  downloadRaw?(input: {
-    mount: VfsMountConfig;
-    sourceRef: string;
-  }): Promise<{ localPath: string; providerVersion?: string }>;
 }
 ```
 
@@ -167,7 +125,6 @@ export interface VfsService {
   unmount(mountId: string): Promise<void>;
 
   walkChildren(input: WalkChildrenInput): Promise<WalkChildrenOutput>;
-  readMarkdown(path: string): Promise<{ node: VfsNode; markdown: string }>;
 
   triggerReconcile(mountId: string): Promise<void>;
 }
@@ -175,7 +132,6 @@ export interface VfsService {
 export interface VfsSyncScheduler {
   enqueueMetadataUpsert(input: { mountId: string; sourceRef: string }): Promise<void>;
   enqueueMetadataDelete(input: { mountId: string; sourceRef: string }): Promise<void>;
-  enqueueContentRefresh(input: { nodeId: string; reason: string }): Promise<void>;
 }
 ```
 
@@ -187,7 +143,6 @@ export interface VfsSyncScheduler {
 - `mount_path TEXT UNIQUE NOT NULL`
 - `provider_type TEXT NOT NULL`
 - `sync_metadata INTEGER NOT NULL`
-- `sync_content TEXT NOT NULL` (`eager|lazy`)
 - `metadata_ttl_sec INTEGER NOT NULL`
 - `reconcile_interval_ms INTEGER NOT NULL`
 - `last_reconcile_at_ms INTEGER`
@@ -207,35 +162,13 @@ export interface VfsSyncScheduler {
 - `mtime_ms INTEGER`
 - `source_ref TEXT NOT NULL`
 - `provider_version TEXT`
-- `content_hash TEXT`
-- `content_state TEXT NOT NULL` (`missing|cached|stale`)
 - `deleted_at_ms INTEGER`
 - `created_at_ms INTEGER NOT NULL`
 - `updated_at_ms INTEGER NOT NULL`
 - unique: `(mount_id, source_ref)`
 - index: `(mount_id, parent_id, name, node_id)`
 
-### 3.3 `vfs_chunks`
-
-- `chunk_id TEXT PRIMARY KEY`
-- `node_id TEXT NOT NULL`
-- `seq INTEGER NOT NULL`
-- `markdown_chunk TEXT NOT NULL`
-- `token_count INTEGER`
-- `chunk_hash TEXT NOT NULL`
-- `updated_at_ms INTEGER NOT NULL`
-- unique: `(node_id, seq)`
-- index: `(node_id, seq)`
-
-### 3.4 `vfs_markdown_cache`
-
-- `node_id TEXT PRIMARY KEY`
-- `markdown_full TEXT NOT NULL`
-- `markdown_hash TEXT NOT NULL`
-- `generated_by TEXT NOT NULL` (`provider_export|parser`)
-- `updated_at_ms INTEGER NOT NULL`
-
-### 3.5 `vfs_page_cache`
+### 3.3 `vfs_page_cache`
 
 - `cache_key TEXT PRIMARY KEY` (`mount_id + parent_source_ref + cursor`)
 - `items_json TEXT NOT NULL`
@@ -277,60 +210,32 @@ export interface VfsSyncScheduler {
 - reuse existing local watch + debounce + reconcile pipeline
 - upsert into `vfs_nodes`
 
-## 6. Markdown Content Flow
-
-1. Trigger conditions:
-- `syncContent=eager` on metadata upsert
-- `syncContent=lazy` on first `readMarkdown`
-- provider version mismatch
-
-2. Refresh pipeline:
-- if provider supports export markdown: `exportMarkdown`
-- else: `downloadRaw` + parser to markdown
-- write `vfs_markdown_cache`
-- re-chunk markdown to `vfs_chunks`
-- compute/update `content_hash`
-- set `content_state=cached`
-
-3. Staleness:
-- if `provider_version` changed -> mark `stale`
-- read path will refresh stale content before return
-
-## 7. Error Handling
+## 6. Error Handling
 
 - classify errors: transient vs fatal
 - retries with backoff: `1s/5s/20s`
 - mount status tracks degraded state when retries exceeded
 - file-level isolation: one node failure does not block other jobs
 
-## 8. Testing Strategy
+## 7. Testing Strategy
 
 - Unit:
   - cursor pagination stability (local + remote)
   - metadata sync mode switch (`syncMetadata` true/false)
-  - content sync mode switch (`syncContent` eager/lazy)
-  - stale detection from `provider_version`
+  - provider registry resolution
 - Integration:
-  - local filesystem realtime sync behavior
+  - local filesystem metadata browsing behavior
   - mock watch-capable provider
   - mock reconcile-only provider
   - remote pagination backfill + TTL expiry
 
-## 9. Non-Goals (Current Iteration)
+## 8. Non-Goals (Current Iteration)
 
+- Content normalization/rendering/chunking pipeline in VFS.
 - Cross-provider move/copy semantics.
 - Global ACL/permission unification.
 - Distributed workers.
 
-## 10. Next Step
+## 9. Next Step
 
-Use `writing-plans` to produce a concrete implementation plan (phases, migration steps, test gates), with interface-first sequencing.
-
-## 11. Implementation Delta (2026-02-27)
-
-Current code-level status diverges from Section 5 metadata sync flow in one place:
-
-- `VfsService.triggerReconcile(mountId)` is currently a no-op placeholder.
-- `vfs.sync.scheduler` is implemented and tested in isolation, but is not yet wired into `VfsService` or mount lifecycle startup.
-
-All other implemented pieces (types, repository schema, cursor codec, `walkChildren`, markdown refresh/cache/chunks, RPC surface) follow this design document.
+Content layer (markdown/parser/chunking) should be implemented separately and consume VFS node metadata as upstream inputs.

@@ -38,7 +38,6 @@ type BridgeRpc = {
       limit: number;
       cursor?: VfsCursor;
     }) => Promise<{ items: VfsNode[]; nextCursor?: VfsCursor; source: "local" | "remote" }>;
-    vfs_read_markdown: (params: { path: string }) => Promise<{ node: VfsNode; markdown: string }>;
     vfs_trigger_reconcile: (params: { mountId: string }) => Promise<{ ok: boolean }>;
     install_claude_mcp: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     pick_source_directory_start: (params: { requestId: string }) => Promise<{ ok: boolean }>;
@@ -335,19 +334,6 @@ export async function walkVfsChildrenInBun(input: {
     return await channel.request.vfs_walk_children(input);
   } catch (error) {
     console.error("vfs_walk_children RPC failed:", error);
-    return null;
-  }
-}
-
-export async function readVfsMarkdownInBun(
-  path: string,
-): Promise<{ node: VfsNode; markdown: string } | null> {
-  const channel = await getRpc();
-  if (!channel) return null;
-  try {
-    return await channel.request.vfs_read_markdown({ path });
-  } catch (error) {
-    console.error("vfs_read_markdown RPC failed:", error);
     return null;
   }
 }

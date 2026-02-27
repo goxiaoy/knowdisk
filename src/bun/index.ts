@@ -295,10 +295,6 @@ const rpc = BrowserView.defineRPC({
         };
         return container.vfsService.walkChildren({ path, limit, cursor });
       },
-      vfs_read_markdown(params?: unknown): Promise<{ node: VfsNode; markdown: string }> {
-        const { path } = params as { path: string };
-        return container.vfsService.readMarkdown(path);
-      },
       async vfs_trigger_reconcile(params?: unknown) {
         const { mountId } = params as { mountId: string };
         await container.vfsService.triggerReconcile(mountId);

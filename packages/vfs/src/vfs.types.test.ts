@@ -1,13 +1,21 @@
 import { describe, expect, it } from "bun:test";
 import { VFS_TYPES_READY } from "./vfs.types";
-import type { VfsCursor, VfsNode } from "./vfs.types";
+import type { VfsCursor, VfsMountConfig, VfsNode } from "./vfs.types";
 
 describe("vfs types", () => {
   it("exports runtime sentinel", () => {
     expect(VFS_TYPES_READY).toBe(true);
   });
 
-  it("supports dual-version node model", () => {
+  it("supports metadata-only mount/node model", () => {
+    const mount: VfsMountConfig = {
+      mountId: "m1",
+      mountPath: "/abc/drive",
+      providerType: "drive",
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    };
     const node: VfsNode = {
       nodeId: "n1",
       mountId: "m1",
@@ -20,14 +28,12 @@ describe("vfs types", () => {
       mtimeMs: 1,
       sourceRef: "provider-id",
       providerVersion: "rev-1",
-      contentHash: "sha256:xxx",
-      contentState: "cached",
       deletedAtMs: null,
       createdAtMs: 1,
       updatedAtMs: 1,
     };
+    expect(mount.syncMetadata).toBe(true);
     expect(node.providerVersion).toBe("rev-1");
-    expect(node.contentHash).toContain("sha256");
   });
 
   it("supports cursor mode encoding boundary", () => {

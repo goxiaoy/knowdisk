@@ -32,7 +32,6 @@ describe("vfs integration", () => {
       mountPath: "/abc/local",
       providerType: "local",
       syncMetadata: true,
-      syncContent: "lazy",
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -49,8 +48,6 @@ describe("vfs integration", () => {
         mtimeMs: 1,
         sourceRef: "s1",
         providerVersion: "v1",
-        contentHash: null,
-        contentState: "missing",
         deletedAtMs: null,
         createdAtMs: 1,
         updatedAtMs: 1,
@@ -67,8 +64,6 @@ describe("vfs integration", () => {
         mtimeMs: 2,
         sourceRef: "s2",
         providerVersion: "v2",
-        contentHash: null,
-        contentState: "missing",
         deletedAtMs: null,
         createdAtMs: 1,
         updatedAtMs: 1,
@@ -87,7 +82,7 @@ describe("vfs integration", () => {
     let calls = 0;
     ctx.registry.register({
       type: "mock-remote",
-      capabilities: { watch: false, exportMarkdown: true, downloadRaw: true },
+      capabilities: { watch: false },
       async listChildren(input) {
         calls += 1;
         if (!input.cursor) {
@@ -116,12 +111,6 @@ describe("vfs integration", () => {
           ],
         };
       },
-      async exportMarkdown() {
-        return { markdown: "# unused" };
-      },
-      async downloadRaw() {
-        return { localPath: "/tmp/unused" };
-      },
     });
 
     await ctx.service.mount({
@@ -129,7 +118,6 @@ describe("vfs integration", () => {
       mountPath: "/abc/drive",
       providerType: "mock-remote",
       syncMetadata: false,
-      syncContent: "lazy",
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -152,59 +140,17 @@ describe("vfs integration", () => {
     ctx.cleanup();
   });
 
-  test("read markdown from lazy remote node and verify cache reuse", async () => {
+  test("triggerReconcile is callable", async () => {
     const ctx = setup();
-    let exportCalls = 0;
-    ctx.registry.register({
-      type: "mock-md",
-      capabilities: { watch: false, exportMarkdown: true, downloadRaw: false },
-      async listChildren() {
-        return { items: [] };
-      },
-      async exportMarkdown() {
-        exportCalls += 1;
-        return { markdown: "# Remote Markdown", providerVersion: "rv9" };
-      },
-    });
-
     await ctx.service.mount({
-      mountId: "m-md",
-      mountPath: "/abc/md",
-      providerType: "mock-md",
-      syncMetadata: false,
-      syncContent: "lazy",
+      mountId: "m",
+      mountPath: "/abc/m",
+      providerType: "mock",
+      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
-    ctx.repo.upsertNodes([
-      {
-        nodeId: "n-md",
-        mountId: "m-md",
-        parentId: null,
-        name: "doc.md",
-        vpath: "/abc/md/doc.md",
-        kind: "file",
-        title: "Doc",
-        size: 1,
-        mtimeMs: 1,
-        sourceRef: "s-md",
-        providerVersion: "rv1",
-        contentHash: null,
-        contentState: "missing",
-        deletedAtMs: null,
-        createdAtMs: 1,
-        updatedAtMs: 1,
-      },
-    ]);
-
-    const first = await ctx.service.readMarkdown("/abc/md/doc.md");
-    const second = await ctx.service.readMarkdown("/abc/md/doc.md");
-    expect(first.markdown).toBe("# Remote Markdown");
-    expect(second.markdown).toBe("# Remote Markdown");
-    expect(exportCalls).toBe(1);
-
-    await expect(ctx.service.triggerReconcile("m-md")).resolves.toBeUndefined();
-
+    await expect(ctx.service.triggerReconcile("m")).resolves.toBeUndefined();
     ctx.cleanup();
   });
 });

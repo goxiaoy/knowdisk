@@ -13,7 +13,6 @@ describe("vfs sync scheduler", () => {
         processed.push(sourceRef);
       },
       processMetadataDelete: async () => {},
-      processContentRefresh: async () => {},
       reconcileMounts: [],
       runReconcile: async () => {},
     });
@@ -40,7 +39,6 @@ describe("vfs sync scheduler", () => {
       nowMs: () => now,
       processMetadataUpsert: async () => {},
       processMetadataDelete: async () => {},
-      processContentRefresh: async () => {},
       reconcileMounts: [{ mountId: "m-reconcile", intervalMs: 500 }],
       runReconcile: async (mountId) => {
         reconciled.push(mountId);
@@ -72,7 +70,6 @@ describe("vfs sync scheduler", () => {
         }
       },
       processMetadataDelete: async () => {},
-      processContentRefresh: async () => {},
       reconcileMounts: [],
       runReconcile: async () => {},
     });
@@ -112,7 +109,6 @@ describe("vfs sync scheduler", () => {
         processed.push(sourceRef);
       },
       processMetadataDelete: async () => {},
-      processContentRefresh: async () => {},
       reconcileMounts: [],
       runReconcile: async () => {},
     });

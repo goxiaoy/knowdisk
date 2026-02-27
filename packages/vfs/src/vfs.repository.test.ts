@@ -13,7 +13,7 @@ function makeRepo() {
 }
 
 describe("vfs repository", () => {
-  test("creates and migrates all VFS tables", () => {
+  test("creates and migrates metadata-only VFS tables", () => {
     const { dir, dbPath, repo } = makeRepo();
     repo.close();
 
@@ -23,8 +23,6 @@ describe("vfs repository", () => {
       .all() as Array<{ name: string }>;
 
     expect(tables.map((t) => t.name)).toEqual([
-      "vfs_chunks",
-      "vfs_markdown_cache",
       "vfs_mounts",
       "vfs_nodes",
       "vfs_page_cache",
@@ -41,7 +39,6 @@ describe("vfs repository", () => {
       mountPath: "/abc/drive",
       providerType: "google_drive",
       syncMetadata: true,
-      syncContent: "lazy",
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
       lastReconcileAtMs: null,
@@ -73,8 +70,6 @@ describe("vfs repository", () => {
         mtimeMs: 2,
         sourceRef: "s2",
         providerVersion: "v2",
-        contentHash: null,
-        contentState: "missing",
         deletedAtMs: null,
         createdAtMs: 1,
         updatedAtMs: 1,
@@ -91,8 +86,6 @@ describe("vfs repository", () => {
         mtimeMs: 1,
         sourceRef: "s1",
         providerVersion: "v1",
-        contentHash: null,
-        contentState: "missing",
         deletedAtMs: null,
         createdAtMs: 1,
         updatedAtMs: 1,
@@ -109,8 +102,6 @@ describe("vfs repository", () => {
         mtimeMs: 3,
         sourceRef: "s3",
         providerVersion: "v3",
-        contentHash: null,
-        contentState: "missing",
         deletedAtMs: null,
         createdAtMs: 1,
         updatedAtMs: 1,
@@ -136,53 +127,6 @@ describe("vfs repository", () => {
     });
     expect(page2.items.map((item) => item.nodeId)).toEqual(["n2"]);
     expect(page2.nextCursor).toBeUndefined();
-
-    repo.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("upsert/list chunks by node_id and seq", () => {
-    const { dir, repo } = makeRepo();
-    repo.upsertChunks([
-      {
-        chunkId: "c2",
-        nodeId: "n1",
-        seq: 2,
-        markdownChunk: "chunk-2",
-        tokenCount: 20,
-        chunkHash: "h2",
-        updatedAtMs: 2,
-      },
-      {
-        chunkId: "c1",
-        nodeId: "n1",
-        seq: 1,
-        markdownChunk: "chunk-1",
-        tokenCount: 10,
-        chunkHash: "h1",
-        updatedAtMs: 1,
-      },
-    ]);
-
-    const chunks = repo.listChunksByNodeId("n1");
-    expect(chunks.map((c) => c.chunkId)).toEqual(["c1", "c2"]);
-
-    repo.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("save/get markdown cache", () => {
-    const { dir, repo } = makeRepo();
-    repo.upsertMarkdownCache({
-      nodeId: "n1",
-      markdownFull: "# Title",
-      markdownHash: "sha256:1",
-      generatedBy: "provider_export",
-      updatedAtMs: 1,
-    });
-
-    const cache = repo.getMarkdownCache("n1");
-    expect(cache?.markdownHash).toBe("sha256:1");
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

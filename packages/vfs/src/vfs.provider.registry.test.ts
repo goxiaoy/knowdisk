@@ -7,7 +7,7 @@ describe("vfs provider registry", () => {
     const registry = createVfsProviderRegistry();
     const adapter: VfsProviderAdapter = {
       type: "mock",
-      capabilities: { watch: true, exportMarkdown: false, downloadRaw: true },
+      capabilities: { watch: true },
       async listChildren() {
         return { items: [] };
       },
@@ -22,14 +22,13 @@ describe("vfs provider registry", () => {
     const registry = createVfsProviderRegistry();
     registry.register({
       type: "drive",
-      capabilities: { watch: false, exportMarkdown: true, downloadRaw: true },
+      capabilities: { watch: false },
       async listChildren() {
         return { items: [] };
       },
     });
 
     const adapter = registry.get("drive");
-    expect(adapter.capabilities.exportMarkdown).toBe(true);
     expect(adapter.capabilities.watch).toBe(false);
   });
 

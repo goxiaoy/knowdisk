@@ -1,14 +1,12 @@
 import type { VfsSyncScheduler } from "./vfs.service.types";
 
-type SyncJobType = "metadata_upsert" | "metadata_delete" | "content_refresh";
+type SyncJobType = "metadata_upsert" | "metadata_delete";
 
 type SyncJob = {
   key: string;
   type: SyncJobType;
-  mountId?: string;
-  sourceRef?: string;
-  nodeId?: string;
-  reason?: string;
+  mountId: string;
+  sourceRef: string;
   dueAtMs: number;
   attempt: number;
 };
@@ -24,7 +22,6 @@ export function createVfsSyncScheduler(input: {
   reconcileMounts: Array<{ mountId: string; intervalMs: number }>;
   processMetadataUpsert: (job: { mountId: string; sourceRef: string }) => Promise<void>;
   processMetadataDelete: (job: { mountId: string; sourceRef: string }) => Promise<void>;
-  processContentRefresh: (job: { nodeId: string; reason: string }) => Promise<void>;
   runReconcile: (mountId: string) => Promise<void>;
   nowMs?: () => number;
 }): VfsSyncSchedulerService {
@@ -64,18 +61,6 @@ export function createVfsSyncScheduler(input: {
       });
     },
 
-    async enqueueContentRefresh(job) {
-      const key = `content_refresh:${job.nodeId}`;
-      pending.set(key, {
-        key,
-        type: "content_refresh",
-        nodeId: job.nodeId,
-        reason: job.reason,
-        dueAtMs: nowMs() + input.debounceMs,
-        attempt: 0,
-      });
-    },
-
     async flushDue() {
       const now = nowMs();
       const dueJobs = [...pending.values()].filter((job) => job.dueAtMs <= now);
@@ -83,7 +68,11 @@ export function createVfsSyncScheduler(input: {
 
       for (const job of dueJobs) {
         try {
-          await runJob(job, input);
+          if (job.type === "metadata_upsert") {
+            await input.processMetadataUpsert({ mountId: job.mountId, sourceRef: job.sourceRef });
+          } else {
+            await input.processMetadataDelete({ mountId: job.mountId, sourceRef: job.sourceRef });
+          }
           pending.delete(job.key);
           processed += 1;
         } catch {
@@ -123,23 +112,4 @@ export function createVfsSyncScheduler(input: {
       return processed;
     },
   };
-}
-
-async function runJob(
-  job: SyncJob,
-  input: {
-    processMetadataUpsert: (job: { mountId: string; sourceRef: string }) => Promise<void>;
-    processMetadataDelete: (job: { mountId: string; sourceRef: string }) => Promise<void>;
-    processContentRefresh: (job: { nodeId: string; reason: string }) => Promise<void>;
-  },
-): Promise<void> {
-  if (job.type === "metadata_upsert") {
-    await input.processMetadataUpsert({ mountId: job.mountId!, sourceRef: job.sourceRef! });
-    return;
-  }
-  if (job.type === "metadata_delete") {
-    await input.processMetadataDelete({ mountId: job.mountId!, sourceRef: job.sourceRef! });
-    return;
-  }
-  await input.processContentRefresh({ nodeId: job.nodeId!, reason: job.reason ?? "unknown" });
 }

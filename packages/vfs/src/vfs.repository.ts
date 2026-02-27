@@ -8,7 +8,7 @@ import type {
   VfsPageCacheRow,
   VfsRepository,
 } from "./vfs.repository.types";
-import type { VfsChunk, VfsMarkdownCache, VfsNode } from "./vfs.types";
+import type { VfsNode } from "./vfs.types";
 
 export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
   mkdirSync(dirname(opts.dbPath), { recursive: true });
@@ -23,15 +23,14 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     upsertMount(row: VfsMountRow) {
       db.query(
         `INSERT INTO vfs_mounts (
-          mount_id, mount_path, provider_type, sync_metadata, sync_content,
+          mount_id, mount_path, provider_type, sync_metadata,
           metadata_ttl_sec, reconcile_interval_ms, last_reconcile_at_ms,
           created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(mount_id) DO UPDATE SET
           mount_path=excluded.mount_path,
           provider_type=excluded.provider_type,
           sync_metadata=excluded.sync_metadata,
-          sync_content=excluded.sync_content,
           metadata_ttl_sec=excluded.metadata_ttl_sec,
           reconcile_interval_ms=excluded.reconcile_interval_ms,
           last_reconcile_at_ms=excluded.last_reconcile_at_ms,
@@ -41,7 +40,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         row.mountPath,
         row.providerType,
         row.syncMetadata ? 1 : 0,
-        row.syncContent,
         row.metadataTtlSec,
         row.reconcileIntervalMs,
         row.lastReconcileAtMs,
@@ -58,7 +56,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mount_path AS mountPath,
             provider_type AS providerType,
             sync_metadata AS syncMetadata,
-            sync_content AS syncContent,
             metadata_ttl_sec AS metadataTtlSec,
             reconcile_interval_ms AS reconcileIntervalMs,
             last_reconcile_at_ms AS lastReconcileAtMs,
@@ -86,9 +83,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       const stmt = db.query(
         `INSERT INTO vfs_nodes (
           node_id, mount_id, parent_id, name, vpath, kind, title,
-          size, mtime_ms, source_ref, provider_version, content_hash,
-          content_state, deleted_at_ms, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          size, mtime_ms, source_ref, provider_version,
+          deleted_at_ms, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(node_id) DO UPDATE SET
           mount_id=excluded.mount_id,
           parent_id=excluded.parent_id,
@@ -100,8 +97,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           mtime_ms=excluded.mtime_ms,
           source_ref=excluded.source_ref,
           provider_version=excluded.provider_version,
-          content_hash=excluded.content_hash,
-          content_state=excluded.content_state,
           deleted_at_ms=excluded.deleted_at_ms,
           updated_at_ms=excluded.updated_at_ms`,
       );
@@ -119,8 +114,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             row.mtimeMs,
             row.sourceRef,
             row.providerVersion,
-            row.contentHash,
-            row.contentState,
             row.deletedAtMs,
             row.createdAtMs,
             row.updatedAtMs,
@@ -145,8 +138,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mtime_ms AS mtimeMs,
             source_ref AS sourceRef,
             provider_version AS providerVersion,
-            content_hash AS contentHash,
-            content_state AS contentState,
             deleted_at_ms AS deletedAtMs,
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
@@ -181,8 +172,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mtime_ms AS mtimeMs,
             source_ref AS sourceRef,
             provider_version AS providerVersion,
-            content_hash AS contentHash,
-            content_state AS contentState,
             deleted_at_ms AS deletedAtMs,
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
@@ -210,84 +199,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           lastNodeId: last.nodeId,
         },
       };
-    },
-
-    upsertChunks(rows: VfsChunk[]) {
-      if (rows.length === 0) {
-        return;
-      }
-      const stmt = db.query(
-        `INSERT INTO vfs_chunks (
-          chunk_id, node_id, seq, markdown_chunk, token_count, chunk_hash, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(chunk_id) DO UPDATE SET
-          node_id=excluded.node_id,
-          seq=excluded.seq,
-          markdown_chunk=excluded.markdown_chunk,
-          token_count=excluded.token_count,
-          chunk_hash=excluded.chunk_hash,
-          updated_at_ms=excluded.updated_at_ms`,
-      );
-      const tx = db.transaction((items: VfsChunk[]) => {
-        for (const row of items) {
-          stmt.run(
-            row.chunkId,
-            row.nodeId,
-            row.seq,
-            row.markdownChunk,
-            row.tokenCount,
-            row.chunkHash,
-            row.updatedAtMs,
-          );
-        }
-      });
-      tx(rows);
-    },
-
-    listChunksByNodeId(nodeId: string) {
-      return db
-        .query(
-          `SELECT
-            chunk_id AS chunkId,
-            node_id AS nodeId,
-            seq,
-            markdown_chunk AS markdownChunk,
-            token_count AS tokenCount,
-            chunk_hash AS chunkHash,
-            updated_at_ms AS updatedAtMs
-          FROM vfs_chunks
-          WHERE node_id = ?
-          ORDER BY seq ASC, chunk_id ASC`,
-        )
-        .all(nodeId) as VfsChunk[];
-    },
-
-    upsertMarkdownCache(row: VfsMarkdownCache) {
-      db.query(
-        `INSERT INTO vfs_markdown_cache (
-          node_id, markdown_full, markdown_hash, generated_by, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(node_id) DO UPDATE SET
-          markdown_full=excluded.markdown_full,
-          markdown_hash=excluded.markdown_hash,
-          generated_by=excluded.generated_by,
-          updated_at_ms=excluded.updated_at_ms`,
-      ).run(row.nodeId, row.markdownFull, row.markdownHash, row.generatedBy, row.updatedAtMs);
-    },
-
-    getMarkdownCache(nodeId: string) {
-      return db
-        .query(
-          `SELECT
-            node_id AS nodeId,
-            markdown_full AS markdownFull,
-            markdown_hash AS markdownHash,
-            generated_by AS generatedBy,
-            updated_at_ms AS updatedAtMs
-          FROM vfs_markdown_cache
-          WHERE node_id = ?`,
-        )
-        .get(nodeId) as VfsMarkdownCache | null;
     },
 
     upsertPageCache(row: VfsPageCacheRow) {
@@ -326,7 +237,6 @@ function migrate(db: Database): void {
       mount_path TEXT UNIQUE NOT NULL,
       provider_type TEXT NOT NULL,
       sync_metadata INTEGER NOT NULL,
-      sync_content TEXT NOT NULL,
       metadata_ttl_sec INTEGER NOT NULL,
       reconcile_interval_ms INTEGER NOT NULL,
       last_reconcile_at_ms INTEGER,
@@ -346,8 +256,6 @@ function migrate(db: Database): void {
       mtime_ms INTEGER,
       source_ref TEXT NOT NULL,
       provider_version TEXT,
-      content_hash TEXT,
-      content_state TEXT NOT NULL,
       deleted_at_ms INTEGER,
       created_at_ms INTEGER NOT NULL,
       updated_at_ms INTEGER NOT NULL,
@@ -355,27 +263,6 @@ function migrate(db: Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_vfs_nodes_parent_order
       ON vfs_nodes (mount_id, parent_id, name, node_id);
-
-    CREATE TABLE IF NOT EXISTS vfs_chunks (
-      chunk_id TEXT PRIMARY KEY,
-      node_id TEXT NOT NULL,
-      seq INTEGER NOT NULL,
-      markdown_chunk TEXT NOT NULL,
-      token_count INTEGER,
-      chunk_hash TEXT NOT NULL,
-      updated_at_ms INTEGER NOT NULL,
-      UNIQUE(node_id, seq)
-    );
-    CREATE INDEX IF NOT EXISTS idx_vfs_chunks_node_seq
-      ON vfs_chunks (node_id, seq);
-
-    CREATE TABLE IF NOT EXISTS vfs_markdown_cache (
-      node_id TEXT PRIMARY KEY,
-      markdown_full TEXT NOT NULL,
-      markdown_hash TEXT NOT NULL,
-      generated_by TEXT NOT NULL,
-      updated_at_ms INTEGER NOT NULL
-    );
 
     CREATE TABLE IF NOT EXISTS vfs_page_cache (
       cache_key TEXT PRIMARY KEY,

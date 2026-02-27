@@ -128,21 +128,18 @@ This forces a usable minimum state before normal operation.
 
 ### 2.6 Virtual File System (VFS)
 
-Know Disk now includes a mountable VFS layer under `core/vfs` for multi-provider metadata browsing and markdown-oriented content cache.
+Know Disk includes a mountable VFS layer under `packages/vfs` for multi-provider metadata browsing.
 
 - Mount config:
   - `syncMetadata=true`: `walkChildren` pages from local SQLite metadata (`vfs_nodes`) using local cursor `(lastName,lastNodeId)`.
   - `syncMetadata=false`: `walkChildren` pages via provider cursor API, and backfills `vfs_nodes` + `vfs_page_cache` with TTL.
-  - `syncContent`:
-    - `lazy`: refresh markdown on first `readMarkdown`.
-    - `eager`: reserved for proactive refresh pipeline.
 - Cursor semantics:
   - API cursor is always `VfsCursor = { mode, token }`.
   - `mode=local`: token encodes local sort boundary.
   - `mode=remote`: token encodes provider cursor.
-- Content cache:
-  - `vfs_markdown_cache` stores full markdown + hash.
-  - `vfs_chunks` stores chunked markdown (`seq` stable ordering) for downstream retrieval/index reuse.
+- Boundary:
+  - VFS owns mount/node tree/pagination/reconcile trigger only.
+  - Content rendering/chunking (including markdown) is intentionally outside the VFS layer.
 
 ## 3. Runtime Architecture
 

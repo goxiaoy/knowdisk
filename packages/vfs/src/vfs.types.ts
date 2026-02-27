@@ -1,15 +1,12 @@
 export const VFS_TYPES_READY = true;
 
 export type VfsNodeKind = "file" | "folder";
-export type SyncMode = "eager" | "lazy";
-export type ContentState = "missing" | "cached" | "stale";
 
 export type VfsMountConfig = {
   mountId: string;
   mountPath: string;
   providerType: string;
   syncMetadata: boolean;
-  syncContent: SyncMode;
   metadataTtlSec: number;
   reconcileIntervalMs: number;
 };
@@ -26,28 +23,8 @@ export type VfsNode = {
   mtimeMs: number | null;
   sourceRef: string;
   providerVersion: string | null;
-  contentHash: string | null;
-  contentState: ContentState;
   deletedAtMs: number | null;
   createdAtMs: number;
-  updatedAtMs: number;
-};
-
-export type VfsChunk = {
-  chunkId: string;
-  nodeId: string;
-  seq: number;
-  markdownChunk: string;
-  tokenCount: number | null;
-  chunkHash: string;
-  updatedAtMs: number;
-};
-
-export type VfsMarkdownCache = {
-  nodeId: string;
-  markdownFull: string;
-  markdownHash: string;
-  generatedBy: "provider_export" | "parser";
   updatedAtMs: number;
 };
 

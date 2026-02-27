@@ -2,8 +2,6 @@ import type { VfsMountConfig, VfsNodeKind } from "./vfs.types";
 
 export type ProviderCapabilities = {
   watch: boolean;
-  exportMarkdown: boolean;
-  downloadRaw: boolean;
 };
 
 export type ProviderListChildrenItem = {
@@ -41,14 +39,4 @@ export type VfsProviderAdapter = {
       parentSourceRef: string | null;
     }) => void;
   }) => Promise<{ close: () => Promise<void> }>;
-
-  exportMarkdown?: (input: {
-    mount: VfsMountConfig;
-    sourceRef: string;
-  }) => Promise<{ markdown: string; providerVersion?: string }>;
-
-  downloadRaw?: (input: {
-    mount: VfsMountConfig;
-    sourceRef: string;
-  }) => Promise<{ localPath: string; providerVersion?: string }>;
 };
