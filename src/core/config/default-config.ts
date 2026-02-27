@@ -84,5 +84,11 @@ export function createDefaultConfig(opts?: {
         domain: "https://api.openai.com",
       },
     },
+    vfs: {
+      sync: {
+        debounceMs: 500,
+        retryBackoffMs: [1000, 5000, 20000],
+      },
+    },
   };
 }

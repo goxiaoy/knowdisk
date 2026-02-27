@@ -19,6 +19,7 @@ import type { RetrievalDebugResult } from "../core/retrieval/retrieval.service.t
 import type { RetrievalResult } from "../core/retrieval/retrieval.service.types";
 import type { VectorCollectionInspect } from "../core/vector/vector.repository.types";
 import type { ChatCitation, ChatMessage, ChatSession } from "../core/chat/chat.repository.types";
+import type { VfsCursor, VfsMountConfig, VfsNode } from "@knowdisk/vfs";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -276,6 +277,32 @@ const rpc = BrowserView.defineRPC({
           );
           return { ok: false, error: String(error) };
         }
+      },
+      async vfs_mount(params?: unknown) {
+        const { config } = params as { config: VfsMountConfig };
+        await container.vfsService.mount(config);
+        return { ok: true };
+      },
+      vfs_walk_children(params?: unknown): Promise<{
+        items: VfsNode[];
+        nextCursor?: VfsCursor;
+        source: "local" | "remote";
+      }> {
+        const { path, limit, cursor } = params as {
+          path: string;
+          limit: number;
+          cursor?: VfsCursor;
+        };
+        return container.vfsService.walkChildren({ path, limit, cursor });
+      },
+      vfs_read_markdown(params?: unknown): Promise<{ node: VfsNode; markdown: string }> {
+        const { path } = params as { path: string };
+        return container.vfsService.readMarkdown(path);
+      },
+      async vfs_trigger_reconcile(params?: unknown) {
+        const { mountId } = params as { mountId: string };
+        await container.vfsService.triggerReconcile(mountId);
+        return { ok: true };
       },
       chat_list_sessions(): ChatSession[] {
         return container.chatService.listSessions();

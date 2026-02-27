@@ -2,6 +2,9 @@
 	"name": "knowdisk",
 	"version": "1.0.0",
 	"description": "Know Disk desktop app",
+	"workspaces": [
+		"packages/*"
+	],
 	"scripts": {
 		"dev": "LOG_LEVEL=debug bun run build && LOG_LEVEL=debug electrobun dev",
 		"dev:hmr": "LOG_LEVEL=debug concurrently \"LOG_LEVEL=debug bun run hmr\" \"LOG_LEVEL=debug bun run dev\"",
@@ -12,6 +15,7 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@knowdisk/vfs": "workspace:*",
 		"@huggingface/transformers": "^3.8.1",
 		"@modelcontextprotocol/sdk": "^1.26.0",
 		"@zvec/zvec": "^0.2.0",

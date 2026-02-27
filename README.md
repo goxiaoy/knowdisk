@@ -126,6 +126,24 @@ On first use:
 
 This forces a usable minimum state before normal operation.
 
+### 2.6 Virtual File System (VFS)
+
+Know Disk now includes a mountable VFS layer under `core/vfs` for multi-provider metadata browsing and markdown-oriented content cache.
+
+- Mount config:
+  - `syncMetadata=true`: `walkChildren` pages from local SQLite metadata (`vfs_nodes`) using local cursor `(lastName,lastNodeId)`.
+  - `syncMetadata=false`: `walkChildren` pages via provider cursor API, and backfills `vfs_nodes` + `vfs_page_cache` with TTL.
+  - `syncContent`:
+    - `lazy`: refresh markdown on first `readMarkdown`.
+    - `eager`: reserved for proactive refresh pipeline.
+- Cursor semantics:
+  - API cursor is always `VfsCursor = { mode, token }`.
+  - `mode=local`: token encodes local sort boundary.
+  - `mode=remote`: token encodes provider cursor.
+- Content cache:
+  - `vfs_markdown_cache` stores full markdown + hash.
+  - `vfs_chunks` stores chunked markdown (`seq` stable ordering) for downstream retrieval/index reuse.
+
 ## 3. Runtime Architecture
 
 - **UI (React)**
@@ -194,6 +212,11 @@ Default runtime root (macOS/Linux):
 5. Use force resync when you want full rebuild
 
 ## 9. Development
+
+Monorepo note:
+
+- This repo uses Bun workspace packages under `packages/*`.
+- VFS core is extracted to `packages/vfs` and consumed by app/runtime via `@knowdisk/vfs`.
 
 ```bash
 bun install
