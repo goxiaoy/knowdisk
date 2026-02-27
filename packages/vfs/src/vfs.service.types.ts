@@ -38,6 +38,11 @@ export type CreateReadStreamOperation = (input: {
   length?: number;
 }) => Promise<ReadableStream<Uint8Array>>;
 
+export type GetMetadataOperation = (input: {
+  mount: VfsMount;
+  sourceRef: string;
+}) => Promise<ListChildrenItem | null>;
+
 export type VfsService = {
   mount: (config: VfsMountConfig) => Promise<VfsMount>;
   mountInternal: (mountId: string, config: VfsMountConfig) => Promise<VfsMount>;

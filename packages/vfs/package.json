@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "chokidar": "^5.0.0"
+  },
   "exports": {
     ".": "./src/index.ts"
   }

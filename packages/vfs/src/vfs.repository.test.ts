@@ -27,6 +27,9 @@ describe("vfs repository", () => {
       "vfs_nodes",
       "vfs_page_cache",
     ]);
+    const mountColumns = db.query("PRAGMA table_info(vfs_mounts)").all() as Array<{ name: string }>;
+    expect(mountColumns.map((item) => item.name)).toContain("provider_extra");
+    expect(mountColumns.map((item) => item.name)).toContain("sync_content");
 
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -38,7 +41,9 @@ describe("vfs repository", () => {
       mountId: "m1",
       mountPath: "/abc/drive",
       providerType: "google_drive",
+      providerExtra: { token: "secret-token", tenant: "acme" },
       syncMetadata: true,
+      syncContent: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
       lastReconcileAtMs: null,
@@ -50,6 +55,8 @@ describe("vfs repository", () => {
     expect(mount).not.toBeNull();
     expect(mount?.mountPath).toBe("/abc/drive");
     expect(mount?.syncMetadata).toBe(true);
+    expect(mount?.syncContent).toBe(true);
+    expect(mount?.providerExtra).toEqual({ token: "secret-token", tenant: "acme" });
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

@@ -1,5 +1,3 @@
-import type { VfsSyncScheduler } from "./vfs.service.types";
-
 type SyncJobType = "metadata_upsert" | "metadata_delete";
 
 type SyncJob = {
@@ -11,7 +9,12 @@ type SyncJob = {
   attempt: number;
 };
 
-export type VfsSyncSchedulerService = VfsSyncScheduler & {
+type VfsSyncSchedulerQueue = {
+  enqueueMetadataUpsert: (input: { mountId: string; sourceRef: string }) => Promise<void>;
+  enqueueMetadataDelete: (input: { mountId: string; sourceRef: string }) => Promise<void>;
+};
+
+export type VfsSyncSchedulerService = VfsSyncSchedulerQueue & {
   flushDue: () => Promise<number>;
   runReconcileDue: () => Promise<number>;
 };

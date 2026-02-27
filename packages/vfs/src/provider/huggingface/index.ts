@@ -1,6 +1,6 @@
-import type { VfsProviderAdapter } from "../vfs.provider.types";
-import type { ListChildrenItem } from "../vfs.service.types";
-import type { VfsMount } from "../vfs.types";
+import type { VfsProviderAdapter } from "../../vfs.provider.types";
+import type { ListChildrenItem } from "../../vfs.service.types";
+import type { VfsMount } from "../../vfs.types";
 
 type HuggingFaceRepoResponse = {
   siblings?: Array<{ rfilename?: string; size?: number }>;
@@ -82,6 +82,37 @@ export function createHuggingFaceVfsProvider(
       }
       return response.body;
     },
+    async getMetadata(input) {
+      const config = parseMountConfig(input.mount);
+      if (!isWhitelistedFile(input.sourceRef)) {
+        return null;
+      }
+      const apiUrl = `${normalizeHost(config.endpoint)}/api/models/${encodePathSegment(config.model)}`;
+      const response = await fetchFn(apiUrl);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to list model files: ${response.status} ${response.statusText}`,
+        );
+      }
+      const payload = (await response.json()) as HuggingFaceRepoResponse;
+      const found = (payload.siblings ?? []).find(
+        (item) => item.rfilename === input.sourceRef,
+      );
+      if (!found) {
+        return null;
+      }
+      const fileUrl =
+        `${normalizeHost(config.endpoint)}/` +
+        `${encodePathSegment(config.model)}/resolve/main/${encodePathSegment(input.sourceRef)}`;
+      const probedSize = await probeRemoteFileSize(fetchFn, fileUrl);
+      const size =
+        probedSize > 0
+          ? probedSize
+          : Number.isFinite(found.size) && (found.size ?? 0) >= 0
+            ? Number(found.size)
+            : undefined;
+      return toListChildrenItem(found.rfilename!, size);
+    },
   };
 }
 
@@ -161,6 +192,46 @@ function encodePathSegment(value: string): string {
     .join("/");
 }
 
+async function probeRemoteFileSize(fetchFn: typeof fetch, fileUrl: string): Promise<number> {
+  try {
+    const head = await fetchFn(fileUrl, { method: "HEAD" });
+    if (head.ok) {
+      const len = Number(head.headers.get("content-length") ?? "0");
+      if (Number.isFinite(len) && len > 0) {
+        return len;
+      }
+    }
+  } catch {
+    // ignore and fallback to range probe
+  }
+  try {
+    const ranged = await fetchFn(fileUrl, { headers: { Range: "bytes=0-0" } });
+    const fromRange = parseContentRangeTotal(ranged.headers.get("content-range"));
+    if (fromRange && fromRange > 0) {
+      return fromRange;
+    }
+    const len = Number(ranged.headers.get("content-length") ?? "0");
+    if (Number.isFinite(len) && len > 0) {
+      return len;
+    }
+  } catch {
+    return 0;
+  }
+  return 0;
+}
+
+function parseContentRangeTotal(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const match = /bytes\s+\d+-\d+\/(\d+)/i.exec(value);
+  if (!match) {
+    return null;
+  }
+  const total = Number(match[1]);
+  return Number.isFinite(total) ? total : null;
+}
+
 function buildListItems(
   siblings: Array<{ rfilename?: string; size?: number }>,
 ): ListChildrenItem[] {
@@ -192,22 +263,25 @@ function buildListItems(
     }
     const fileName = parts[parts.length - 1]!;
     const fileParent = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
-    const fileRef = parts.join("/");
     const fileKey = `file|${fileParent ?? ""}|${fileName}`;
     if (!byKey.has(fileKey)) {
-      byKey.set(fileKey, {
-        sourceRef: fileRef,
-        parentSourceRef: fileParent,
-        name: fileName,
-        kind: "file",
-        size:
-          Number.isFinite(sibling.size) && (sibling.size ?? 0) >= 0
-            ? Number(sibling.size)
-            : undefined,
-      });
+      byKey.set(fileKey, toListChildrenItem(sibling.rfilename, sibling.size));
     }
   }
   return [...byKey.values()];
+}
+
+function toListChildrenItem(sourceRef: string, size?: number): ListChildrenItem {
+  const parts = sourceRef.split("/").filter((part) => part.length > 0);
+  const name = parts[parts.length - 1] ?? sourceRef;
+  const parentSourceRef = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
+  return {
+    sourceRef,
+    parentSourceRef,
+    name,
+    kind: "file",
+    size: Number.isFinite(size) && (size ?? 0) >= 0 ? Number(size) : undefined,
+  };
 }
 
 function isWhitelistedFile(sourceRef: string): boolean {

@@ -3,12 +3,17 @@ export const VFS_TYPES_READY = true;
 export type VfsNodeKind = "file" | "folder";
 
 export type VfsMountConfig = {
-  mountId: string;
   mountPath: string;
   providerType: string;
+  providerExtra: Record<string, unknown>;
   syncMetadata: boolean;
+  syncContent?: boolean;
   metadataTtlSec: number;
   reconcileIntervalMs: number;
+};
+
+export type VfsMount = VfsMountConfig & {
+  mountId: string;
 };
 
 export type VfsNode = {

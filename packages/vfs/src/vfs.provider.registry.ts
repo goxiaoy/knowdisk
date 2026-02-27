@@ -1,6 +1,7 @@
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsMount } from "./vfs.types";
 import type { DependencyContainer } from "tsyringe";
+import { registerBuiltinVfsProviders } from "./provider";
 
 export type VfsProviderAdapterFactory = (
   container: DependencyContainer,
@@ -17,8 +18,7 @@ export function createVfsProviderRegistry(
   container: DependencyContainer,
 ): VfsProviderRegistry {
   const factories = new Map<string, VfsProviderAdapterFactory>();
-
-  return {
+  const registry: VfsProviderRegistry = {
     register(providerType: string, factory: VfsProviderAdapterFactory) {
       factories.set(providerType, factory);
     },
@@ -35,4 +35,6 @@ export function createVfsProviderRegistry(
       return [...factories.keys()].sort();
     },
   };
+  registerBuiltinVfsProviders(registry);
+  return registry;
 }

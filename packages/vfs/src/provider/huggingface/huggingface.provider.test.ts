@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { VfsMount } from "../vfs.types";
-import { createHuggingFaceVfsProvider } from "./huggingface.provider";
+import type { VfsMount } from "../../vfs.types";
+import { createHuggingFaceVfsProvider } from "./index";
 
 function makeMount(providerExtra: Record<string, unknown>): VfsMount {
   return {
@@ -164,5 +164,51 @@ describe("huggingface vfs provider", () => {
         sourceRef: "README.md",
       }) ?? Promise.resolve(null as never),
     ).rejects.toThrow('sourceRef is not allowed by whitelist: "README.md"');
+  });
+
+  test("getMetadata returns metadata for a single whitelisted file", async () => {
+    const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
+    const mockFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ url: String(input), init });
+      if (init?.method === "HEAD") {
+        return new Response(null, {
+          status: 200,
+          headers: { "content-length": "456" },
+        });
+      }
+      return new Response(
+        JSON.stringify({
+          siblings: [
+            { rfilename: "onnx/model.onnx", size: 123 },
+            { rfilename: "README.md", size: 999 },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const mount = makeMount({
+      endpoint: "https://huggingface.co",
+      model: "org/repo",
+    });
+    const provider = createHuggingFaceVfsProvider(mount, { fetch: mockFetch });
+
+    const metadata = await provider.getMetadata?.({
+      mount,
+      sourceRef: "onnx/model.onnx",
+    });
+    expect(metadata).toEqual({
+      sourceRef: "onnx/model.onnx",
+      parentSourceRef: "onnx",
+      name: "model.onnx",
+      kind: "file",
+      size: 456,
+    });
+    expect(fetchCalls.some((call) => call.init?.method === "HEAD")).toBe(true);
+
+    const denied = await provider.getMetadata?.({
+      mount,
+      sourceRef: "README.md",
+    });
+    expect(denied).toBeNull();
   });
 });

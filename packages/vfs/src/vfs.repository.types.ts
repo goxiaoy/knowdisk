@@ -1,6 +1,6 @@
-import type { VfsMountConfig, VfsNode } from "./vfs.types";
+import type { VfsMount, VfsNode } from "./vfs.types";
 
-export type VfsMountRow = VfsMountConfig & {
+export type VfsMountRow = VfsMount & {
   lastReconcileAtMs: number | null;
   createdAtMs: number;
   updatedAtMs: number;
@@ -37,6 +37,7 @@ export type VfsRepository = {
   getMountById: (mountId: string) => VfsMountRow | null;
 
   upsertNodes: (rows: VfsNode[]) => void;
+  listNodesByMountId: (mountId: string) => VfsNode[];
   getNodeByVpath: (vpath: string) => VfsNode | null;
   listChildrenPageLocal: (input: ListChildrenPageLocalInput) => ListChildrenPageLocalOutput;
 

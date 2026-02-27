@@ -32,6 +32,7 @@ export interface VfsMountConfig {
   mountId: string;
   mountPath: string; // e.g. /abc/drive
   providerType: string; // google_drive | s3 | local | gmail ...
+  providerExtra: Record<string, unknown>; // provider-specific metadata, e.g. token/tenant
   syncMetadata: boolean;
   metadataTtlSec: number;
   reconcileIntervalMs: number;
@@ -142,6 +143,7 @@ export interface VfsSyncScheduler {
 - `mount_id TEXT PRIMARY KEY`
 - `mount_path TEXT UNIQUE NOT NULL`
 - `provider_type TEXT NOT NULL`
+- `provider_extra TEXT NOT NULL` (JSON object serialized as string)
 - `sync_metadata INTEGER NOT NULL`
 - `metadata_ttl_sec INTEGER NOT NULL`
 - `reconcile_interval_ms INTEGER NOT NULL`

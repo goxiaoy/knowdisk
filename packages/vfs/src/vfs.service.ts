@@ -3,29 +3,51 @@ import { decodeVfsCursorToken, encodeVfsLocalCursorToken, encodeVfsRemoteCursorT
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
 import type { VfsService } from "./vfs.service.types";
-import type { VfsMountConfig, VfsNode, WalkChildrenInput, WalkChildrenOutput } from "./vfs.types";
+import type { VfsMount, VfsMountConfig, VfsNode, WalkChildrenInput, WalkChildrenOutput } from "./vfs.types";
 
 export function createVfsService(deps: {
   repository: VfsRepository;
   registry: VfsProviderRegistry;
   nowMs?: () => number;
 }): VfsService {
-  const mounts = new Map<string, VfsMountConfig>();
+  const mounts = new Map<string, VfsMount>();
   const nowMs = deps.nowMs ?? (() => Date.now());
 
   return {
     async mount(config: VfsMountConfig) {
-      mounts.set(config.mountId, config);
-      deps.repository.upsertMount({
+      return this.mountInternal(randomUUID(), config);
+    },
+
+    async mountInternal(mountId: string, config: VfsMountConfig) {
+      const mount: VfsMount = {
+        mountId,
         ...config,
+      };
+      mounts.set(mount.mountId, mount);
+      deps.repository.upsertMount({
+        ...mount,
         lastReconcileAtMs: null,
         createdAtMs: nowMs(),
         updatedAtMs: nowMs(),
       });
+      return mount;
     },
 
     async unmount(mountId: string) {
       mounts.delete(mountId);
+    },
+
+    async listChildren(input) {
+      const adapter = deps.registry.get(input.mount);
+      return adapter.listChildren(input);
+    },
+
+    async createReadStream(input) {
+      const adapter = deps.registry.get(input.mount);
+      if (!adapter.createReadStream) {
+        throw new Error(`Provider "${adapter.type}" does not support createReadStream`);
+      }
+      return adapter.createReadStream(input);
     },
 
     async walkChildren(input: WalkChildrenInput): Promise<WalkChildrenOutput> {
@@ -57,7 +79,7 @@ export function createVfsService(deps: {
         };
       }
 
-      const adapter = deps.registry.get(mount.providerType);
+      const adapter = deps.registry.get(mount);
       const parentSourceRef = parentNode?.sourceRef ?? null;
       const providerCursor = decodeRemoteCursor(input.cursor?.token);
       const cacheKey = `${mount.mountId}::${parentSourceRef ?? "__root__"}::${providerCursor ?? ""}::${input.limit}`;
@@ -129,8 +151,8 @@ export function createVfsService(deps: {
   };
 }
 
-function resolveMountByPath(path: string, mounts: Map<string, VfsMountConfig>) {
-  let best: VfsMountConfig | null = null;
+function resolveMountByPath(path: string, mounts: Map<string, VfsMount>) {
+  let best: VfsMount | null = null;
   for (const mount of mounts.values()) {
     if (path === mount.mountPath || path.startsWith(`${mount.mountPath}/`)) {
       if (!best || mount.mountPath.length > best.mountPath.length) {

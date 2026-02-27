@@ -91,3 +91,46 @@ test("uses userDataDir as base path for vector collection", () => {
 
   rmSync(userDataDir, { recursive: true, force: true });
 });
+
+test("registers huggingface vfs provider in app container", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "knowdisk-app-container-vfs-"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    if (String(input).includes("/api/models/")) {
+      return new Response(
+        JSON.stringify({
+          siblings: [{ rfilename: "onnx/model.onnx", size: 123 }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response("ok", { status: 200 });
+  }) as typeof fetch;
+  try {
+    const container = createAppContainer({
+      configService: makeConfigService(false),
+      userDataDir: dir,
+    });
+    const mount = await container.vfsService.mount({
+      mountPath: "/hf",
+      providerType: "huggingface",
+      providerExtra: {
+        endpoint: "https://huggingface.co",
+        model: "org/repo",
+      },
+      syncMetadata: false,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+
+    const page = await container.vfsService.listChildren({
+      mount,
+      parentSourceRef: null,
+      limit: 10,
+    });
+    expect(page.items.map((item) => item.name)).toEqual(["onnx"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

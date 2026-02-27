@@ -23,14 +23,16 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     upsertMount(row: VfsMountRow) {
       db.query(
         `INSERT INTO vfs_mounts (
-          mount_id, mount_path, provider_type, sync_metadata,
+          mount_id, mount_path, provider_type, provider_extra, sync_metadata, sync_content,
           metadata_ttl_sec, reconcile_interval_ms, last_reconcile_at_ms,
           created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(mount_id) DO UPDATE SET
           mount_path=excluded.mount_path,
           provider_type=excluded.provider_type,
+          provider_extra=excluded.provider_extra,
           sync_metadata=excluded.sync_metadata,
+          sync_content=excluded.sync_content,
           metadata_ttl_sec=excluded.metadata_ttl_sec,
           reconcile_interval_ms=excluded.reconcile_interval_ms,
           last_reconcile_at_ms=excluded.last_reconcile_at_ms,
@@ -39,7 +41,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         row.mountId,
         row.mountPath,
         row.providerType,
+        JSON.stringify(row.providerExtra ?? {}),
         row.syncMetadata ? 1 : 0,
+        row.syncContent ? 1 : 0,
         row.metadataTtlSec,
         row.reconcileIntervalMs,
         row.lastReconcileAtMs,
@@ -55,7 +59,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mount_id AS mountId,
             mount_path AS mountPath,
             provider_type AS providerType,
+            provider_extra AS providerExtra,
             sync_metadata AS syncMetadata,
+            sync_content AS syncContent,
             metadata_ttl_sec AS metadataTtlSec,
             reconcile_interval_ms AS reconcileIntervalMs,
             last_reconcile_at_ms AS lastReconcileAtMs,
@@ -65,14 +71,20 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           WHERE mount_id = ?`,
         )
         .get(mountId) as
-        | (Omit<VfsMountRow, "syncMetadata"> & { syncMetadata: number })
+        | (Omit<VfsMountRow, "syncMetadata" | "syncContent" | "providerExtra"> & {
+            syncMetadata: number;
+            syncContent: number;
+            providerExtra: unknown;
+          })
         | null;
       if (!row) {
         return null;
       }
       return {
         ...row,
+        providerExtra: parseProviderExtra(row.providerExtra),
         syncMetadata: row.syncMetadata === 1,
+        syncContent: row.syncContent === 1,
       };
     },
 
@@ -121,6 +133,30 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         }
       });
       tx(rows);
+    },
+
+    listNodesByMountId(mountId: string) {
+      return db
+        .query(
+          `SELECT
+            node_id AS nodeId,
+            mount_id AS mountId,
+            parent_id AS parentId,
+            name,
+            vpath,
+            kind,
+            title,
+            size,
+            mtime_ms AS mtimeMs,
+            source_ref AS sourceRef,
+            provider_version AS providerVersion,
+            deleted_at_ms AS deletedAtMs,
+            created_at_ms AS createdAtMs,
+            updated_at_ms AS updatedAtMs
+          FROM vfs_nodes
+          WHERE mount_id = ?`,
+        )
+        .all(mountId) as VfsNode[];
     },
 
     getNodeByVpath(vpath: string) {
@@ -236,7 +272,9 @@ function migrate(db: Database): void {
       mount_id TEXT PRIMARY KEY,
       mount_path TEXT UNIQUE NOT NULL,
       provider_type TEXT NOT NULL,
+      provider_extra TEXT NOT NULL,
       sync_metadata INTEGER NOT NULL,
+      sync_content INTEGER NOT NULL DEFAULT 0,
       metadata_ttl_sec INTEGER NOT NULL,
       reconcile_interval_ms INTEGER NOT NULL,
       last_reconcile_at_ms INTEGER,
@@ -273,4 +311,19 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_vfs_page_cache_exp
       ON vfs_page_cache (expires_at_ms);
   `);
+}
+
+function parseProviderExtra(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== "string") {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return {};
+  }
+  return {};
 }

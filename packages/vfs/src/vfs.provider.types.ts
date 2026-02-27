@@ -1,10 +1,17 @@
 import type { VfsMountConfig, VfsNodeKind } from "./vfs.types";
+import type {
+  CreateReadStreamOperation,
+  GetMetadataOperation,
+  ListChildrenOperation,
+} from "./vfs.service.types";
+
+export const VFS_PROVIDER_OPERATIONS_READY = true;
 
 export type ProviderCapabilities = {
   watch: boolean;
 };
 
-export type ProviderListChildrenItem = {
+export type ListChildrenItem = {
   sourceRef: string;
   parentSourceRef: string | null;
   name: string;
@@ -15,8 +22,8 @@ export type ProviderListChildrenItem = {
   providerVersion?: string;
 };
 
-export type ProviderListChildrenResult = {
-  items: ProviderListChildrenItem[];
+export type ListChildrenResult = {
+  items: ListChildrenItem[];
   nextCursor?: string;
 };
 
@@ -24,17 +31,14 @@ export type VfsProviderAdapter = {
   readonly type: string;
   readonly capabilities: ProviderCapabilities;
 
-  listChildren: (input: {
-    mount: VfsMountConfig;
-    parentSourceRef: string | null;
-    limit: number;
-    cursor?: string;
-  }) => Promise<ProviderListChildrenResult>;
+  listChildren: ListChildrenOperation;
+  createReadStream?: CreateReadStreamOperation;
+  getMetadata?: GetMetadataOperation;
 
   watch?: (input: {
     mount: VfsMountConfig;
     onEvent: (event: {
-      type: "upsert" | "delete";
+      type: "add" | "update" | "delete";
       sourceRef: string;
       parentSourceRef: string | null;
     }) => void;

@@ -3,8 +3,8 @@ import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { VfsMount } from "../vfs.types";
-import { createHuggingFaceVfsProvider } from "./huggingface.provider";
+import type { VfsMount } from "../../vfs.types";
+import { createHuggingFaceVfsProvider } from "./index";
 
 const TEST_MODEL = "hf-internal-testing/tiny-random-bert";
 

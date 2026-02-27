@@ -9,9 +9,9 @@ describe("vfs types", () => {
 
   it("supports metadata-only mount/node model", () => {
     const mount: VfsMountConfig = {
-      mountId: "m1",
       mountPath: "/abc/drive",
       providerType: "drive",
+      providerExtra: { token: "x" },
       syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,

@@ -27,7 +27,7 @@ describe("vfs provider registry", () => {
 
     registry.register("mock", () => adapter);
     expect(registry.get(mount)).toBe(adapter);
-    expect(registry.listTypes()).toEqual(["mock"]);
+    expect(registry.listTypes()).toEqual(["huggingface", "local", "mock"]);
   });
 
   test("exposes capability flags from code registry", () => {
@@ -97,5 +97,23 @@ describe("vfs provider registry", () => {
       reconcileIntervalMs: 1000,
     };
     expect(() => registry.get(mount)).toThrow('Unknown VFS provider type: "unknown"');
+  });
+
+  test("registers built-in providers from provider directory", async () => {
+    const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
+    expect(registry.listTypes()).toContain("huggingface");
+    expect(registry.listTypes()).toContain("local");
+
+    const mount: VfsMount = {
+      mountId: "m-hf",
+      mountPath: "/hf",
+      providerType: "huggingface",
+      providerExtra: { model: "org/repo" },
+      syncMetadata: false,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    };
+    const adapter = registry.get(mount);
+    expect(adapter.type).toBe("huggingface");
   });
 });
