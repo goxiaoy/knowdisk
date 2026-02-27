@@ -130,6 +130,33 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       tx(rows);
     },
 
+    getNodeByVpath(vpath: string) {
+      return db
+        .query(
+          `SELECT
+            node_id AS nodeId,
+            mount_id AS mountId,
+            parent_id AS parentId,
+            name,
+            vpath,
+            kind,
+            title,
+            size,
+            mtime_ms AS mtimeMs,
+            source_ref AS sourceRef,
+            provider_version AS providerVersion,
+            content_hash AS contentHash,
+            content_state AS contentState,
+            deleted_at_ms AS deletedAtMs,
+            created_at_ms AS createdAtMs,
+            updated_at_ms AS updatedAtMs
+          FROM vfs_nodes
+          WHERE vpath = ?
+            AND deleted_at_ms IS NULL`,
+        )
+        .get(vpath) as VfsNode | null;
+    },
+
     listChildrenPageLocal(input: ListChildrenPageLocalInput): ListChildrenPageLocalOutput {
       const { mountId, parentId, limit, cursor } = input;
       const args = [mountId, parentId] as Array<string | null>;

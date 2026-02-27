@@ -32,6 +32,11 @@ import { createChatRepository } from "../core/chat/chat.repository";
 import type { ChatRepository } from "../core/chat/chat.repository.types";
 import { createChatService } from "../core/chat/chat.service";
 import type { ChatService } from "../core/chat/chat.service.types";
+import { createVfsRepository } from "../core/vfs/vfs.repository";
+import type { VfsRepository } from "../core/vfs/vfs.repository.types";
+import { createVfsProviderRegistry, type VfsProviderRegistry } from "../core/vfs/vfs.provider.registry";
+import { createVfsService } from "../core/vfs/vfs.service";
+import type { VfsService } from "../core/vfs/vfs.service.types";
 
 export type AppContainer = {
   loggerService: LoggerService;
@@ -41,6 +46,7 @@ export type AppContainer = {
   indexingService: IndexingService;
   modelDownloadService: ModelDownloadService;
   chatService: ChatService;
+  vfsService: VfsService;
   close: () => void;
   mcpServer: McpServerService | null;
 };
@@ -56,6 +62,9 @@ const TOKENS = {
   ModelDownloadService: Symbol("ModelDownloadService"),
   ChatRepository: Symbol("ChatRepository"),
   ChatService: Symbol("ChatService"),
+  VfsRepository: Symbol("VfsRepository"),
+  VfsProviderRegistry: Symbol("VfsProviderRegistry"),
+  VfsService: Symbol("VfsService"),
   IndexMetadataRepository: Symbol("IndexMetadataRepository"),
   AppContainer: Symbol("AppContainer"),
 } as const;
@@ -82,6 +91,7 @@ function registerDependencies(
 ) {
   let metadataRepo: IndexMetadataRepository | null = null;
   let chatRepo: ChatRepository | null = null;
+  let vfsRepo: VfsRepository | null = null;
   di.registerInstance<ConfigService>(
     TOKENS.ConfigService,
     deps?.configService ?? defaultConfigService,
@@ -214,6 +224,26 @@ function registerDependencies(
       }),
     ),
   });
+  di.register(TOKENS.VfsRepository, {
+    useFactory: instanceCachingFactory(() => {
+      const created = createVfsRepository({
+        dbPath: join(deps?.userDataDir ?? "build", "metadata", "vfs.db"),
+      });
+      vfsRepo = created;
+      return created;
+    }),
+  });
+  di.register(TOKENS.VfsProviderRegistry, {
+    useFactory: instanceCachingFactory(() => createVfsProviderRegistry()),
+  });
+  di.register(TOKENS.VfsService, {
+    useFactory: instanceCachingFactory((c) =>
+      createVfsService({
+        repository: c.resolve<VfsRepository>(TOKENS.VfsRepository),
+        registry: c.resolve<VfsProviderRegistry>(TOKENS.VfsProviderRegistry),
+      }),
+    ),
+  });
   di.register(TOKENS.AppContainer, {
     useFactory: instanceCachingFactory((c) => {
       const configService = c.resolve<ConfigService>(TOKENS.ConfigService);
@@ -231,6 +261,7 @@ function registerDependencies(
         TOKENS.ModelDownloadService,
       );
       const chatService = c.resolve<ChatService>(TOKENS.ChatService);
+      const vfsService = c.resolve<VfsService>(TOKENS.VfsService);
 
       const mcpServer = createMcpServer({
         retrieval: retrievalService,
@@ -245,9 +276,11 @@ function registerDependencies(
         indexingService,
         modelDownloadService,
         chatService,
+        vfsService,
         close: () => {
           metadataRepo?.close();
           chatRepo?.close();
+          vfsRepo?.close();
         },
         mcpServer,
       } satisfies AppContainer;

@@ -42,6 +42,7 @@ export type VfsRepository = {
   getMountById: (mountId: string) => VfsMountRow | null;
 
   upsertNodes: (rows: VfsNode[]) => void;
+  getNodeByVpath: (vpath: string) => VfsNode | null;
   listChildrenPageLocal: (input: ListChildrenPageLocalInput) => ListChildrenPageLocalOutput;
 
   upsertChunks: (rows: VfsChunk[]) => void;
