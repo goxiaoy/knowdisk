@@ -1,15 +1,55 @@
-import type { VfsMountConfig, WalkChildrenInput, WalkChildrenOutput } from "./vfs.types";
+import type {
+  VfsMount,
+  VfsMountConfig,
+  VfsNodeKind,
+  WalkChildrenInput,
+  WalkChildrenOutput,
+} from "./vfs.types";
 
-export type VfsService = {
-  mount: (config: VfsMountConfig) => Promise<void>;
-  unmount: (mountId: string) => Promise<void>;
+export const VFS_OPERATION_SERVICE_READY = true;
 
-  walkChildren: (input: WalkChildrenInput) => Promise<WalkChildrenOutput>;
-
-  triggerReconcile: (mountId: string) => Promise<void>;
+export type ListChildrenItem = {
+  sourceRef: string;
+  parentSourceRef: string | null;
+  name: string;
+  kind: VfsNodeKind;
+  title?: string;
+  size?: number;
+  mtimeMs?: number;
+  providerVersion?: string;
 };
 
-export type VfsSyncScheduler = {
-  enqueueMetadataUpsert: (input: { mountId: string; sourceRef: string }) => Promise<void>;
-  enqueueMetadataDelete: (input: { mountId: string; sourceRef: string }) => Promise<void>;
+export type ListChildrenResult = {
+  items: ListChildrenItem[];
+  nextCursor?: string;
+};
+
+export type ListChildrenOperation = (input: {
+  mount: VfsMount;
+  parentSourceRef: string | null;
+  limit: number;
+  cursor?: string;
+}) => Promise<ListChildrenResult>;
+
+export type CreateReadStreamOperation = (input: {
+  mount: VfsMount;
+  sourceRef: string;
+  offset?: number;
+  length?: number;
+}) => Promise<ReadableStream<Uint8Array>>;
+
+export type VfsService = {
+  mount: (config: VfsMountConfig) => Promise<VfsMount>;
+  mountInternal: (mountId: string, config: VfsMountConfig) => Promise<VfsMount>;
+  unmount: (mountId: string) => Promise<void>;
+
+  listChildren: ListChildrenOperation;
+
+  triggerReconcile: (mountId: string) => Promise<void>;
+  createReadStream: CreateReadStreamOperation;
+};
+
+export type VfsOperationService = {
+  vfs: VfsService;
+  walkChildren: (input: WalkChildrenInput) => Promise<WalkChildrenOutput>;
 };
