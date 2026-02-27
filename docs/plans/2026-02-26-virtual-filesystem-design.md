@@ -325,3 +325,12 @@ export interface VfsSyncScheduler {
 ## 10. Next Step
 
 Use `writing-plans` to produce a concrete implementation plan (phases, migration steps, test gates), with interface-first sequencing.
+
+## 11. Implementation Delta (2026-02-27)
+
+Current code-level status diverges from Section 5 metadata sync flow in one place:
+
+- `VfsService.triggerReconcile(mountId)` is currently a no-op placeholder.
+- `vfs.sync.scheduler` is implemented and tested in isolation, but is not yet wired into `VfsService` or mount lifecycle startup.
+
+All other implemented pieces (types, repository schema, cursor codec, `walkChildren`, markdown refresh/cache/chunks, RPC surface) follow this design document.

@@ -126,6 +126,24 @@ flowchart TD
 
 这样可以避免“配置为空但系统看似可用”的假状态。
 
+### 2.6 虚拟文件系统（VFS）
+
+Know Disk 现已在 `core/vfs` 提供可挂载的 VFS 层，用于多 provider 元数据浏览和 markdown 内容缓存。
+
+- 挂载配置：
+  - `syncMetadata=true`：`walkChildren` 从本地 SQLite 元数据（`vfs_nodes`）分页，游标按本地排序边界 `(lastName,lastNodeId)`。
+  - `syncMetadata=false`：`walkChildren` 透传 provider 分页游标，同时把结果回填到 `vfs_nodes` 和带 TTL 的 `vfs_page_cache`。
+  - `syncContent`：
+    - `lazy`：首次 `readMarkdown` 时刷新 markdown。
+    - `eager`：预留给主动内容刷新流水线。
+- 游标语义：
+  - API 统一使用 `VfsCursor = { mode, token }`。
+  - `mode=local`：token 编码本地分页边界。
+  - `mode=remote`：token 编码 provider 游标。
+- 内容缓存：
+  - `vfs_markdown_cache` 存完整 markdown 和 hash。
+  - `vfs_chunks` 存分块后的 markdown（`seq` 稳定顺序），用于后续检索/索引复用。
+
 ## 3. 运行时架构
 
 - **UI（React）**
