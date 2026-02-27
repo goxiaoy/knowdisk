@@ -6,9 +6,9 @@ import { join, relative } from "node:path";
 import pino from "pino";
 import { createHuggingFaceVfsProvider } from "./provider/huggingface";
 import { createLocalVfsProvider } from "./provider/local";
+import { walkProvider } from "./vfs.provider.walk";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsSyncer } from "./vfs.syncer";
-import type { ListChildrenItem } from "./vfs.service.types";
 import type { VfsMount } from "./vfs.types";
 
 async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
@@ -20,50 +20,6 @@ async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<b
     await Bun.sleep(30);
   }
   return predicate();
-}
-
-async function walkProviderTree(input: {
-  listChildren: (params: {
-    mount: VfsMount;
-    parentSourceRef: string | null;
-    limit: number;
-    cursor?: string;
-  }) => Promise<{ items: ListChildrenItem[]; nextCursor?: string }>;
-  getMetadata?: (params: { mount: VfsMount; sourceRef: string }) => Promise<ListChildrenItem | null>;
-  mount: VfsMount;
-}): Promise<Map<string, ListChildrenItem>> {
-  const out = new Map<string, ListChildrenItem>();
-  const queue: Array<string | null> = [null];
-  while (queue.length > 0) {
-    const parentSourceRef = queue.shift() ?? null;
-    let cursor: string | undefined;
-    do {
-      const page = await input.listChildren({
-        mount: input.mount,
-        parentSourceRef,
-        limit: 200,
-        cursor,
-      });
-      for (const item of page.items) {
-        let normalized = item;
-        if (item.kind === "file" && (item.size ?? 0) <= 0 && input.getMetadata) {
-          const m = await input.getMetadata({
-            mount: input.mount,
-            sourceRef: item.sourceRef,
-          });
-          if (m) {
-            normalized = { ...item, size: m.size ?? item.size };
-          }
-        }
-        out.set(item.sourceRef, normalized);
-        if (item.kind === "folder") {
-          queue.push(item.sourceRef);
-        }
-      }
-      cursor = page.nextCursor;
-    } while (cursor);
-  }
-  return out;
 }
 
 async function walkLocalFs(root: string): Promise<Map<string, { kind: "file" | "folder"; size: number | null }>> {
@@ -121,11 +77,15 @@ describe("vfs syncer integration", () => {
 
         await syncer.fullSync();
 
-        const remote = await walkProviderTree({
-          listChildren: provider.listChildren,
-          getMetadata: provider.getMetadata,
-          mount,
-        });
+        const remote = new Map(
+          (
+            await walkProvider({
+              provider,
+              mount,
+              getMetadata: provider.getMetadata,
+            })
+          ).map((entry) => [entry.sourceRef, entry]),
+        );
         const dbNodes = repo
           .listNodesByMountId(mount.mountId)
           .filter((node) => node.deletedAtMs === null);

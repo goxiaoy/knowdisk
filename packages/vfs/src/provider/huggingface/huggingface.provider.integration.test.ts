@@ -3,6 +3,7 @@ import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { walkProvider } from "../../vfs.provider.walk";
 import type { VfsMount } from "../../vfs.types";
 import { createHuggingFaceVfsProvider } from "./index";
 
@@ -18,37 +19,6 @@ function makeMount(providerExtra: Record<string, unknown>): VfsMount {
     metadataTtlSec: 60,
     reconcileIntervalMs: 1000,
   };
-}
-
-type DownloadFile = {
-  sourceRef: string;
-  size?: number;
-};
-
-async function collectAllFiles(
-  provider: ReturnType<typeof createHuggingFaceVfsProvider>,
-  mount: VfsMount,
-  parentSourceRef: string | null = null,
-): Promise<DownloadFile[]> {
-  const files: DownloadFile[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await provider.listChildren({
-      mount,
-      parentSourceRef,
-      limit: 200,
-      cursor,
-    });
-    for (const item of page.items) {
-      if (item.kind === "file") {
-        files.push({ sourceRef: item.sourceRef, size: item.size });
-      } else {
-        files.push(...(await collectAllFiles(provider, mount, item.sourceRef)));
-      }
-    }
-    cursor = page.nextCursor;
-  } while (cursor);
-  return files;
 }
 
 function formatBytes(bytes: number): string {
@@ -135,7 +105,9 @@ describe("huggingface vfs provider integration", () => {
       });
       const provider = createHuggingFaceVfsProvider(mount);
 
-      const files = await collectAllFiles(provider, mount);
+      const files = (await walkProvider({ provider, mount }))
+        .filter((entry) => entry.kind === "file")
+        .map((entry) => ({ sourceRef: entry.sourceRef, size: entry.size }));
       expect(files.length).toBeGreaterThan(0);
       expect(files.some((file) => file.sourceRef === "onnx/model.onnx")).toBe(true);
 
