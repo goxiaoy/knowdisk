@@ -1,9 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { decodeVfsCursorToken, encodeVfsLocalCursorToken, encodeVfsRemoteCursorToken } from "./vfs.cursor";
+import {
+  decodeVfsCursorToken,
+  encodeVfsLocalCursorToken,
+  encodeVfsRemoteCursorToken,
+} from "./vfs.cursor";
+import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
 import type { VfsService } from "./vfs.service.types";
-import type { VfsMount, VfsMountConfig, VfsNode, WalkChildrenInput, WalkChildrenOutput } from "./vfs.types";
+import type {
+  VfsMount,
+  VfsMountConfig,
+  VfsNode,
+  WalkChildrenInput,
+  WalkChildrenOutput,
+} from "./vfs.types";
 
 export function createVfsService(deps: {
   repository: VfsRepository;
@@ -24,11 +35,39 @@ export function createVfsService(deps: {
         ...config,
       };
       mounts.set(mount.mountId, mount);
-      deps.repository.upsertMount({
-        ...mount,
-        lastReconcileAtMs: null,
-        createdAtMs: nowMs(),
-        updatedAtMs: nowMs(),
+      const now = nowMs();
+      const mountNodeId = createVfsNodeId({
+        mountId: mount.mountId,
+        sourceRef: "",
+      });
+      deps.repository.upsertNodes([
+        {
+          nodeId: mountNodeId,
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          title: mount.mountId,
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: now,
+          updatedAtMs: now,
+        },
+      ]);
+      deps.repository.upsertNodeMountExt({
+        nodeId: mountNodeId,
+        mountId: mount.mountId,
+        providerType: mount.providerType,
+        providerExtra: mount.providerExtra,
+        syncMetadata: mount.syncMetadata,
+        syncContent: mount.syncContent ?? false,
+        metadataTtlSec: mount.metadataTtlSec,
+        reconcileIntervalMs: mount.reconcileIntervalMs,
+        createdAtMs: now,
+        updatedAtMs: now,
       });
       return mount;
     },
@@ -51,38 +90,51 @@ export function createVfsService(deps: {
     },
 
     async walkChildren(input: WalkChildrenInput): Promise<WalkChildrenOutput> {
-      const resolved = resolveMountByPath(input.path, mounts);
-      if (!resolved) {
-        throw new Error(`No mount found for path: ${input.path}`);
-      }
-
-      const { mount, relativePath } = resolved;
-      const parentNode = relativePath ? deps.repository.getNodeByVpath(input.path) : null;
-
-      if (mount.syncMetadata) {
-        const localCursor = decodeLocalCursor(input.cursor?.token);
-        const page = deps.repository.listChildrenPageLocal({
-          mountId: mount.mountId,
-          parentId: parentNode?.nodeId ?? null,
+      if (input.parentNodeId === null) {
+        return walkLocalChildren({
+          repository: deps.repository,
           limit: input.limit,
-          cursor: localCursor ?? undefined,
+          cursorToken: input.cursor?.token,
         });
-        return {
-          items: page.items,
-          nextCursor: page.nextCursor
-            ? {
-                mode: "local",
-                token: encodeVfsLocalCursorToken(page.nextCursor),
-              }
-            : undefined,
-          source: "local",
-        };
       }
 
-      const adapter = deps.registry.get(mount);
-      const parentSourceRef = parentNode?.sourceRef ?? null;
+      const parentNode = deps.repository.getNodeById(input.parentNodeId);
+      if (!parentNode) {
+        throw new Error(`Parent node not found: ${input.parentNodeId}`);
+      }
+      const mount = mounts.get(parentNode.mountId);
+      if (!mount) {
+        const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
+        if (!ext) {
+          throw new Error(`Mount config not found: ${parentNode.mountId}`);
+        }
+        mounts.set(parentNode.mountId, {
+          mountId: ext.mountId,
+          providerType: ext.providerType,
+          providerExtra: ext.providerExtra,
+          syncMetadata: ext.syncMetadata,
+          syncContent: ext.syncContent,
+          metadataTtlSec: ext.metadataTtlSec,
+          reconcileIntervalMs: ext.reconcileIntervalMs,
+        });
+      }
+      const resolvedMount = mounts.get(parentNode.mountId)!;
+
+      if (resolvedMount.syncMetadata) {
+        return walkLocalChildren({
+          repository: deps.repository,
+          mountId: resolvedMount.mountId,
+          parentNodeId: parentNode.nodeId,
+          limit: input.limit,
+          cursorToken: input.cursor?.token,
+        });
+      }
+
+      const adapter = deps.registry.get(resolvedMount);
+      const parentSourceRef =
+        parentNode.kind === "mount" ? null : parentNode.sourceRef;
       const providerCursor = decodeRemoteCursor(input.cursor?.token);
-      const cacheKey = `${mount.mountId}::${parentSourceRef ?? "__root__"}::${providerCursor ?? ""}::${input.limit}`;
+      const cacheKey = `${resolvedMount.mountId}::${parentNode.nodeId}::${providerCursor ?? ""}::${input.limit}`;
       const cached = deps.repository.getPageCacheIfFresh(cacheKey, nowMs());
 
       if (cached) {
@@ -99,20 +151,22 @@ export function createVfsService(deps: {
       }
 
       const listed = await adapter.listChildren({
-        mount,
+        mount: resolvedMount,
         parentSourceRef,
         limit: input.limit,
         cursor: providerCursor ?? undefined,
       });
 
+      const now = nowMs();
       const items = listed.items.map((item) => {
-        const childPath = buildChildPath(relativePath ? input.path : mount.mountPath, item.name);
         return {
-          nodeId: `${mount.mountId}:${item.sourceRef}:${randomUUID()}`,
-          mountId: mount.mountId,
-          parentId: parentNode?.nodeId ?? null,
+          nodeId: createVfsNodeId({
+            mountId: resolvedMount.mountId,
+            sourceRef: item.sourceRef,
+          }),
+          mountId: resolvedMount.mountId,
+          parentId: parentNode.nodeId,
           name: item.name,
-          vpath: childPath,
           kind: item.kind,
           title: item.title ?? item.name,
           size: item.size ?? null,
@@ -120,8 +174,8 @@ export function createVfsService(deps: {
           sourceRef: item.sourceRef,
           providerVersion: item.providerVersion ?? null,
           deletedAtMs: null,
-          createdAtMs: nowMs(),
-          updatedAtMs: nowMs(),
+          createdAtMs: now,
+          updatedAtMs: now,
         } satisfies VfsNode;
       });
 
@@ -130,7 +184,7 @@ export function createVfsService(deps: {
         cacheKey,
         itemsJson: JSON.stringify(items),
         nextCursor: listed.nextCursor ?? null,
-        expiresAtMs: nowMs() + mount.metadataTtlSec * 1000,
+        expiresAtMs: nowMs() + resolvedMount.metadataTtlSec * 1000,
       });
 
       return {
@@ -151,22 +205,29 @@ export function createVfsService(deps: {
   };
 }
 
-function resolveMountByPath(path: string, mounts: Map<string, VfsMount>) {
-  let best: VfsMount | null = null;
-  for (const mount of mounts.values()) {
-    if (path === mount.mountPath || path.startsWith(`${mount.mountPath}/`)) {
-      if (!best || mount.mountPath.length > best.mountPath.length) {
-        best = mount;
-      }
-    }
-  }
-  if (!best) {
-    return null;
-  }
-  const relative = path.slice(best.mountPath.length).replace(/^\//, "");
+function walkLocalChildren(input: {
+  repository: VfsRepository;
+  mountId?: string;
+  parentNodeId?: string | null;
+  limit: number;
+  cursorToken?: string;
+}): WalkChildrenOutput {
+  const localCursor = decodeLocalCursor(input.cursorToken);
+  const page = input.repository.listChildrenPageLocal({
+    mountId: input.mountId,
+    parentId: input.parentNodeId ?? null,
+    limit: input.limit,
+    cursor: localCursor ?? undefined,
+  });
   return {
-    mount: best,
-    relativePath: relative.length > 0 ? relative : null,
+    items: page.items,
+    nextCursor: page.nextCursor
+      ? {
+          mode: "local",
+          token: encodeVfsLocalCursorToken(page.nextCursor),
+        }
+      : undefined,
+    source: "local",
   };
 }
 
@@ -193,11 +254,4 @@ function decodeRemoteCursor(token?: string) {
     throw new Error("Expected remote cursor token");
   }
   return decoded.providerCursor;
-}
-
-function buildChildPath(parentPath: string, name: string): string {
-  if (parentPath.endsWith("/")) {
-    return `${parentPath}${name}`;
-  }
-  return `${parentPath}/${name}`;
 }

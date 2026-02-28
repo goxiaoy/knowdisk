@@ -12,7 +12,6 @@ const TEST_MODEL = "hf-internal-testing/tiny-random-bert";
 function makeMount(providerExtra: Record<string, unknown>): VfsMount {
   return {
     mountId: "hf-e2e",
-    mountPath: "/models/hf",
     providerType: "huggingface",
     providerExtra,
     syncMetadata: false,

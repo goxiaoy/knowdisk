@@ -8,10 +8,7 @@ Scope: Design a provider-mountable virtual file system under `core`, with SQLite
 
 - All entities are unified as abstract virtual files/folders (`VirtualFile` concept).
 - Metadata is stored in SQLite and is the primary browsing truth.
-- Mount supports multiple providers to paths, e.g.:
-  - Google Drive -> `/abc/drive`
-  - S3 -> `/abc/s3`
-  - Local folder -> `/abc/local`
+- Mount supports multiple providers by mount node id.
 - Local mount uses existing strategy: watch + debounce + periodic reconcile (eventual consistency).
 - Remote providers are split by capability:
   - watch-capable: watch + debounce + reconcile
@@ -26,11 +23,9 @@ Scope: Design a provider-mountable virtual file system under `core`, with SQLite
 ## 2. Interface & Types (First-Class)
 
 ```ts
-export type VfsNodeKind = "file" | "folder";
+export type VfsNodeKind = "mount" | "file" | "folder";
 
 export interface VfsMountConfig {
-  mountId: string;
-  mountPath: string; // e.g. /abc/drive
   providerType: string; // google_drive | s3 | local | gmail ...
   providerExtra: Record<string, unknown>; // provider-specific metadata, e.g. token/tenant
   syncMetadata: boolean;
@@ -43,7 +38,6 @@ export interface VfsNode {
   mountId: string;
   parentId: string | null;
   name: string;
-  vpath: string; // globally unique virtual path
   kind: VfsNodeKind;
   title: string;
   size: number | null;
@@ -61,7 +55,7 @@ export interface VfsCursor {
 }
 
 export interface WalkChildrenInput {
-  path: string;
+  parentNodeId: string | null;
   limit: number;
   cursor?: VfsCursor;
 }
@@ -122,7 +116,8 @@ export interface VfsProviderAdapter {
 
 ```ts
 export interface VfsService {
-  mount(config: VfsMountConfig): Promise<void>;
+  mount(config: VfsMountConfig): Promise<VfsMount>;
+  mountInternal(mountId: string, config: VfsMountConfig): Promise<VfsMount>;
   unmount(mountId: string): Promise<void>;
 
   walkChildren(input: WalkChildrenInput): Promise<WalkChildrenOutput>;
@@ -138,27 +133,13 @@ export interface VfsSyncScheduler {
 
 ## 3. SQLite Schema
 
-### 3.1 `vfs_mounts`
-
-- `mount_id TEXT PRIMARY KEY`
-- `mount_path TEXT UNIQUE NOT NULL`
-- `provider_type TEXT NOT NULL`
-- `provider_extra TEXT NOT NULL` (JSON object serialized as string)
-- `sync_metadata INTEGER NOT NULL`
-- `metadata_ttl_sec INTEGER NOT NULL`
-- `reconcile_interval_ms INTEGER NOT NULL`
-- `last_reconcile_at_ms INTEGER`
-- `created_at_ms INTEGER NOT NULL`
-- `updated_at_ms INTEGER NOT NULL`
-
-### 3.2 `vfs_nodes`
+### 3.1 `vfs_nodes`
 
 - `node_id TEXT PRIMARY KEY`
 - `mount_id TEXT NOT NULL`
 - `parent_id TEXT`
 - `name TEXT NOT NULL`
-- `vpath TEXT UNIQUE NOT NULL`
-- `kind TEXT NOT NULL` (`file|folder`)
+- `kind TEXT NOT NULL` (`mount|file|folder`)
 - `title TEXT NOT NULL`
 - `size INTEGER`
 - `mtime_ms INTEGER`
@@ -169,6 +150,19 @@ export interface VfsSyncScheduler {
 - `updated_at_ms INTEGER NOT NULL`
 - unique: `(mount_id, source_ref)`
 - index: `(mount_id, parent_id, name, node_id)`
+
+### 3.2 `vfs_node_mount_ext`
+
+- `node_id TEXT PRIMARY KEY`
+- `mount_id TEXT UNIQUE NOT NULL`
+- `provider_type TEXT NOT NULL`
+- `provider_extra TEXT NOT NULL` (JSON object serialized as string)
+- `sync_metadata INTEGER NOT NULL`
+- `sync_content INTEGER NOT NULL`
+- `metadata_ttl_sec INTEGER NOT NULL`
+- `reconcile_interval_ms INTEGER NOT NULL`
+- `created_at_ms INTEGER NOT NULL`
+- `updated_at_ms INTEGER NOT NULL`
 
 ### 3.3 `vfs_page_cache`
 
@@ -187,7 +181,7 @@ export interface VfsSyncScheduler {
   - Cursor token stores provider cursor.
   - Response pages are backfilled to `vfs_nodes` and `vfs_page_cache` with TTL.
 - Unified API contract:
-  - `walkChildren(path, cursor, limit) -> { items, nextCursor, source }`
+  - `walkChildren(parentNodeId, cursor, limit) -> { items, nextCursor, source }`
 
 ## 5. Metadata Sync Flow
 

@@ -4,7 +4,7 @@ import { Database } from "bun:sqlite";
 import type {
   ListChildrenPageLocalInput,
   ListChildrenPageLocalOutput,
-  VfsMountRow,
+  VfsNodeMountExtRow,
   VfsPageCacheRow,
   VfsRepository,
 } from "./vfs.repository.types";
@@ -20,58 +20,54 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       db.close();
     },
 
-    upsertMount(row: VfsMountRow) {
+    upsertNodeMountExt(row: VfsNodeMountExtRow) {
       db.query(
-        `INSERT INTO vfs_mounts (
-          mount_id, mount_path, provider_type, provider_extra, sync_metadata, sync_content,
-          metadata_ttl_sec, reconcile_interval_ms, last_reconcile_at_ms,
-          created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(mount_id) DO UPDATE SET
-          mount_path=excluded.mount_path,
+        `INSERT INTO vfs_node_mount_ext (
+          node_id, mount_id, provider_type, provider_extra, sync_metadata, sync_content,
+          metadata_ttl_sec, reconcile_interval_ms, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(node_id) DO UPDATE SET
+          mount_id=excluded.mount_id,
           provider_type=excluded.provider_type,
           provider_extra=excluded.provider_extra,
           sync_metadata=excluded.sync_metadata,
           sync_content=excluded.sync_content,
           metadata_ttl_sec=excluded.metadata_ttl_sec,
           reconcile_interval_ms=excluded.reconcile_interval_ms,
-          last_reconcile_at_ms=excluded.last_reconcile_at_ms,
           updated_at_ms=excluded.updated_at_ms`,
       ).run(
+        row.nodeId,
         row.mountId,
-        row.mountPath,
         row.providerType,
         JSON.stringify(row.providerExtra ?? {}),
         row.syncMetadata ? 1 : 0,
         row.syncContent ? 1 : 0,
         row.metadataTtlSec,
         row.reconcileIntervalMs,
-        row.lastReconcileAtMs,
         row.createdAtMs,
         row.updatedAtMs,
       );
     },
 
-    getMountById(mountId: string) {
+    getNodeMountExtByMountId(mountId: string) {
       const row = db
         .query(
           `SELECT
+            node_id AS nodeId,
             mount_id AS mountId,
-            mount_path AS mountPath,
             provider_type AS providerType,
             provider_extra AS providerExtra,
             sync_metadata AS syncMetadata,
             sync_content AS syncContent,
             metadata_ttl_sec AS metadataTtlSec,
             reconcile_interval_ms AS reconcileIntervalMs,
-            last_reconcile_at_ms AS lastReconcileAtMs,
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
-          FROM vfs_mounts
+          FROM vfs_node_mount_ext
           WHERE mount_id = ?`,
         )
         .get(mountId) as
-        | (Omit<VfsMountRow, "syncMetadata" | "syncContent" | "providerExtra"> & {
+        | (Omit<VfsNodeMountExtRow, "syncMetadata" | "syncContent" | "providerExtra"> & {
             syncMetadata: number;
             syncContent: number;
             providerExtra: unknown;
@@ -94,15 +90,14 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       }
       const stmt = db.query(
         `INSERT INTO vfs_nodes (
-          node_id, mount_id, parent_id, name, vpath, kind, title,
+          node_id, mount_id, parent_id, name, kind, title,
           size, mtime_ms, source_ref, provider_version,
           deleted_at_ms, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(node_id) DO UPDATE SET
           mount_id=excluded.mount_id,
           parent_id=excluded.parent_id,
           name=excluded.name,
-          vpath=excluded.vpath,
           kind=excluded.kind,
           title=excluded.title,
           size=excluded.size,
@@ -119,7 +114,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             row.mountId,
             row.parentId,
             row.name,
-            row.vpath,
             row.kind,
             row.title,
             row.size,
@@ -143,7 +137,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mount_id AS mountId,
             parent_id AS parentId,
             name,
-            vpath,
             kind,
             title,
             size,
@@ -159,7 +152,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         .all(mountId) as VfsNode[];
     },
 
-    getNodeByVpath(vpath: string) {
+    getNodeById(nodeId: string) {
       return db
         .query(
           `SELECT
@@ -167,7 +160,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mount_id AS mountId,
             parent_id AS parentId,
             name,
-            vpath,
             kind,
             title,
             size,
@@ -178,17 +170,24 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
           FROM vfs_nodes
-          WHERE vpath = ?
+          WHERE node_id = ?
             AND deleted_at_ms IS NULL`,
         )
-        .get(vpath) as VfsNode | null;
+        .get(nodeId) as VfsNode | null;
     },
 
     listChildrenPageLocal(input: ListChildrenPageLocalInput): ListChildrenPageLocalOutput {
       const { mountId, parentId, limit, cursor } = input;
-      const args = [mountId, parentId] as Array<string | null>;
+      const args = [] as Array<string | null>;
+      let mountClause = "";
+      if (mountId) {
+        mountClause = "AND mount_id = ?";
+      }
+      args.push(parentId);
+      if (mountId) {
+        args.push(mountId);
+      }
       let cursorClause = "";
-
       if (cursor) {
         cursorClause = "AND (name > ? OR (name = ? AND node_id > ?))";
         args.push(cursor.lastName, cursor.lastName, cursor.lastNodeId);
@@ -201,7 +200,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mount_id AS mountId,
             parent_id AS parentId,
             name,
-            vpath,
             kind,
             title,
             size,
@@ -212,9 +210,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
           FROM vfs_nodes
-          WHERE mount_id = ?
-            AND parent_id IS ?
+          WHERE parent_id IS ?
             AND deleted_at_ms IS NULL
+            ${mountClause}
             ${cursorClause}
           ORDER BY name ASC, node_id ASC
           LIMIT ?`,
@@ -227,7 +225,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         return { items };
       }
 
-      const last = items[items.length - 1];
+      const last = items[items.length - 1]!;
       return {
         items,
         nextCursor: {
@@ -268,26 +266,11 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
 
 function migrate(db: Database): void {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS vfs_mounts (
-      mount_id TEXT PRIMARY KEY,
-      mount_path TEXT UNIQUE NOT NULL,
-      provider_type TEXT NOT NULL,
-      provider_extra TEXT NOT NULL,
-      sync_metadata INTEGER NOT NULL,
-      sync_content INTEGER NOT NULL DEFAULT 0,
-      metadata_ttl_sec INTEGER NOT NULL,
-      reconcile_interval_ms INTEGER NOT NULL,
-      last_reconcile_at_ms INTEGER,
-      created_at_ms INTEGER NOT NULL,
-      updated_at_ms INTEGER NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS vfs_nodes (
       node_id TEXT PRIMARY KEY,
       mount_id TEXT NOT NULL,
       parent_id TEXT,
       name TEXT NOT NULL,
-      vpath TEXT UNIQUE NOT NULL,
       kind TEXT NOT NULL,
       title TEXT NOT NULL,
       size INTEGER,
@@ -300,7 +283,23 @@ function migrate(db: Database): void {
       UNIQUE(mount_id, source_ref)
     );
     CREATE INDEX IF NOT EXISTS idx_vfs_nodes_parent_order
+      ON vfs_nodes (parent_id, name, node_id);
+    CREATE INDEX IF NOT EXISTS idx_vfs_nodes_mount_parent_order
       ON vfs_nodes (mount_id, parent_id, name, node_id);
+
+    CREATE TABLE IF NOT EXISTS vfs_node_mount_ext (
+      node_id TEXT PRIMARY KEY,
+      mount_id TEXT UNIQUE NOT NULL,
+      provider_type TEXT NOT NULL,
+      provider_extra TEXT NOT NULL,
+      sync_metadata INTEGER NOT NULL,
+      sync_content INTEGER NOT NULL DEFAULT 0,
+      metadata_ttl_sec INTEGER NOT NULL,
+      reconcile_interval_ms INTEGER NOT NULL,
+      created_at_ms INTEGER NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      FOREIGN KEY(node_id) REFERENCES vfs_nodes(node_id)
+    );
 
     CREATE TABLE IF NOT EXISTS vfs_page_cache (
       cache_key TEXT PRIMARY KEY,

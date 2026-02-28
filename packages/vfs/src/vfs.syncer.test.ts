@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createVfsNodeId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsSyncer } from "./vfs.syncer";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
@@ -24,7 +25,6 @@ function createMockLogger() {
 function makeMount(extra?: Partial<VfsMount>): VfsMount {
   return {
     mountId: "m1",
-    mountPath: "/m1",
     providerType: "mock",
     providerExtra: {},
     syncMetadata: true,
@@ -53,11 +53,13 @@ describe("vfs syncer", () => {
       const mount = makeMount();
       repo.upsertNodes([
         {
-          nodeId: `${mount.mountId}:legacy.txt`,
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "legacy.txt",
+          }),
           mountId: mount.mountId,
           parentId: null,
           name: "legacy.txt",
-          vpath: "/m1/legacy.txt",
           kind: "file",
           title: "legacy.txt",
           size: 11,
@@ -128,6 +130,8 @@ describe("vfs syncer", () => {
       const legacy = all.find((n) => n.sourceRef === "legacy.txt");
       expect(a?.size).toBe(5);
       expect(b?.size).toBe(2);
+      expect(() => decodeBase64UrlNodeIdToUuid(a!.nodeId)).not.toThrow();
+      expect(a?.parentId).toBeNull();
       expect(legacy?.deletedAtMs).toBe(1000);
       expect(events.some((e) => e.type === "status")).toBe(true);
       expect(events.some((e) => e.type === "metadata_progress")).toBe(true);
@@ -202,11 +206,13 @@ describe("vfs syncer", () => {
       const mount = makeMount({ syncContent: true });
       repo.upsertNodes([
         {
-          nodeId: `${mount.mountId}:f.txt`,
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "f.txt",
+          }),
           mountId: mount.mountId,
           parentId: null,
           name: "f.txt",
-          vpath: "/m1/f.txt",
           kind: "file",
           title: "f.txt",
           size: 3,

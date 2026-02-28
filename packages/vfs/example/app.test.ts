@@ -49,15 +49,19 @@ describe("vfs example app", () => {
       expect(state.mounts.length).toBe(2);
       expect(
         state.mounts.some(
-          (mount: { mountPath: string }) =>
-            mount.mountPath === ".model/hf-internal-testing/tiny-random-bert",
+          (mount: { mountId: string }) =>
+            mount.mountId === "hf-tiny-random-bert",
         ),
       ).toBe(true);
       expect(
-        state.mounts.some((mount: { mountPath: string }) => mount.mountPath === "/testdata"),
+        state.mounts.some((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert"),
       ).toBe(true);
+      const localMount = state.mounts.find((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert");
+      expect(localMount?.mountNodeId).toEqual(expect.any(String));
 
-      const listRes = await fetch(`${baseUrl}/api/list?path=/testdata&limit=50`);
+      const listRes = await fetch(
+        `${baseUrl}/api/list?parentNodeId=${encodeURIComponent(localMount.mountNodeId)}&limit=50`,
+      );
       expect(listRes.status).toBe(200);
       const listed = await listRes.json();
       expect(Array.isArray(listed.items)).toBe(true);

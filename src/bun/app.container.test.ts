@@ -112,7 +112,6 @@ test("registers huggingface vfs provider in app container", async () => {
       userDataDir: dir,
     });
     const mount = await container.vfsService.mount({
-      mountPath: "/hf",
       providerType: "huggingface",
       providerExtra: {
         endpoint: "https://huggingface.co",

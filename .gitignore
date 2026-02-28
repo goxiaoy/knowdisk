@@ -38,3 +38,6 @@ Thumbs.db
 
 # Local worktrees
 .worktrees/
+
+# VFS example runtime
+.vfs-example/

@@ -23,11 +23,13 @@ describe("vfs repository", () => {
       .all() as Array<{ name: string }>;
 
     expect(tables.map((t) => t.name)).toEqual([
-      "vfs_mounts",
+      "vfs_node_mount_ext",
       "vfs_nodes",
       "vfs_page_cache",
     ]);
-    const mountColumns = db.query("PRAGMA table_info(vfs_mounts)").all() as Array<{ name: string }>;
+    const mountColumns = db
+      .query("PRAGMA table_info(vfs_node_mount_ext)")
+      .all() as Array<{ name: string }>;
     expect(mountColumns.map((item) => item.name)).toContain("provider_extra");
     expect(mountColumns.map((item) => item.name)).toContain("sync_content");
 
@@ -35,27 +37,43 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("upsert/get mount", () => {
+  test("upsert/get node mount ext", () => {
     const { dir, repo } = makeRepo();
-    repo.upsertMount({
+    repo.upsertNodes([
+      {
+        nodeId: "mount-node-1",
+        mountId: "m1",
+        parentId: null,
+        name: "m1",
+        kind: "mount",
+        title: "m1",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    repo.upsertNodeMountExt({
+      nodeId: "mount-node-1",
       mountId: "m1",
-      mountPath: "/abc/drive",
       providerType: "google_drive",
       providerExtra: { token: "secret-token", tenant: "acme" },
       syncMetadata: true,
       syncContent: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
-      lastReconcileAtMs: null,
       createdAtMs: 1,
       updatedAtMs: 1,
     });
 
-    const mount = repo.getMountById("m1");
+    const mount = repo.getNodeMountExtByMountId("m1");
     expect(mount).not.toBeNull();
-    expect(mount?.mountPath).toBe("/abc/drive");
     expect(mount?.syncMetadata).toBe(true);
     expect(mount?.syncContent).toBe(true);
+    expect(mount?.nodeId).toBe("mount-node-1");
     expect(mount?.providerExtra).toEqual({ token: "secret-token", tenant: "acme" });
 
     repo.close();
@@ -70,7 +88,6 @@ describe("vfs repository", () => {
         mountId: "m1",
         parentId: "p1",
         name: "b.md",
-        vpath: "/abc/drive/b.md",
         kind: "file",
         title: "B",
         size: 2,
@@ -86,7 +103,6 @@ describe("vfs repository", () => {
         mountId: "m1",
         parentId: "p1",
         name: "a.md",
-        vpath: "/abc/drive/a.md",
         kind: "file",
         title: "A",
         size: 1,
@@ -102,7 +118,6 @@ describe("vfs repository", () => {
         mountId: "m1",
         parentId: "p1",
         name: "a.md",
-        vpath: "/abc/drive/a-copy.md",
         kind: "file",
         title: "A2",
         size: 3,

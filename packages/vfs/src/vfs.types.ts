@@ -1,9 +1,8 @@
 export const VFS_TYPES_READY = true;
 
-export type VfsNodeKind = "file" | "folder";
+export type VfsNodeKind = "mount" | "file" | "folder";
 
 export type VfsMountConfig = {
-  mountPath: string;
   providerType: string;
   providerExtra: Record<string, unknown>;
   syncMetadata: boolean;
@@ -21,7 +20,6 @@ export type VfsNode = {
   mountId: string;
   parentId: string | null;
   name: string;
-  vpath: string;
   kind: VfsNodeKind;
   title: string;
   size: number | null;
@@ -39,7 +37,7 @@ export type VfsCursor = {
 };
 
 export type WalkChildrenInput = {
-  path: string;
+  parentNodeId: string | null;
   limit: number;
   cursor?: VfsCursor;
 };

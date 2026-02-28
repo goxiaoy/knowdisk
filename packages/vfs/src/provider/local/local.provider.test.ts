@@ -22,7 +22,6 @@ function createMockLogger() {
 function makeMount(directory: string): VfsMount {
   return {
     mountId: "local-1",
-    mountPath: "/local",
     providerType: "local",
     providerExtra: { directory },
     syncMetadata: true,

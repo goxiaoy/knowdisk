@@ -12,7 +12,8 @@
 		"build": "vite build && electrobun build",
 		"build:prod": "vite build && electrobun build --channel prod",
 		"start": "bun run dev",
-		"test": "bun test"
+		"test": "bun test",
+		"vfs:example": "bun run --cwd packages/vfs example"
 	},
 	"dependencies": {
 		"@knowdisk/vfs": "workspace:*",

@@ -18,7 +18,6 @@ function createMockLogger() {
 function makeMount(providerExtra: Record<string, unknown>): VfsMount {
   return {
     mountId: "m1",
-    mountPath: "/models/hf",
     providerType: "huggingface",
     providerExtra,
     syncMetadata: false,

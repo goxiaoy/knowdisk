@@ -288,12 +288,12 @@ const rpc = BrowserView.defineRPC({
         nextCursor?: VfsCursor;
         source: "local" | "remote";
       }> {
-        const { path, limit, cursor } = params as {
-          path: string;
+        const { parentNodeId, limit, cursor } = params as {
+          parentNodeId: string | null;
           limit: number;
           cursor?: VfsCursor;
         };
-        return container.vfsService.walkChildren({ path, limit, cursor });
+        return container.vfsService.walkChildren({ parentNodeId, limit, cursor });
       },
       async vfs_trigger_reconcile(params?: unknown) {
         const { mountId } = params as { mountId: string };

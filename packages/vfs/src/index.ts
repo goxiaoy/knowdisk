@@ -5,6 +5,7 @@ export * from "./vfs.repository.types";
 export * from "./vfs.repository";
 export * from "./vfs.provider.registry";
 export * from "./vfs.provider.walk";
+export * from "./vfs.node-id";
 export * from "./vfs.cursor";
 export * from "./vfs.service";
 export * from "./vfs.sync.scheduler";

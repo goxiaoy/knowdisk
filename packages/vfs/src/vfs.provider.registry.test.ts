@@ -17,7 +17,6 @@ describe("vfs provider registry", () => {
     };
     const mount: VfsMount = {
       mountId: "m1",
-      mountPath: "/abc/mock",
       providerType: "mock",
       providerExtra: {},
       syncMetadata: true,
@@ -41,7 +40,6 @@ describe("vfs provider registry", () => {
     }));
     const mount: VfsMount = {
       mountId: "m1",
-      mountPath: "/abc/drive",
       providerType: "drive",
       providerExtra: {},
       syncMetadata: true,
@@ -73,7 +71,6 @@ describe("vfs provider registry", () => {
     }));
     const mount: VfsMount = {
       mountId: "scoped-id",
-      mountPath: "/abc/drive",
       providerType: "drive",
       providerExtra: { token: "t" },
       syncMetadata: true,
@@ -89,7 +86,6 @@ describe("vfs provider registry", () => {
     const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
     const mount: VfsMount = {
       mountId: "m1",
-      mountPath: "/abc/unknown",
       providerType: "unknown",
       providerExtra: {},
       syncMetadata: true,
@@ -106,7 +102,6 @@ describe("vfs provider registry", () => {
 
     const mount: VfsMount = {
       mountId: "m-hf",
-      mountPath: "/hf",
       providerType: "huggingface",
       providerExtra: { model: "org/repo" },
       syncMetadata: false,

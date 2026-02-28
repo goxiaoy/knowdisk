@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build a mountable virtual file system in `core` with SQLite metadata truth, provider-backed pagination, and markdown-centric content caching/chunking.
+**Goal:** Build a mountable virtual file system in `core` with SQLite metadata truth and provider-backed pagination.
 
-**Architecture:** Add a new `src/core/vfs` module with clear boundaries: `types`, `provider adapters/registry`, `repository (SQLite)`, `sync scheduler`, and `service`. Keep metadata browsing and content caching separate: metadata in `vfs_nodes`, content in markdown cache + `vfs_chunks`.
+**Architecture:** Add a new `src/core/vfs` module with clear boundaries: `types`, `provider adapters/registry`, `repository (SQLite)`, `sync scheduler`, and `service`.
 
 **Tech Stack:** TypeScript, Bun runtime, `bun:sqlite`, existing parser/chunker utilities, Bun test.
 
@@ -33,7 +33,6 @@ describe("vfs types", () => {
       mountId: "m1",
       parentId: null,
       name: "doc.md",
-      vpath: "/abc/drive/doc.md",
       kind: "file",
       title: "doc",
       size: 10,
@@ -412,4 +411,3 @@ Document:
 git add README.md README.zh-CN.md docs/plans/2026-02-26-virtual-filesystem-design.md
 git commit -m "docs(vfs): document mount sync modes and paging behavior"
 ```
-

@@ -1,7 +1,6 @@
 import "reflect-metadata";
-import { mkdtempSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
 import {
@@ -20,7 +19,7 @@ type ProviderOverrides = Record<string, (mount: VfsMount) => VfsProviderAdapter>
 
 type MountStatus = {
   mountId: string;
-  mountPath: string;
+  mountNodeId: string;
   providerType: string;
   isSyncing: boolean;
   phase: "idle" | "metadata" | "content";
@@ -42,7 +41,7 @@ type MountStatus = {
 export type VfsExampleApp = {
   baseUrl: string;
   stop: () => Promise<void>;
-  mounts: VfsMount[];
+  mounts: Array<VfsMount & { mountNodeId: string }>;
 };
 
 export async function createVfsExampleApp(input?: {
@@ -52,8 +51,8 @@ export async function createVfsExampleApp(input?: {
   providerOverrides?: ProviderOverrides;
 }): Promise<VfsExampleApp> {
   const port = input?.port ?? 3099;
-  const rootDir = input?.rootDir ?? mkdtempSync(join(tmpdir(), "knowdisk-vfs-example-"));
-  const shouldCleanupRoot = !input?.rootDir;
+  const rootDir = input?.rootDir ?? join(process.cwd(), ".vfs-example");
+  const shouldCleanupRoot = false;
   const testdataDir = join(rootDir, "testdata");
   mkdirSync(testdataDir, { recursive: true });
   const contentDir = join(rootDir, "content");
@@ -71,7 +70,6 @@ export async function createVfsExampleApp(input?: {
   const vfs = createVfsService({ repository, registry });
 
   const hfMount = await vfs.mountInternal("hf-tiny-random-bert", {
-    mountPath: ".model/hf-internal-testing/tiny-random-bert",
     providerType: "huggingface",
     providerExtra: { model: "hf-internal-testing/tiny-random-bert" },
     syncMetadata: false,
@@ -80,7 +78,6 @@ export async function createVfsExampleApp(input?: {
     reconcileIntervalMs: 60_000,
   });
   const localMount = await vfs.mount({
-    mountPath: "/testdata",
     providerType: "local",
     providerExtra: { directory: testdataDir },
     syncMetadata: false,
@@ -89,6 +86,15 @@ export async function createVfsExampleApp(input?: {
     reconcileIntervalMs: 10_000,
   });
   const mounts = [hfMount, localMount];
+  const mountsWithNode = mounts.map((mount) => {
+    const mountNode = repository
+      .listNodesByMountId(mount.mountId)
+      .find((node) => node.kind === "mount" && node.sourceRef === "");
+    if (!mountNode) {
+      throw new Error(`mount node not found: ${mount.mountId}`);
+    }
+    return { ...mount, mountNodeId: mountNode.nodeId };
+  });
 
   const syncers = mounts.map((mount) =>
     createVfsSyncer({
@@ -100,10 +106,10 @@ export async function createVfsExampleApp(input?: {
   );
 
   const statuses = new Map<string, MountStatus>();
-  for (const mount of mounts) {
+  for (const mount of mountsWithNode) {
     statuses.set(mount.mountId, {
       mountId: mount.mountId,
-      mountPath: mount.mountPath,
+      mountNodeId: mount.mountNodeId,
       providerType: mount.providerType,
       isSyncing: false,
       phase: "idle",
@@ -174,20 +180,21 @@ export async function createVfsExampleApp(input?: {
       if (url.pathname === "/api/state") {
         return Response.json({
           rootDir,
-          mounts,
+          mounts: mountsWithNode,
           statuses: toStatusArray(),
         });
       }
 
       if (url.pathname === "/api/list") {
-        const path = url.searchParams.get("path");
+        const parentNodeIdParam = url.searchParams.get("parentNodeId");
         const limit = Number(url.searchParams.get("limit") ?? "100");
         const token = url.searchParams.get("cursor");
-        if (!path || path.length === 0) {
-          return Response.json({ error: "path is required" }, { status: 400 });
-        }
+        const parentNodeId =
+          parentNodeIdParam === null || parentNodeIdParam.length === 0
+            ? null
+            : parentNodeIdParam;
         const result = await vfs.walkChildren({
-          path,
+          parentNodeId,
           limit: Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 100,
           cursor: token ? { mode: "local", token } : undefined,
         });
@@ -224,7 +231,7 @@ export async function createVfsExampleApp(input?: {
         });
       }
 
-      return new Response(renderHtml({ mounts, statuses: toStatusArray() }), {
+      return new Response(renderHtml({ mounts: mountsWithNode, statuses: toStatusArray() }), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     },
@@ -232,7 +239,7 @@ export async function createVfsExampleApp(input?: {
 
   return {
     baseUrl: `http://127.0.0.1:${server.port}`,
-    mounts,
+    mounts: mountsWithNode,
     async stop() {
       for (const unsubscribe of unsubscribers) {
         unsubscribe();
@@ -260,7 +267,10 @@ function writeBootstrapFiles(testdataDir: string) {
   }
 }
 
-function renderHtml(input: { mounts: VfsMount[]; statuses: MountStatus[] }): string {
+function renderHtml(input: {
+  mounts: Array<VfsMount & { mountNodeId: string }>;
+  statuses: MountStatus[];
+}): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -307,9 +317,9 @@ function renderHtml(input: { mounts: VfsMount[]; statuses: MountStatus[] }): str
     </section>
   </div>
   <script>
-    const mounts = ${JSON.stringify(input.mounts.map((item) => ({ mountId: item.mountId, mountPath: item.mountPath })))};
+    const mounts = ${JSON.stringify(input.mounts.map((item) => ({ mountId: item.mountId, mountNodeId: item.mountNodeId })))};
     let statuses = ${JSON.stringify(input.statuses)};
-    let selectedPath = mounts[0]?.mountPath || "";
+    let selectedPath = mounts[0]?.mountNodeId || "";
 
     function statusClass(item) {
       if (!item.isSyncing) return "status-idle";
@@ -322,32 +332,32 @@ function renderHtml(input: { mounts: VfsMount[]; statuses: MountStatus[] }): str
       el.innerHTML = statuses.map((item) => {
         const text = item.isSyncing ? item.phase : "idle";
         const download = item.download ? (" | " + item.download.sourceRef + " " + item.download.downloadedBytes + "/" + item.download.totalSize) : "";
-        return '<div class="status-item"><span>' + item.mountPath + '</span><span class="' + statusClass(item) + '">' + text + download + '</span></div>';
+        return '<div class="status-item"><span>' + item.mountId + '</span><span class="' + statusClass(item) + '">' + text + download + '</span></div>';
       }).join("");
     }
 
     function renderMounts() {
       const el = document.getElementById("mounts");
       el.innerHTML = mounts.map((mount) => {
-        const active = mount.mountPath === selectedPath ? "active" : "";
-        return '<button class="item ' + active + '" data-path="' + mount.mountPath + '">' + mount.mountPath + "</button>";
+        const active = mount.mountNodeId === selectedPath ? "active" : "";
+        return '<button class="item ' + active + '" data-node-id="' + mount.mountNodeId + '">' + mount.mountId + "</button>";
       }).join("");
-      el.querySelectorAll("button[data-path]").forEach((button) => {
-        button.addEventListener("click", () => loadPath(button.getAttribute("data-path")));
+      el.querySelectorAll("button[data-node-id]").forEach((button) => {
+        button.addEventListener("click", () => loadPath(button.getAttribute("data-node-id")));
       });
     }
 
-    async function loadPath(path) {
-      if (!path) return;
-      selectedPath = path;
+    async function loadPath(parentNodeId) {
+      if (!parentNodeId) return;
+      selectedPath = parentNodeId;
       renderMounts();
-      document.getElementById("currentPath").textContent = path;
-      const res = await fetch("/api/list?path=" + encodeURIComponent(path) + "&limit=200");
+      document.getElementById("currentPath").textContent = parentNodeId;
+      const res = await fetch("/api/list?parentNodeId=" + encodeURIComponent(parentNodeId) + "&limit=200");
       const data = await res.json();
       const rows = document.getElementById("rows");
       rows.innerHTML = (data.items || []).map((item) => {
         const nameCell = item.kind === "folder"
-          ? '<button class="item" data-open="' + item.vpath + '">' + item.name + "</button>"
+          ? '<button class="item" data-open="' + item.nodeId + '">' + item.name + "</button>"
           : item.name;
         return "<tr><td>" + nameCell + "</td><td class='kind-" + item.kind + "'>" + item.kind + "</td><td>" + (item.size ?? "") + "</td><td>" + (item.mtimeMs ?? "") + "</td></tr>";
       }).join("");

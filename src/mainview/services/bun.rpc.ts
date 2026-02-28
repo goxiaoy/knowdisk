@@ -34,7 +34,7 @@ type BridgeRpc = {
     force_resync: () => Promise<{ ok: boolean; error?: string }>;
     vfs_mount: (params: { config: VfsMountConfig }) => Promise<{ ok: boolean }>;
     vfs_walk_children: (params: {
-      path: string;
+      parentNodeId: string | null;
       limit: number;
       cursor?: VfsCursor;
     }) => Promise<{ items: VfsNode[]; nextCursor?: VfsCursor; source: "local" | "remote" }>;
@@ -324,7 +324,7 @@ export async function mountVfsInBun(config: VfsMountConfig): Promise<boolean> {
 }
 
 export async function walkVfsChildrenInBun(input: {
-  path: string;
+  parentNodeId: string | null;
   limit: number;
   cursor?: VfsCursor;
 }): Promise<{ items: VfsNode[]; nextCursor?: VfsCursor; source: "local" | "remote" } | null> {

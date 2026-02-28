@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
 import { decodeVfsCursorToken } from "./vfs.cursor";
+import { decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 import { createVfsProviderRegistry } from "./vfs.provider.registry";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsService } from "./vfs.service";
@@ -39,7 +40,6 @@ describe("vfs service walkChildren", () => {
   test("syncMetadata=true: resolves local page and returns local cursor", async () => {
     const ctx = setup();
     const mount = await ctx.service.mount({
-      mountPath: "/abc/drive",
       providerType: "mock-local",
       providerExtra: {},
       syncMetadata: true,
@@ -47,13 +47,18 @@ describe("vfs service walkChildren", () => {
       reconcileIntervalMs: 1_000,
     });
 
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId,
+    );
+    expect(mountNode).toBeDefined();
+
     ctx.repo.upsertNodes([
       {
         nodeId: "n1",
         mountId: mount.mountId,
-        parentId: null,
+        parentId: mountNode!.nodeId,
         name: "a.md",
-        vpath: "/abc/drive/a.md",
         kind: "file",
         title: "A",
         size: 1,
@@ -67,9 +72,8 @@ describe("vfs service walkChildren", () => {
       {
         nodeId: "n2",
         mountId: mount.mountId,
-        parentId: null,
+        parentId: mountNode!.nodeId,
         name: "b.md",
-        vpath: "/abc/drive/b.md",
         kind: "file",
         title: "B",
         size: 2,
@@ -82,15 +86,15 @@ describe("vfs service walkChildren", () => {
       },
     ]);
 
-    const page1 = await ctx.service.walkChildren({ path: "/abc/drive", limit: 1 });
-    expect(page1.source).toBe("local");
-    expect(page1.items.map((item) => item.nodeId)).toEqual(["n1"]);
-    expect(page1.nextCursor?.mode).toBe("local");
+    const pageChildren1 = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 1 });
+    expect(pageChildren1.source).toBe("local");
+    expect(pageChildren1.items.map((item) => item.nodeId)).toEqual(["n1"]);
+    expect(pageChildren1.nextCursor?.mode).toBe("local");
 
     const page2 = await ctx.service.walkChildren({
-      path: "/abc/drive",
+      parentNodeId: mountNode!.nodeId,
       limit: 10,
-      cursor: page1.nextCursor,
+      cursor: pageChildren1.nextCursor,
     });
     expect(page2.items.map((item) => item.nodeId)).toEqual(["n2"]);
 
@@ -125,7 +129,6 @@ describe("vfs service walkChildren", () => {
     ctx.registry.register(adapter.type, () => adapter);
 
     const mount = await ctx.service.mount({
-      mountPath: "/abc/s3",
       providerType: "mock-remote",
       providerExtra: { token: "s3-token" },
       syncMetadata: false,
@@ -133,13 +136,21 @@ describe("vfs service walkChildren", () => {
       reconcileIntervalMs: 1_000,
     });
 
-    const page = await ctx.service.walkChildren({ path: "/abc/s3", limit: 10 });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+    const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
     expect(called).toBe(1);
     expect(page.source).toBe("remote");
     expect(page.items.map((item) => item.sourceRef)).toEqual(["remote-1"]);
+    expect(() => decodeBase64UrlNodeIdToUuid(page.items[0]!.nodeId)).not.toThrow();
     expect(page.nextCursor?.mode).toBe("remote");
 
-    const local = ctx.repo.listChildrenPageLocal({ mountId: mount.mountId, parentId: null, limit: 10 });
+    const local = ctx.repo.listChildrenPageLocal({
+      mountId: mount.mountId,
+      parentId: mountNode!.nodeId,
+      limit: 10,
+    });
     expect(local.items.map((item) => item.sourceRef)).toEqual(["remote-1"]);
 
     ctx.cleanup();
@@ -170,7 +181,6 @@ describe("vfs service walkChildren", () => {
     }));
 
     await ctx.service.mount({
-      mountPath: "/abc/cache",
       providerType: "mock-remote-cache",
       providerExtra: {},
       syncMetadata: false,
@@ -178,12 +188,15 @@ describe("vfs service walkChildren", () => {
       reconcileIntervalMs: 1_000,
     });
 
-    const first = await ctx.service.walkChildren({ path: "/abc/cache", limit: 10 });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount");
+    expect(mountNode).toBeDefined();
+    const first = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
     expect(called).toBe(1);
     expect(first.items).toHaveLength(1);
 
     ctx.setNowMs(2_000);
-    const second = await ctx.service.walkChildren({ path: "/abc/cache", limit: 10 });
+    const second = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
     expect(called).toBe(1);
     expect(second.items.map((item) => item.sourceRef)).toEqual(["r1"]);
 

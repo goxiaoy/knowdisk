@@ -1,7 +1,8 @@
-import type { VfsMount, VfsNode } from "./vfs.types";
+import type { VfsMountConfig, VfsNode } from "./vfs.types";
 
-export type VfsMountRow = VfsMount & {
-  lastReconcileAtMs: number | null;
+export type VfsNodeMountExtRow = VfsMountConfig & {
+  nodeId: string;
+  mountId: string;
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -12,7 +13,7 @@ export type LocalPageCursor = {
 };
 
 export type ListChildrenPageLocalInput = {
-  mountId: string;
+  mountId?: string;
   parentId: string | null;
   limit: number;
   cursor?: LocalPageCursor;
@@ -33,12 +34,12 @@ export type VfsPageCacheRow = {
 export type VfsRepository = {
   close: () => void;
 
-  upsertMount: (row: VfsMountRow) => void;
-  getMountById: (mountId: string) => VfsMountRow | null;
+  upsertNodeMountExt: (row: VfsNodeMountExtRow) => void;
+  getNodeMountExtByMountId: (mountId: string) => VfsNodeMountExtRow | null;
 
   upsertNodes: (rows: VfsNode[]) => void;
   listNodesByMountId: (mountId: string) => VfsNode[];
-  getNodeByVpath: (vpath: string) => VfsNode | null;
+  getNodeById: (nodeId: string) => VfsNode | null;
   listChildrenPageLocal: (input: ListChildrenPageLocalInput) => ListChildrenPageLocalOutput;
 
   upsertPageCache: (row: VfsPageCacheRow) => void;

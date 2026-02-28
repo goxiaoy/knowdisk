@@ -2,6 +2,7 @@ import { existsSync, createWriteStream, rmSync, statSync } from "node:fs";
 import { mkdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import pino, { type Logger } from "pino";
+import { createVfsNodeId, createVfsParentId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsRepository } from "./vfs.repository.types";
 import type { ListChildrenItem } from "./vfs.service.types";
@@ -127,16 +128,19 @@ export function createVfsSyncer(input: {
   }
 
   function toNode(item: ListChildrenItem, now: number): VfsNode {
-    const nodeId = `${input.mount.mountId}:${item.sourceRef}`;
-    const parentId = item.parentSourceRef
-      ? `${input.mount.mountId}:${item.parentSourceRef}`
-      : null;
+    const nodeId = createVfsNodeId({
+      mountId: input.mount.mountId,
+      sourceRef: item.sourceRef,
+    });
+    const parentId = createVfsParentId({
+      mountId: input.mount.mountId,
+      parentSourceRef: item.parentSourceRef ?? null,
+    });
     return {
       nodeId,
       mountId: input.mount.mountId,
       parentId,
       name: item.name,
-      vpath: buildVpath(input.mount.mountPath, item.sourceRef),
       kind: item.kind,
       title: item.title ?? item.name,
       size: item.size ?? null,
@@ -526,10 +530,4 @@ async function downloadWithResume(input: {
       throw error;
     }
   }
-}
-
-function buildVpath(mountPath: string, sourceRef: string): string {
-  return mountPath.endsWith("/")
-    ? `${mountPath}${sourceRef}`
-    : `${mountPath}/${sourceRef}`;
 }

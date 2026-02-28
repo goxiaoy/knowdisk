@@ -30,20 +30,21 @@ describe("vfs integration", () => {
   test("mount local folder and page children from metadata", async () => {
     const ctx = setup();
     const mount = await ctx.service.mount({
-      mountPath: "/abc/local",
       providerType: "local",
       providerExtra: {},
       syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
     ctx.repo.upsertNodes([
       {
         nodeId: "n1",
         mountId: mount.mountId,
-        parentId: null,
+        parentId: mountNode!.nodeId,
         name: "a.md",
-        vpath: "/abc/local/a.md",
         kind: "file",
         title: "A",
         size: 1,
@@ -57,9 +58,8 @@ describe("vfs integration", () => {
       {
         nodeId: "n2",
         mountId: mount.mountId,
-        parentId: null,
+        parentId: mountNode!.nodeId,
         name: "b.md",
-        vpath: "/abc/local/b.md",
         kind: "file",
         title: "B",
         size: 2,
@@ -72,7 +72,7 @@ describe("vfs integration", () => {
       },
     ]);
 
-    const page = await ctx.service.walkChildren({ path: "/abc/local", limit: 10 });
+    const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
     expect(page.source).toBe("local");
     expect(page.items.map((item) => item.name)).toEqual(["a.md", "b.md"]);
 
@@ -116,7 +116,6 @@ describe("vfs integration", () => {
     }));
 
     await ctx.service.mount({
-      mountPath: "/abc/drive",
       providerType: "mock-remote",
       providerExtra: { token: "remote-token" },
       syncMetadata: false,
@@ -124,9 +123,12 @@ describe("vfs integration", () => {
       reconcileIntervalMs: 1000,
     });
 
-    const page1 = await ctx.service.walkChildren({ path: "/abc/drive", limit: 1 });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount");
+    expect(mountNode).toBeDefined();
+    const page1 = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 1 });
     const page2 = await ctx.service.walkChildren({
-      path: "/abc/drive",
+      parentNodeId: mountNode!.nodeId,
       limit: 1,
       cursor: page1.nextCursor,
     });
@@ -145,7 +147,6 @@ describe("vfs integration", () => {
   test("triggerReconcile is callable", async () => {
     const ctx = setup();
     const mount = await ctx.service.mount({
-      mountPath: "/abc/m",
       providerType: "mock",
       providerExtra: {},
       syncMetadata: true,
@@ -159,7 +160,6 @@ describe("vfs integration", () => {
   test("mountInternal uses explicit mountId", async () => {
     const ctx = setup();
     const mount = await ctx.service.mountInternal("explicit-id", {
-      mountPath: "/abc/explicit",
       providerType: "mock",
       providerExtra: {},
       syncMetadata: true,

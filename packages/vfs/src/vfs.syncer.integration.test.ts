@@ -52,7 +52,6 @@ describe("vfs syncer integration", () => {
       try {
         const mount: VfsMount = {
           mountId: "hf-int",
-          mountPath: "/hf",
           providerType: "huggingface",
           providerExtra: { model: "hf-internal-testing/tiny-random-bert" },
           syncMetadata: true,
@@ -118,7 +117,6 @@ describe("vfs syncer integration", () => {
     try {
       const mount: VfsMount = {
         mountId: "local-int",
-        mountPath: "/local",
         providerType: "local",
         providerExtra: { directory: sourceRoot },
         syncMetadata: true,

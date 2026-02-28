@@ -6,7 +6,6 @@ import type { VfsMount } from "./vfs.types";
 function makeMount(): VfsMount {
   return {
     mountId: "walk-m1",
-    mountPath: "/walk",
     providerType: "mock",
     providerExtra: {},
     syncMetadata: true,
