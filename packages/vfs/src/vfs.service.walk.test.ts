@@ -112,8 +112,8 @@ describe("vfs service walkChildren", () => {
         return {
           items: [
             {
-              sourceRef: "remote-1",
-              parentSourceRef: null,
+              id: "remote-1",
+              parentId: null,
               name: "remote.md",
               kind: "file",
               title: "Remote",
@@ -167,8 +167,8 @@ describe("vfs service walkChildren", () => {
         return {
           items: [
             {
-              sourceRef: "r1",
-              parentSourceRef: null,
+              id: "r1",
+              parentId: null,
               name: "cached.md",
               kind: "file",
               title: "Cached",
@@ -202,6 +202,96 @@ describe("vfs service walkChildren", () => {
 
     const decoded = decodeVfsCursorToken(second.nextCursor!.token);
     expect(decoded).toEqual({ mode: "remote", providerCursor: "cursor-1" });
+
+    ctx.cleanup();
+  });
+
+  test("walkChildren reads mount config from db on every call", async () => {
+    const ctx = setup();
+    let called = 0;
+    const adapter: VfsProviderAdapter = {
+      type: "mock-db-authoritative",
+      capabilities: { watch: false },
+      async listChildren() {
+        called += 1;
+        return { items: [] };
+      },
+    };
+    ctx.registry.register(adapter.type, () => adapter);
+
+    const mount = await ctx.service.mount({
+      providerType: adapter.type,
+      providerExtra: {},
+      syncMetadata: false,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+
+    await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
+    expect(called).toBe(1);
+
+    const ext = ctx.repo.getNodeMountExtByMountId(mount.mountId);
+    expect(ext).toBeDefined();
+    ctx.repo.upsertNodeMountExt({
+      ...ext!,
+      syncMetadata: true,
+      updatedAtMs: 2_000,
+    });
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "db-local-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "local.txt",
+        kind: "file",
+        title: "local.txt",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "local.txt",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
+    expect(page.source).toBe("local");
+    expect(page.items.map((item) => item.nodeId)).toEqual(["db-local-1"]);
+    expect(called).toBe(1);
+
+    ctx.cleanup();
+  });
+
+  test("syncMetadata=false passes core operation input keys (parentId)", async () => {
+    const ctx = setup();
+    let seenParentId: string | null | undefined;
+    ctx.registry.register("mock-core-keys", () => ({
+      type: "mock-core-keys",
+      capabilities: { watch: false },
+      async listChildren(input) {
+        seenParentId = input.parentId;
+        return { items: [] };
+      },
+    }));
+
+    const mount = await ctx.service.mount({
+      providerType: "mock-core-keys",
+      providerExtra: {},
+      syncMetadata: false,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+
+    await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
+    expect(seenParentId).toBeNull();
 
     ctx.cleanup();
   });

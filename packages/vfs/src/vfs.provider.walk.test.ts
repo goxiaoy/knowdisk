@@ -19,31 +19,31 @@ describe("vfs provider walk helper", () => {
     const mount = makeMount();
     const provider: Pick<VfsProviderAdapter, "listChildren"> = {
       async listChildren(input) {
-        if (input.parentSourceRef === null) {
+        if (input.parentId === null) {
           return {
             items: [
               {
-                sourceRef: "a.txt",
-                parentSourceRef: null,
+                id: "a.txt",
+                parentId: null,
                 name: "a.txt",
                 kind: "file",
                 size: 1,
               },
               {
-                sourceRef: "sub",
-                parentSourceRef: null,
+                id: "sub",
+                parentId: null,
                 name: "sub",
                 kind: "folder",
               },
             ],
           };
         }
-        if (input.parentSourceRef === "sub") {
+        if (input.parentId === "sub") {
           return {
             items: [
               {
-                sourceRef: "sub/b.txt",
-                parentSourceRef: "sub",
+                id: "sub/b.txt",
+                parentId: "sub",
                 name: "b.txt",
                 kind: "file",
                 size: 2,
@@ -66,8 +66,8 @@ describe("vfs provider walk helper", () => {
         return {
           items: [
             {
-              sourceRef: "x.txt",
-              parentSourceRef: null,
+              id: "x.txt",
+              parentId: null,
               name: "x.txt",
               kind: "file",
               size: 1,

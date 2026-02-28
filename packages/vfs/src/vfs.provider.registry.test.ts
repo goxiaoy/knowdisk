@@ -60,8 +60,8 @@ describe("vfs provider registry", () => {
         return {
           items: [
             {
-              sourceRef: mount.mountId,
-              parentSourceRef: null,
+              id: mount.mountId,
+              parentId: null,
               name: "x",
               kind: "file",
             },

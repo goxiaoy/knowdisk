@@ -25,31 +25,37 @@ export function createLocalVfsProvider(
     type: "local",
     capabilities: { watch: true },
     async listChildren(input) {
-      const config = parseLocalMount(input.mount);
+      const config = parseLocalMount(mount);
+      const parentId =
+        input.parentId ??
+        ((input as unknown as { parentSourceRef?: string | null }).parentSourceRef ?? null);
       logger.info(
         {
-          mountId: input.mount.mountId,
-          parentSourceRef: input.parentSourceRef,
+          mountId: mount.mountId,
+          parentId,
           limit: input.limit,
           cursor: input.cursor,
         },
         "local listChildren",
       );
-      const dirPath = resolveRefPath(config.directory, input.parentSourceRef);
+      const dirPath = resolveRefPath(config.directory, parentId);
       const entries = await readdir(dirPath, { withFileTypes: true });
       const items: ListChildrenItem[] = [];
       for (const entry of entries) {
         const absPath = join(dirPath, entry.name);
         const entryStat = await stat(absPath);
         const sourceRef = toSourceRef(config.directory, absPath);
-        items.push({
-          sourceRef,
-          parentSourceRef: input.parentSourceRef ?? null,
-          name: entry.name,
-          kind: entry.isDirectory() ? "folder" : "file",
-          size: entry.isDirectory() ? undefined : entryStat.size,
-          mtimeMs: entryStat.mtimeMs,
-        });
+        items.push(
+          toProviderNode({
+            mountId: mount.mountId,
+            sourceRef,
+            parentSourceRef: parentId,
+            name: entry.name,
+            kind: entry.isDirectory() ? "folder" : "file",
+            size: entry.isDirectory() ? null : entryStat.size,
+            mtimeMs: entryStat.mtimeMs,
+          }),
+        );
       }
       items.sort((a, b) => {
         if (a.kind !== b.kind) {
@@ -66,17 +72,18 @@ export function createLocalVfsProvider(
       };
     },
     async createReadStream(input) {
-      const config = parseLocalMount(input.mount);
+      const config = parseLocalMount(mount);
+      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
       logger.info(
         {
-          mountId: input.mount.mountId,
-          sourceRef: input.sourceRef,
+          mountId: mount.mountId,
+          id,
           offset: input.offset,
           length: input.length,
         },
         "local createReadStream",
       );
-      const filePath = resolveRefPath(config.directory, input.sourceRef);
+      const filePath = resolveRefPath(config.directory, id);
       const hasOffset = typeof input.offset === "number";
       const hasLength = typeof input.length === "number";
       if (hasOffset && (!Number.isFinite(input.offset) || input.offset! < 0)) {
@@ -90,57 +97,68 @@ export function createLocalVfsProvider(
         hasLength && start !== undefined
           ? start + Math.floor(input.length!) - 1
           : undefined;
-      return Readable.toWeb(createReadStream(filePath, { start, end })) as ReadableStream<Uint8Array>;
+      return Readable.toWeb(
+        createReadStream(filePath, { start, end }),
+      ) as unknown as ReadableStream<Uint8Array>;
     },
     async getMetadata(input) {
-      const config = parseLocalMount(input.mount);
+      const config = parseLocalMount(mount);
+      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
       logger.info(
         {
-          mountId: input.mount.mountId,
-          sourceRef: input.sourceRef,
+          mountId: mount.mountId,
+          id,
         },
         "local getMetadata",
       );
-      const targetPath = resolveRefPath(config.directory, input.sourceRef);
+      const targetPath = resolveRefPath(config.directory, id);
       try {
         const targetStat = await stat(targetPath);
-        return {
-          sourceRef: normalizeSourceRef(input.sourceRef),
-          parentSourceRef: parentSourceRef(normalizeSourceRef(input.sourceRef)),
-          name: normalizeSourceRef(input.sourceRef).split("/").pop() ?? normalizeSourceRef(input.sourceRef),
+        const normalized = normalizeSourceRef(id);
+        const parent = parentId(normalized);
+        return toProviderNode({
+          mountId: mount.mountId,
+          sourceRef: normalized,
+          parentSourceRef: parent,
+          name: normalized.split("/").pop() ?? normalized,
           kind: targetStat.isDirectory() ? "folder" : "file",
-          size: targetStat.isDirectory() ? undefined : targetStat.size,
+          size: targetStat.isDirectory() ? null : targetStat.size,
           mtimeMs: targetStat.mtimeMs,
-        };
+        });
       } catch {
         return null;
       }
     },
     async watch(input) {
-      const config = parseLocalMount(input.mount as VfsMountConfig);
-      logger.info({ mountId: input.mount.mountId }, "local watch started");
+      const config = parseLocalMount(mount as VfsMountConfig);
+      logger.info({ mountId: mount.mountId }, "local watch started");
       const watcher = chokidar.watch(config.directory, {
         ignoreInitial: true,
         persistent: true,
       });
-      const emit = (type: "add" | "update" | "delete", absPath: string) => {
-        const sourceRef = toSourceRef(config.directory, absPath);
+      const emit = (
+        type: "add" | "update_metadata" | "update_content" | "delete",
+        absPath: string,
+      ) => {
+        const id = toSourceRef(config.directory, absPath);
         logger.info(
           {
-            mountId: input.mount.mountId,
+            mountId: mount.mountId,
             type,
-            sourceRef,
+            id,
           },
           "local watch event",
         );
         input.onEvent({
           type,
-          sourceRef,
-          parentSourceRef: parentSourceRef(sourceRef),
-        });
+          id,
+          parentId: parentId(id),
+          sourceRef: id,
+          parentSourceRef: parentId(id),
+        } as unknown as Parameters<typeof input.onEvent>[0]);
       };
       watcher.on("add", (path) => emit("add", path));
-      watcher.on("change", (path) => emit("update", path));
+      watcher.on("change", (path) => emit("update_content", path));
       watcher.on("addDir", (path) => emit("add", path));
       watcher.on("unlink", (path) => emit("delete", path));
       watcher.on("unlinkDir", (path) => emit("delete", path));
@@ -150,10 +168,36 @@ export function createLocalVfsProvider(
       return {
         close: async () => {
           await watcher.close();
-          logger.info({ mountId: input.mount.mountId }, "local watch stopped");
+          logger.info({ mountId: mount.mountId }, "local watch stopped");
         },
       };
     },
+  };
+}
+
+function toProviderNode(input: {
+  mountId: string;
+  sourceRef: string;
+  parentSourceRef: string | null;
+  name: string;
+  kind: "file" | "folder";
+  size: number | null;
+  mtimeMs: number;
+}): ListChildrenItem {
+  return {
+    nodeId: input.sourceRef,
+    mountId: input.mountId,
+    parentId: input.parentSourceRef,
+    name: input.name,
+    kind: input.kind,
+    title: input.name,
+    size: input.size,
+    mtimeMs: input.mtimeMs,
+    sourceRef: input.sourceRef,
+    providerVersion: null,
+    deletedAtMs: null,
+    createdAtMs: 0,
+    updatedAtMs: 0,
   };
 }
 
@@ -184,12 +228,12 @@ function normalizeSourceRef(ref: string): string {
     .join("/");
 }
 
-function resolveRefPath(root: string, sourceRef: string | null): string {
-  const normalized = sourceRef ? normalizeSourceRef(sourceRef) : "";
+function resolveRefPath(root: string, id: string | null): string {
+  const normalized = id ? normalizeSourceRef(id) : "";
   const candidate = normalized.length === 0 ? root : resolve(root, ...normalized.split("/"));
   const rel = relative(root, candidate);
   if (rel.startsWith("..") || rel.includes(`..${sep}`)) {
-    throw new Error(`sourceRef escapes provider root: "${sourceRef ?? ""}"`);
+    throw new Error(`id escapes provider root: "${id ?? ""}"`);
   }
   return candidate;
 }
@@ -202,8 +246,8 @@ function toSourceRef(root: string, absPath: string): string {
   return rel.split(sep).join("/");
 }
 
-function parentSourceRef(sourceRef: string): string | null {
-  const parent = dirname(sourceRef);
+function parentId(id: string): string | null {
+  const parent = dirname(id);
   if (!parent || parent === "." || parent === "/") {
     return null;
   }

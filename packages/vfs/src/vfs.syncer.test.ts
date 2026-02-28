@@ -229,7 +229,11 @@ describe("vfs syncer", () => {
       writeFileSync(join(contentParent, mount.mountId, "f.txt.part"), "old-part");
 
       let watchHandler:
-        | ((event: { type: "add" | "update" | "delete"; sourceRef: string; parentSourceRef: string | null }) => void)
+        | ((event: {
+            type: "add" | "update_metadata" | "update_content" | "delete";
+            sourceRef: string;
+            parentSourceRef: string | null;
+          }) => void)
         | null = null;
       const offsets: number[] = [];
       let metadataCalls = 0;
@@ -281,7 +285,7 @@ describe("vfs syncer", () => {
       });
       await syncer.startWatching();
       watchHandler?.({
-        type: "update",
+        type: "update_content",
         sourceRef: "f.txt",
         parentSourceRef: null,
       });

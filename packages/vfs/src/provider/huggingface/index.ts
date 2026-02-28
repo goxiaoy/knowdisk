@@ -41,12 +41,15 @@ export function createHuggingFaceVfsProvider(
     type: "huggingface",
     capabilities: { watch: false },
     async listChildren(input) {
-      const config = parseMountConfig(input.mount);
+      const config = parseMountConfig(mount);
+      const parentId =
+        input.parentId ??
+        ((input as unknown as { parentSourceRef?: string | null }).parentSourceRef ?? null);
       logger.info(
         {
-          mountId: input.mount.mountId,
+          mountId: mount.mountId,
           model: config.model,
-          parentSourceRef: input.parentSourceRef,
+          parentId,
           limit: input.limit,
           cursor: input.cursor,
         },
@@ -60,10 +63,10 @@ export function createHuggingFaceVfsProvider(
         );
       }
       const payload = (await response.json()) as HuggingFaceRepoResponse;
-      const allItems = buildListItems(payload.siblings ?? []);
-      const parent = input.parentSourceRef ?? null;
+      const allItems = buildListItems(mount.mountId, payload.siblings ?? []);
+      const parent = parentId;
       const directChildren = allItems
-        .filter((item) => item.parentSourceRef === parent)
+        .filter((item) => item.parentId === parent)
         .sort((a, b) => {
           if (a.kind !== b.kind) {
             return a.kind === "file" ? -1 : 1;
@@ -79,23 +82,24 @@ export function createHuggingFaceVfsProvider(
       };
     },
     async createReadStream(input) {
-      const config = parseMountConfig(input.mount);
+      const config = parseMountConfig(mount);
+      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
       logger.info(
         {
-          mountId: input.mount.mountId,
+          mountId: mount.mountId,
           model: config.model,
-          sourceRef: input.sourceRef,
+          id,
           offset: input.offset,
           length: input.length,
         },
         "huggingface createReadStream",
       );
-      if (!isWhitelistedFile(input.sourceRef)) {
-        throw new Error(`sourceRef is not allowed by whitelist: "${input.sourceRef}"`);
+      if (!isWhitelistedFile(id)) {
+        throw new Error(`id is not allowed by whitelist: "${id}"`);
       }
       const fileUrl =
         `${normalizeHost(config.endpoint)}/` +
-        `${encodePathSegment(config.model)}/resolve/main/${encodePathSegment(input.sourceRef)}`;
+        `${encodePathSegment(config.model)}/resolve/main/${encodePathSegment(id)}`;
       const response = await fetchFn(fileUrl, {
         headers: buildRangeHeaders(input.offset, input.length),
       });
@@ -110,16 +114,17 @@ export function createHuggingFaceVfsProvider(
       return response.body;
     },
     async getMetadata(input) {
-      const config = parseMountConfig(input.mount);
+      const config = parseMountConfig(mount);
+      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
       logger.info(
         {
-          mountId: input.mount.mountId,
+          mountId: mount.mountId,
           model: config.model,
-          sourceRef: input.sourceRef,
+          id,
         },
         "huggingface getMetadata",
       );
-      if (!isWhitelistedFile(input.sourceRef)) {
+      if (!isWhitelistedFile(id)) {
         return null;
       }
       const apiUrl = `${normalizeHost(config.endpoint)}/api/models/${encodePathSegment(config.model)}`;
@@ -131,14 +136,14 @@ export function createHuggingFaceVfsProvider(
       }
       const payload = (await response.json()) as HuggingFaceRepoResponse;
       const found = (payload.siblings ?? []).find(
-        (item) => item.rfilename === input.sourceRef,
+        (item) => item.rfilename === id,
       );
       if (!found) {
         return null;
       }
       const fileUrl =
         `${normalizeHost(config.endpoint)}/` +
-        `${encodePathSegment(config.model)}/resolve/main/${encodePathSegment(input.sourceRef)}`;
+        `${encodePathSegment(config.model)}/resolve/main/${encodePathSegment(id)}`;
       const probedSize = await probeRemoteFileSize(fetchFn, fileUrl);
       const size =
         probedSize > 0
@@ -148,13 +153,13 @@ export function createHuggingFaceVfsProvider(
             : undefined;
       logger.info(
         {
-          mountId: input.mount.mountId,
-          sourceRef: input.sourceRef,
+          mountId: mount.mountId,
+          id,
           size: size ?? 0,
         },
         "huggingface getMetadata resolved",
       );
-      return toListChildrenItem(found.rfilename!, size);
+      return toListChildrenItem(mount.mountId, found.rfilename!, size);
     },
   };
 }
@@ -276,6 +281,7 @@ function parseContentRangeTotal(value: string | null): number | null {
 }
 
 function buildListItems(
+  mountId: string,
   siblings: Array<{ rfilename?: string; size?: number }>,
 ): ListChildrenItem[] {
   const byKey = new Map<string, ListChildrenItem>();
@@ -293,44 +299,82 @@ function buildListItems(
     for (let i = 0; i < parts.length - 1; i += 1) {
       const name = parts[i]!;
       const sourceRef = parts.slice(0, i + 1).join("/");
-      const parentSourceRef = i === 0 ? null : parts.slice(0, i).join("/");
-      const key = `folder|${parentSourceRef ?? ""}|${name}`;
+      const parentId = i === 0 ? null : parts.slice(0, i).join("/");
+      const key = `folder|${parentId ?? ""}|${name}`;
       if (!byKey.has(key)) {
-        byKey.set(key, {
-          sourceRef,
-          parentSourceRef,
-          name,
-          kind: "folder",
-        });
+        byKey.set(
+          key,
+          toProviderNode({
+            mountId,
+            sourceRef,
+            parentSourceRef: parentId,
+            name,
+            kind: "folder",
+            size: null,
+          }),
+        );
       }
     }
     const fileName = parts[parts.length - 1]!;
     const fileParent = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
     const fileKey = `file|${fileParent ?? ""}|${fileName}`;
     if (!byKey.has(fileKey)) {
-      byKey.set(fileKey, toListChildrenItem(sibling.rfilename, sibling.size));
+      byKey.set(fileKey, toListChildrenItem(mountId, sibling.rfilename, sibling.size));
     }
   }
   return [...byKey.values()];
 }
 
-function toListChildrenItem(sourceRef: string, size?: number): ListChildrenItem {
+function toListChildrenItem(
+  mountId: string,
+  sourceRef: string,
+  size?: number,
+): ListChildrenItem {
   const parts = sourceRef.split("/").filter((part) => part.length > 0);
   const name = parts[parts.length - 1] ?? sourceRef;
-  const parentSourceRef = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
-  return {
+  const parentId = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
+  return toProviderNode({
+    mountId,
     sourceRef,
-    parentSourceRef,
+    parentSourceRef: parentId,
     name,
     kind: "file",
-    size: Number.isFinite(size) && (size ?? 0) >= 0 ? Number(size) : undefined,
-  };
+    size:
+      Number.isFinite(size) && (size ?? 0) >= 0
+        ? Number(size)
+        : null,
+  });
 }
 
-function isWhitelistedFile(sourceRef: string): boolean {
+function isWhitelistedFile(id: string): boolean {
   return (
-    HUGGINGFACE_FILE_WHITELIST.has(sourceRef) ||
-    sourceRef === "onnx/model.onnx" ||
-    sourceRef.startsWith("onnx/model.onnx")
+    HUGGINGFACE_FILE_WHITELIST.has(id) ||
+    id === "onnx/model.onnx" ||
+    id.startsWith("onnx/model.onnx")
   );
+}
+
+function toProviderNode(input: {
+  mountId: string;
+  sourceRef: string;
+  parentSourceRef: string | null;
+  name: string;
+  kind: "file" | "folder";
+  size: number | null;
+}): ListChildrenItem {
+  return {
+    nodeId: input.sourceRef,
+    mountId: input.mountId,
+    parentId: input.parentSourceRef,
+    name: input.name,
+    kind: input.kind,
+    title: input.name,
+    size: input.size,
+    mtimeMs: null,
+    sourceRef: input.sourceRef,
+    providerVersion: null,
+    deletedAtMs: null,
+    createdAtMs: 0,
+    updatedAtMs: 0,
+  };
 }

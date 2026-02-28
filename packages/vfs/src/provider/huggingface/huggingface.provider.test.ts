@@ -32,16 +32,17 @@ describe("huggingface vfs provider", () => {
 
     await expect(
       provider.listChildren({
-        mount: makeMount({}),
-        parentSourceRef: null,
+        parentId: null,
         limit: 10,
       }),
     ).rejects.toThrow('providerExtra.model must be a non-empty string');
 
+    const badEndpointProvider = createHuggingFaceVfsProvider(
+      makeMount({ endpoint: "   ", model: "x/y" }),
+    );
     await expect(
-      provider.createReadStream?.({
-        mount: makeMount({ endpoint: "   ", model: "x/y" }),
-        sourceRef: "onnx/model.onnx",
+      badEndpointProvider.createReadStream?.({
+        id: "onnx/model.onnx",
       }) ?? Promise.resolve(null as never),
     ).rejects.toThrow('providerExtra.endpoint must be a non-empty string');
   });
@@ -73,8 +74,7 @@ describe("huggingface vfs provider", () => {
     const provider = createHuggingFaceVfsProvider(mount, { fetch: mockFetch });
 
     const root = await provider.listChildren({
-      mount,
-      parentSourceRef: null,
+      parentId: null,
       limit: 10,
     });
     expect(fetchCalls).toHaveLength(1);
@@ -85,8 +85,7 @@ describe("huggingface vfs provider", () => {
     ]);
 
     const onnx = await provider.listChildren({
-      mount,
-      parentSourceRef: "onnx",
+      parentId: "onnx",
       limit: 10,
     });
     expect(onnx.items.map((item) => `${item.kind}:${item.name}`)).toEqual([
@@ -118,8 +117,7 @@ describe("huggingface vfs provider", () => {
     const provider = createHuggingFaceVfsProvider(mount, { fetch: mockFetch });
 
     const result = await provider.createReadStream?.({
-      mount,
-      sourceRef: "onnx/model.onnx",
+      id: "onnx/model.onnx",
     });
 
     expect(fetchCalls).toHaveLength(1);
@@ -150,8 +148,7 @@ describe("huggingface vfs provider", () => {
     const provider = createHuggingFaceVfsProvider(mount, { fetch: mockFetch });
 
     await provider.createReadStream?.({
-      mount,
-      sourceRef: "onnx/model.onnx",
+      id: "onnx/model.onnx",
       offset: 10,
       length: 20,
     });
@@ -172,10 +169,9 @@ describe("huggingface vfs provider", () => {
 
     await expect(
       provider.createReadStream?.({
-        mount,
-        sourceRef: "README.md",
+        id: "README.md",
       }) ?? Promise.resolve(null as never),
-    ).rejects.toThrow('sourceRef is not allowed by whitelist: "README.md"');
+    ).rejects.toThrow('id is not allowed by whitelist: "README.md"');
   });
 
   test("getMetadata returns metadata for a single whitelisted file", async () => {
@@ -205,21 +201,21 @@ describe("huggingface vfs provider", () => {
     const provider = createHuggingFaceVfsProvider(mount, { fetch: mockFetch });
 
     const metadata = await provider.getMetadata?.({
-      mount,
-      sourceRef: "onnx/model.onnx",
+      id: "onnx/model.onnx",
     });
-    expect(metadata).toEqual({
-      sourceRef: "onnx/model.onnx",
-      parentSourceRef: "onnx",
-      name: "model.onnx",
-      kind: "file",
-      size: 456,
-    });
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        sourceRef: "onnx/model.onnx",
+        parentId: "onnx",
+        name: "model.onnx",
+        kind: "file",
+        size: 456,
+      }),
+    );
     expect(fetchCalls.some((call) => call.init?.method === "HEAD")).toBe(true);
 
     const denied = await provider.getMetadata?.({
-      mount,
-      sourceRef: "README.md",
+      id: "README.md",
     });
     expect(denied).toBeNull();
   });
@@ -242,8 +238,7 @@ describe("huggingface vfs provider", () => {
     });
 
     await provider.listChildren({
-      mount,
-      parentSourceRef: null,
+      parentId: null,
       limit: 10,
     });
 

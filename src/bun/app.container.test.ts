@@ -122,9 +122,11 @@ test("registers huggingface vfs provider in app container", async () => {
       reconcileIntervalMs: 1000,
     });
 
-    const page = await container.vfsService.listChildren({
-      mount,
-      parentSourceRef: null,
+    const roots = await container.vfsService.walkChildren({ parentNodeId: null, limit: 20 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+    const page = await container.vfsService.walkChildren({
+      parentNodeId: mountNode!.nodeId,
       limit: 10,
     });
     expect(page.items.map((item) => item.name)).toEqual(["onnx"]);

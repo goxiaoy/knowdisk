@@ -21,7 +21,6 @@ export function createVfsService(deps: {
   registry: VfsProviderRegistry;
   nowMs?: () => number;
 }): VfsService {
-  const mounts = new Map<string, VfsMount>();
   const nowMs = deps.nowMs ?? (() => Date.now());
 
   return {
@@ -34,7 +33,6 @@ export function createVfsService(deps: {
         mountId,
         ...config,
       };
-      mounts.set(mount.mountId, mount);
       const now = nowMs();
       const mountNodeId = createVfsNodeId({
         mountId: mount.mountId,
@@ -73,20 +71,35 @@ export function createVfsService(deps: {
     },
 
     async unmount(mountId: string) {
-      mounts.delete(mountId);
+      void mountId;
     },
 
     async listChildren(input) {
-      const adapter = deps.registry.get(input.mount);
-      return adapter.listChildren(input);
+      if (input.parentId === null) {
+        throw new Error("listChildren requires parentId; use walkChildren for root listing");
+      }
+      const parentNode = deps.repository.getNodeById(input.parentId);
+      if (!parentNode) {
+        throw new Error(`Parent node not found: ${input.parentId}`);
+      }
+      const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
+      if (!ext) {
+        throw new Error(`Mount config not found: ${parentNode.mountId}`);
+      }
+      const mount: VfsMount = {
+        mountId: ext.mountId,
+        providerType: ext.providerType,
+        providerExtra: ext.providerExtra,
+        syncMetadata: ext.syncMetadata,
+        syncContent: ext.syncContent,
+        metadataTtlSec: ext.metadataTtlSec,
+        reconcileIntervalMs: ext.reconcileIntervalMs,
+      };
+      return deps.registry.get(mount).listChildren(input);
     },
 
     async createReadStream(input) {
-      const adapter = deps.registry.get(input.mount);
-      if (!adapter.createReadStream) {
-        throw new Error(`Provider "${adapter.type}" does not support createReadStream`);
-      }
-      return adapter.createReadStream(input);
+      throw new Error(`VfsService createReadStream is not supported: ${input.id}`);
     },
 
     async walkChildren(input: WalkChildrenInput): Promise<WalkChildrenOutput> {
@@ -102,23 +115,19 @@ export function createVfsService(deps: {
       if (!parentNode) {
         throw new Error(`Parent node not found: ${input.parentNodeId}`);
       }
-      const mount = mounts.get(parentNode.mountId);
-      if (!mount) {
-        const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
-        if (!ext) {
-          throw new Error(`Mount config not found: ${parentNode.mountId}`);
-        }
-        mounts.set(parentNode.mountId, {
-          mountId: ext.mountId,
-          providerType: ext.providerType,
-          providerExtra: ext.providerExtra,
-          syncMetadata: ext.syncMetadata,
-          syncContent: ext.syncContent,
-          metadataTtlSec: ext.metadataTtlSec,
-          reconcileIntervalMs: ext.reconcileIntervalMs,
-        });
+      const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
+      if (!ext) {
+        throw new Error(`Mount config not found: ${parentNode.mountId}`);
       }
-      const resolvedMount = mounts.get(parentNode.mountId)!;
+      const resolvedMount: VfsMount = {
+        mountId: ext.mountId,
+        providerType: ext.providerType,
+        providerExtra: ext.providerExtra,
+        syncMetadata: ext.syncMetadata,
+        syncContent: ext.syncContent,
+        metadataTtlSec: ext.metadataTtlSec,
+        reconcileIntervalMs: ext.reconcileIntervalMs,
+      };
 
       if (resolvedMount.syncMetadata) {
         return walkLocalChildren({
@@ -131,7 +140,7 @@ export function createVfsService(deps: {
       }
 
       const adapter = deps.registry.get(resolvedMount);
-      const parentSourceRef =
+      const parentProviderId =
         parentNode.kind === "mount" ? null : parentNode.sourceRef;
       const providerCursor = decodeRemoteCursor(input.cursor?.token);
       const cacheKey = `${resolvedMount.mountId}::${parentNode.nodeId}::${providerCursor ?? ""}::${input.limit}`;
@@ -151,18 +160,21 @@ export function createVfsService(deps: {
       }
 
       const listed = await adapter.listChildren({
-        mount: resolvedMount,
-        parentSourceRef,
+        parentId: parentProviderId,
+        parentSourceRef: parentProviderId,
         limit: input.limit,
         cursor: providerCursor ?? undefined,
-      });
+      } as unknown as Parameters<typeof adapter.listChildren>[0]);
 
       const now = nowMs();
       const items = listed.items.map((item) => {
+        const sourceRef =
+          item.sourceRef ??
+          ((item as unknown as { id?: string }).id ?? "");
         return {
           nodeId: createVfsNodeId({
             mountId: resolvedMount.mountId,
-            sourceRef: item.sourceRef,
+            sourceRef,
           }),
           mountId: resolvedMount.mountId,
           parentId: parentNode.nodeId,
@@ -171,7 +183,7 @@ export function createVfsService(deps: {
           title: item.title ?? item.name,
           size: item.size ?? null,
           mtimeMs: item.mtimeMs ?? null,
-          sourceRef: item.sourceRef,
+          sourceRef,
           providerVersion: item.providerVersion ?? null,
           deletedAtMs: null,
           createdAtMs: now,

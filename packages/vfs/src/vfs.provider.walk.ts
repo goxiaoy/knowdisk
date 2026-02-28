@@ -1,6 +1,5 @@
 import type { VfsProviderAdapter } from "./vfs.provider.types";
-import type { GetMetadataOperation, ListChildrenItem } from "./vfs.service.types";
-import type { VfsMountConfig } from "./vfs.types";
+import type { ListChildrenItem } from "./vfs.service.types";
 
 export type WalkProviderEntry = ListChildrenItem & {
   path: string;
@@ -8,10 +7,9 @@ export type WalkProviderEntry = ListChildrenItem & {
 
 export type WalkProviderInput = {
   provider: Pick<VfsProviderAdapter, "listChildren">;
-  mount: VfsMountConfig;
-  parentSourceRef?: string | null;
+  parentId?: string | null;
   limit?: number;
-  getMetadata?: GetMetadataOperation;
+  getMetadata?: VfsProviderAdapter["getMetadata"];
 };
 
 export type WalkProviderCallback = (
@@ -25,20 +23,19 @@ export function walk(
 ): Promise<WalkProviderEntry[]> {
   const run = async (): Promise<WalkProviderEntry[]> => {
     const out: WalkProviderEntry[] = [];
-    const queue: Array<string | null> = [input.parentSourceRef ?? null];
+    const queue: Array<string | null> = [input.parentId ?? null];
     const limit = input.limit ?? 200;
     while (queue.length > 0) {
-      const parentSourceRef = queue.shift() ?? null;
+      const parentId = queue.shift() ?? null;
       let cursor: string | undefined;
       do {
         const page = await input.provider.listChildren({
-          mount: input.mount,
-          parentSourceRef,
+          parentId,
           limit,
           cursor,
         });
         for (const item of page.items) {
-          const normalized = await enrichMetadataIfNeeded(item, input.getMetadata, input.mount);
+          const normalized = await enrichMetadataIfNeeded(item, input.getMetadata);
           out.push({
             ...normalized,
             path: normalized.sourceRef,
@@ -72,13 +69,12 @@ export const walkProvider = walk;
 
 async function enrichMetadataIfNeeded(
   item: ListChildrenItem,
-  getMetadata: GetMetadataOperation | undefined,
-  mount: VfsMountConfig,
+  getMetadata: VfsProviderAdapter["getMetadata"] | undefined,
 ): Promise<ListChildrenItem> {
   if (item.kind !== "file" || (item.size ?? 0) > 0 || !getMetadata) {
     return item;
   }
-  const metadata = await getMetadata({ mount, sourceRef: item.sourceRef });
+  const metadata = await getMetadata({ id: item.sourceRef });
   if (!metadata) {
     return item;
   }

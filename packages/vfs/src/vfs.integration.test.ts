@@ -91,8 +91,8 @@ describe("vfs integration", () => {
           return {
             items: [
               {
-                sourceRef: "r1",
-                parentSourceRef: null,
+                id: "r1",
+                parentId: null,
                 name: "r1.md",
                 kind: "file",
                 providerVersion: "rv1",
@@ -104,8 +104,8 @@ describe("vfs integration", () => {
         return {
           items: [
             {
-              sourceRef: "r2",
-              parentSourceRef: null,
+              id: "r2",
+              parentId: null,
               name: "r2.md",
               kind: "file",
               providerVersion: "rv2",

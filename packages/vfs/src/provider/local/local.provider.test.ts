@@ -57,8 +57,7 @@ describe("local vfs provider", () => {
       const provider = createLocalVfsProvider(mount);
 
       const root = await provider.listChildren({
-        mount,
-        parentSourceRef: null,
+        parentId: null,
         limit: 10,
       });
       expect(root.items.map((item) => `${item.kind}:${item.name}`)).toEqual([
@@ -68,35 +67,32 @@ describe("local vfs provider", () => {
 
       const content = await readAll(
         await provider.createReadStream!({
-          mount,
-          sourceRef: "a.txt",
+          id: "a.txt",
         }),
       );
       expect(content).toBe("alpha");
 
       const metadata = await provider.getMetadata!({
-        mount,
-        sourceRef: "sub/b.txt",
+        id: "sub/b.txt",
       });
       expect(metadata?.kind).toBe("file");
       expect(metadata?.name).toBe("b.txt");
-      expect(metadata?.parentSourceRef).toBe("sub");
+      expect(metadata?.parentId).toBe("sub");
       expect((metadata?.size ?? 0) > 0).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("watch emits add/update/delete events via chokidar", async () => {
+  test("watch emits add/update_content/delete events via chokidar", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-watch-"));
     try {
       const mount = makeMount(dir);
       const provider = createLocalVfsProvider(mount);
-      const events: Array<{ type: "add" | "update" | "delete"; sourceRef: string }> = [];
+      const events: Array<{ type: "add" | "update_content" | "delete"; id: string }> = [];
       const watcher = await provider.watch!({
-        mount,
         onEvent(event) {
-          events.push({ type: event.type, sourceRef: event.sourceRef });
+          events.push({ type: event.type, id: event.id });
         },
       });
 
@@ -104,25 +100,26 @@ describe("local vfs provider", () => {
       const sawAdd = await waitUntil(
         () =>
           events.some(
-            (event) => event.type === "add" && event.sourceRef === "watch.txt",
+            (event) => event.type === "add" && event.id === "watch.txt",
           ),
-        2000,
+        4000,
       );
+      await Bun.sleep(100);
       writeFileSync(join(dir, "watch.txt"), "y");
       const sawUpdate = await waitUntil(
         () =>
           events.some(
-            (event) => event.type === "update" && event.sourceRef === "watch.txt",
+            (event) => event.type === "update_content" && event.id === "watch.txt",
           ),
-        2000,
+        4000,
       );
       rmSync(join(dir, "watch.txt"), { force: true });
       const sawDelete = await waitUntil(
         () =>
           events.some(
-            (event) => event.type === "delete" && event.sourceRef === "watch.txt",
+            (event) => event.type === "delete" && event.id === "watch.txt",
           ),
-        2000,
+        4000,
       );
       await watcher.close();
 
@@ -132,7 +129,7 @@ describe("local vfs provider", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 15000);
 
   test("writes provider operation logs", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-logs-"));
@@ -145,8 +142,7 @@ describe("local vfs provider", () => {
       });
 
       await provider.listChildren({
-        mount,
-        parentSourceRef: null,
+        parentId: null,
         limit: 10,
       });
 

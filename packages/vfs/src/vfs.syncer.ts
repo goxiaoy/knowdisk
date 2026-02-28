@@ -76,23 +76,27 @@ export function createVfsSyncer(input: {
     }
   };
 
+  const itemId = (item: ListChildrenItem): string => item.sourceRef;
+  const itemParentId = (item: ListChildrenItem): string | null =>
+    item.parentId ?? ((item as unknown as { parentSourceRef?: string | null }).parentSourceRef ?? null);
+
   async function walkAllFiles(): Promise<Map<string, ListChildrenItem>> {
     const discovered = new Map<string, ListChildrenItem>();
     const queue: Array<string | null> = [null];
     while (queue.length > 0) {
-      const parentSourceRef = queue.shift() ?? null;
+      const parentId = queue.shift() ?? null;
       let cursor: string | undefined;
       do {
         const page = await input.provider.listChildren({
-          mount: input.mount,
-          parentSourceRef,
+          parentId,
+          parentSourceRef: parentId,
           limit: 200,
           cursor,
-        });
+        } as unknown as Parameters<typeof input.provider.listChildren>[0]);
         for (const item of page.items) {
-          discovered.set(item.sourceRef, item);
+          discovered.set(itemId(item), item);
           if (item.kind === "folder") {
-            queue.push(item.sourceRef);
+            queue.push(itemId(item));
           }
         }
         cursor = page.nextCursor;
@@ -112,9 +116,9 @@ export function createVfsSyncer(input: {
       return item;
     }
     const fetched = await input.provider.getMetadata({
-      mount: input.mount,
-      sourceRef: item.sourceRef,
-    });
+      id: itemId(item),
+      sourceRef: itemId(item),
+    } as unknown as Parameters<NonNullable<typeof input.provider.getMetadata>>[0]);
     if (!fetched) {
       return item;
     }
@@ -130,11 +134,11 @@ export function createVfsSyncer(input: {
   function toNode(item: ListChildrenItem, now: number): VfsNode {
     const nodeId = createVfsNodeId({
       mountId: input.mount.mountId,
-      sourceRef: item.sourceRef,
+      sourceRef: itemId(item),
     });
     const parentId = createVfsParentId({
       mountId: input.mount.mountId,
-      parentSourceRef: item.parentSourceRef ?? null,
+      parentSourceRef: itemParentId(item),
     });
     return {
       nodeId,
@@ -145,7 +149,7 @@ export function createVfsSyncer(input: {
       title: item.title ?? item.name,
       size: item.size ?? null,
       mtimeMs: item.mtimeMs ?? null,
-      sourceRef: item.sourceRef,
+      sourceRef: itemId(item),
       providerVersion: item.providerVersion ?? null,
       deletedAtMs: null,
       createdAtMs: now,
@@ -165,10 +169,11 @@ export function createVfsSyncer(input: {
       if (item.kind !== "file") {
         continue;
       }
-      const finalPath = join(input.contentRootParent, input.mount.mountId, ...item.sourceRef.split("/"));
+      const id = itemId(item);
+      const finalPath = join(input.contentRootParent, input.mount.mountId, ...id.split("/"));
       const partPath = `${finalPath}.part`;
       await mkdir(dirname(finalPath), { recursive: true });
-      const forceRestart = options?.restartSourceRefs?.has(item.sourceRef) ?? false;
+      const forceRestart = options?.restartSourceRefs?.has(id) ?? false;
 
       if (forceRestart) {
         rmSync(partPath, { force: true });
@@ -181,7 +186,7 @@ export function createVfsSyncer(input: {
           emit({
             type: "download_progress",
             payload: {
-              sourceRef: item.sourceRef,
+              sourceRef: id,
               totalSize: item.size ?? 0,
               downloadedBytes: current,
               downloadPath: finalPath,
@@ -205,7 +210,6 @@ export function createVfsSyncer(input: {
 
       await downloadWithResume({
         provider: input.provider,
-        mount: input.mount,
         item,
         finalPath,
         partPath,
@@ -214,7 +218,7 @@ export function createVfsSyncer(input: {
           emit({
             type: "download_progress",
             payload: {
-              sourceRef: item.sourceRef,
+              sourceRef: id,
               totalSize: item.size ?? 0,
               downloadedBytes,
               downloadPath: finalPath,
@@ -278,7 +282,7 @@ export function createVfsSyncer(input: {
         });
       }
 
-      const seen = new Set(walkedItems.map((item) => item.sourceRef));
+      const seen = new Set(walkedItems.map((item) => itemId(item)));
       const deletedRows = existing
         .filter((node) => node.deletedAtMs === null && !seen.has(node.sourceRef))
         .map((node) => ({
@@ -324,12 +328,19 @@ export function createVfsSyncer(input: {
       }
       logger.info({ mountId: input.mount.mountId }, "syncer watch started");
       const active = await input.provider.watch({
-        mount: input.mount,
         onEvent: (event) => {
+          const normalizedEvent = {
+            type: event.type,
+            id: (event as { id?: string; sourceRef?: string }).id ?? (event as { sourceRef?: string }).sourceRef ?? "",
+            parentId:
+              (event as { parentId?: string | null; parentSourceRef?: string | null }).parentId ??
+              (event as { parentSourceRef?: string | null }).parentSourceRef ??
+              null,
+          } as const;
           watchQueue = watchQueue
             .then(async () => {
               emit({ type: "status", payload: { isSyncing: true, phase: "metadata" } });
-              await handleWatchEvent(event);
+              await handleWatchEvent(normalizedEvent);
               emit({ type: "status", payload: { isSyncing: false, phase: "idle" } });
             })
             .catch(() => {
@@ -359,21 +370,21 @@ export function createVfsSyncer(input: {
   };
 
   async function handleWatchEvent(event: {
-    type: "add" | "update" | "delete";
-    sourceRef: string;
-    parentSourceRef: string | null;
+    type: "add" | "update_metadata" | "update_content" | "delete";
+    id: string;
+    parentId: string | null;
   }): Promise<void> {
     logger.info(
       {
         mountId: input.mount.mountId,
         type: event.type,
-        sourceRef: event.sourceRef,
+        id: event.id,
       },
       "syncer watch event received",
     );
     const now = nowMs();
     const all = input.repository.listNodesByMountId(input.mount.mountId);
-    const prev = all.find((node) => node.sourceRef === event.sourceRef) ?? null;
+    const prev = all.find((node) => node.sourceRef === event.id) ?? null;
 
     if (event.type === "delete") {
       if (!prev || prev.deletedAtMs !== null) {
@@ -397,9 +408,9 @@ export function createVfsSyncer(input: {
       return;
     }
     const fetched = await input.provider.getMetadata({
-      mount: input.mount,
-      sourceRef: event.sourceRef,
-    });
+      id: event.id,
+      sourceRef: event.id,
+    } as unknown as Parameters<NonNullable<typeof input.provider.getMetadata>>[0]);
     if (!fetched) {
       if (!prev || prev.deletedAtMs !== null) {
         return;
@@ -438,7 +449,8 @@ export function createVfsSyncer(input: {
       input.mount.syncContent &&
       input.provider.createReadStream &&
       fetched.kind === "file" &&
-      (!prev ||
+      (event.type === "update_content" ||
+        !prev ||
         prev.deletedAtMs !== null ||
         prev.size !== node.size ||
         prev.mtimeMs !== node.mtimeMs ||
@@ -458,7 +470,6 @@ export function createVfsSyncer(input: {
 
 async function downloadWithResume(input: {
   provider: VfsProviderAdapter;
-  mount: VfsMount;
   item: ListChildrenItem;
   finalPath: string;
   partPath: string;
@@ -470,10 +481,10 @@ async function downloadWithResume(input: {
   while (true) {
     try {
       const stream = await input.provider.createReadStream!({
-        mount: input.mount,
+        id: input.item.sourceRef,
         sourceRef: input.item.sourceRef,
         offset: startOffset > 0 ? startOffset : undefined,
-      });
+      } as unknown as Parameters<NonNullable<typeof input.provider.createReadStream>>[0]);
       const writer = createWriteStream(input.partPath, {
         flags: startOffset > 0 ? "a" : "w",
       });
