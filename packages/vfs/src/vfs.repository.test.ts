@@ -23,6 +23,7 @@ describe("vfs repository", () => {
       .all() as Array<{ name: string }>;
 
     expect(tables.map((t) => t.name)).toEqual([
+      "vfs_node_events",
       "vfs_node_mount_ext",
       "vfs_nodes",
       "vfs_page_cache",
@@ -192,6 +193,77 @@ describe("vfs repository", () => {
 
     expect(repo.getPageCacheIfFresh("m1::p1::::10", 1)).toBeNull();
     expect(repo.getPageCacheIfFresh("m2::p1::::10", 1)?.itemsJson).toBe('[{"id":"b"}]');
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("upsertNodeEvents compresses updates and lets delete replace history", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertNodeEvents([
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: "p1",
+        type: "upsert",
+        contentUpdated: false,
+        metadataChanged: true,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    repo.upsertNodeEvents([
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: "p2",
+        type: "upsert",
+        contentUpdated: true,
+        metadataChanged: false,
+        createdAtMs: 2,
+        updatedAtMs: 2,
+      },
+    ]);
+    const merged = repo.listNodeEvents();
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toEqual({
+      nodeId: "n1",
+      mountId: "m1",
+      parentId: "p2",
+      type: "upsert",
+      contentUpdated: true,
+      metadataChanged: true,
+      createdAtMs: 1,
+      updatedAtMs: 2,
+    });
+
+    repo.upsertNodeEvents([
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: "p2",
+        type: "delete",
+        contentUpdated: false,
+        metadataChanged: false,
+        createdAtMs: 3,
+        updatedAtMs: 3,
+      },
+    ]);
+    const deleted = repo.listNodeEvents();
+    expect(deleted).toHaveLength(1);
+    expect(deleted[0]).toEqual({
+      nodeId: "n1",
+      mountId: "m1",
+      parentId: "p2",
+      type: "delete",
+      contentUpdated: false,
+      metadataChanged: false,
+      createdAtMs: 1,
+      updatedAtMs: 3,
+    });
+
+    repo.deleteNodeEventsByNodeIds(["n1"]);
+    expect(repo.listNodeEvents()).toEqual([]);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

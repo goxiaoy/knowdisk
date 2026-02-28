@@ -32,7 +32,7 @@ function setup() {
 }
 
 describe("vfs service runtime", () => {
-  test("watch emits add/delete for mount node changes", async () => {
+  test("watch compresses mount/unmount sequence to delete event", async () => {
     const ctx = setup();
     const events: Array<{ type: string; id: string; parentId: string | null }> = [];
     const watcher = await ctx.service.watch({
@@ -47,8 +47,9 @@ describe("vfs service runtime", () => {
     });
 
     await ctx.service.unmount(mount.mountId);
+    await Bun.sleep(80);
 
-    expect(events.some((event) => event.type === "add")).toBe(true);
+    expect(events.some((event) => event.type === "upsert")).toBe(false);
     expect(events.some((event) => event.type === "delete")).toBe(true);
     await watcher.close();
     await ctx.service.close();
@@ -236,6 +237,74 @@ describe("vfs service runtime", () => {
     expect(starts).toBe(0);
     expect(listCalls).toBe(0);
 
+    await ctx.service.close();
+    ctx.cleanup();
+  });
+
+  test("watch emits unified update event with contentUpdated/metadataChanged flags", async () => {
+    const ctx = setup();
+    const events: Array<{
+      type: string;
+      id: string;
+      parentId: string | null;
+      contentUpdated?: boolean;
+      metadataChanged?: boolean;
+    }> = [];
+    const watcher = await ctx.service.watch({
+      onEvent: (event) => events.push(event),
+    });
+    const mount = await ctx.service.mount({
+      providerType: "mock-runtime",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+    const mountNode = ctx.repo
+      .listNodesByMountId(mount.mountId)
+      .find((node) => node.kind === "mount");
+    expect(mountNode).toBeDefined();
+
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "file-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "old.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "old.txt",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "file-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "new.txt",
+        kind: "file",
+        size: 2,
+        mtimeMs: 2,
+        sourceRef: "old.txt",
+        providerVersion: "v2",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      },
+    ]);
+
+    await Bun.sleep(80);
+    const updateEvent = events.find((event) => event.id === "file-1" && event.type === "upsert");
+    expect(updateEvent).toBeDefined();
+    expect(updateEvent?.contentUpdated).toBe(true);
+    expect(updateEvent?.metadataChanged).toBe(true);
+
+    await watcher.close();
     await ctx.service.close();
     ctx.cleanup();
   });

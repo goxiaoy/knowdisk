@@ -482,4 +482,270 @@ describe("vfs syncer", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("syncName=false: fullSync preserves existing db name for local nodes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-sync-name-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount({
+        mountId: "local-sync-name",
+        providerType: "local",
+        providerExtra: { syncName: false },
+      });
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "",
+          }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+        {
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "a.txt",
+          }),
+          mountId: mount.mountId,
+          parentId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "",
+          }),
+          name: "manual-display-name.txt",
+          kind: "file",
+          size: 1,
+          mtimeMs: 1,
+          sourceRef: "a.txt",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+
+      const provider: VfsProviderAdapter = {
+        type: "local",
+        capabilities: { watch: false },
+        async listChildren() {
+          return {
+            items: [
+              {
+                sourceRef: "a.txt",
+                parentSourceRef: null,
+                name: "a.txt",
+                kind: "file",
+                size: 2,
+              },
+            ],
+          };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 2000,
+      });
+      await syncer.fullSync();
+      const next = repo.listNodesByMountId(mount.mountId).find((node) => node.sourceRef === "a.txt");
+      expect(next?.name).toBe("manual-display-name.txt");
+      expect(next?.size).toBe(2);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("syncName=false: watch update preserves existing db name for local nodes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-sync-name-watch-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount({
+        mountId: "local-sync-name-watch",
+        providerType: "local",
+        providerExtra: { syncName: false },
+      });
+      const mountNodeId = createVfsNodeId({
+        mountId: mount.mountId,
+        sourceRef: "",
+      });
+      repo.upsertNodes([
+        {
+          nodeId: mountNodeId,
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+        {
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "a.txt",
+          }),
+          mountId: mount.mountId,
+          parentId: mountNodeId,
+          name: "manual-display-name.txt",
+          kind: "file",
+          size: 1,
+          mtimeMs: 1,
+          sourceRef: "a.txt",
+          providerVersion: "v1",
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+
+      let watchHandler:
+        | ((event: {
+            type: "add" | "update_metadata" | "update_content" | "delete";
+            sourceRef: string;
+            parentSourceRef: string | null;
+          }) => void)
+        | null = null;
+      const provider: VfsProviderAdapter = {
+        type: "local",
+        capabilities: { watch: true },
+        async listChildren() {
+          return { items: [] };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "a.txt",
+            parentSourceRef: null,
+            name: "a.txt",
+            kind: "file",
+            size: 2,
+            providerVersion: "v2",
+          };
+        },
+        async watch(input) {
+          watchHandler = input.onEvent;
+          return {
+            close: async () => {
+              watchHandler = null;
+            },
+          };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 3000,
+      });
+      await syncer.startWatching();
+      watchHandler?.({
+        type: "update_content",
+        sourceRef: "a.txt",
+        parentSourceRef: null,
+      });
+      const updated = await waitUntil(() => {
+        const node = repo.listNodesByMountId(mount.mountId).find((n) => n.sourceRef === "a.txt");
+        return node?.providerVersion === "v2";
+      }, 2000);
+      expect(updated).toBe(true);
+      const node = repo.listNodesByMountId(mount.mountId).find((n) => n.sourceRef === "a.txt");
+      expect(node?.name).toBe("manual-display-name.txt");
+      await syncer.stopWatching();
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("local fullSync computes providerVersion from file content and updates on re-index", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-local-hash-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const sourceRoot = join(dir, "source");
+      await mkdir(sourceRoot, { recursive: true });
+      const filePath = join(sourceRoot, "a.txt");
+      writeFileSync(filePath, "v1");
+
+      const mount = makeMount({
+        mountId: "local-hash",
+        providerType: "local",
+        providerExtra: { directory: sourceRoot },
+      });
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "",
+          }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+
+      const provider: VfsProviderAdapter = {
+        type: "local",
+        capabilities: { watch: false },
+        async listChildren() {
+          return {
+            items: [
+              {
+                sourceRef: "a.txt",
+                parentSourceRef: null,
+                name: "a.txt",
+                kind: "file",
+                size: 2,
+              },
+            ],
+          };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 1000,
+      });
+
+      await syncer.fullSync();
+      const before = repo.listNodesByMountId(mount.mountId).find((node) => node.sourceRef === "a.txt");
+      expect(before?.providerVersion).toEqual(expect.any(String));
+
+      writeFileSync(filePath, "v2");
+      await syncer.fullSync();
+      const after = repo.listNodesByMountId(mount.mountId).find((node) => node.sourceRef === "a.txt");
+      expect(after?.providerVersion).toEqual(expect.any(String));
+      expect(after?.providerVersion).not.toBe(before?.providerVersion ?? null);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

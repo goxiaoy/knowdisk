@@ -1,8 +1,9 @@
 import chokidar from "chokidar";
 import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
+import { blake3 } from "hash-wasm";
 import pino, { type Logger } from "pino";
 import type { VfsProviderAdapter } from "../../vfs.provider.types";
 import type { ListChildrenItem } from "../../vfs.service.types";
@@ -129,6 +130,96 @@ export function createLocalVfsProvider(
         return null;
       }
     },
+    async create(input) {
+      const config = parseLocalMount(mount);
+      const parentRef = input.parentId ?? null;
+      const dirPath = resolveRefPath(config.directory, parentRef);
+      const kind = input.kind === "folder" ? "folder" : "file";
+      const requestedName = input.name ? sanitizeName(input.name) : "untitled";
+      const name = await nextAvailableName(dirPath, requestedName);
+      const targetPath = join(dirPath, name);
+      if (kind === "folder") {
+        await mkdir(targetPath, { recursive: false });
+      } else {
+        await writeFile(targetPath, "", { flag: "wx" });
+      }
+      const targetStat = await stat(targetPath);
+      const sourceRef = toSourceRef(config.directory, targetPath);
+      return toProviderNode({
+        mountId: mount.mountId,
+        sourceRef,
+        parentSourceRef: parentId(sourceRef),
+        name,
+        kind: targetStat.isDirectory() ? "folder" : "file",
+        size: targetStat.isDirectory() ? null : targetStat.size,
+        mtimeMs: targetStat.mtimeMs,
+        providerVersion: targetStat.isDirectory() ? null : await computeBlake3File(targetPath),
+      });
+    },
+    async rename(input) {
+      const config = parseLocalMount(mount);
+      const normalizedId = normalizeSourceRef(input.id);
+      if (!normalizedId) {
+        throw new Error("rename requires a non-empty id");
+      }
+      const name = sanitizeName(input.name);
+      if (!config.syncName) {
+        const sameStat = await stat(resolveRefPath(config.directory, normalizedId));
+        return toProviderNode({
+          mountId: mount.mountId,
+          sourceRef: normalizedId,
+          parentSourceRef: parentId(normalizedId),
+          name,
+          kind: sameStat.isDirectory() ? "folder" : "file",
+          size: sameStat.isDirectory() ? null : sameStat.size,
+          mtimeMs: sameStat.mtimeMs,
+          providerVersion: sameStat.isDirectory()
+            ? null
+            : await computeBlake3File(resolveRefPath(config.directory, normalizedId)),
+        });
+      }
+      const oldPath = resolveRefPath(config.directory, normalizedId);
+      const parentPath = dirname(oldPath);
+      const newPath = join(parentPath, name);
+      if (oldPath === newPath) {
+        const sameStat = await stat(oldPath);
+        return toProviderNode({
+          mountId: mount.mountId,
+          sourceRef: normalizedId,
+          parentSourceRef: parentId(normalizedId),
+          name,
+          kind: sameStat.isDirectory() ? "folder" : "file",
+          size: sameStat.isDirectory() ? null : sameStat.size,
+          mtimeMs: sameStat.mtimeMs,
+          providerVersion: sameStat.isDirectory() ? null : await computeBlake3File(oldPath),
+        });
+      }
+      if (await fileExists(newPath)) {
+        throw new Error(`target already exists: ${name}`);
+      }
+      await rename(oldPath, newPath);
+      const nextRef = toSourceRef(config.directory, newPath);
+      const nextStat = await stat(newPath);
+      return toProviderNode({
+        mountId: mount.mountId,
+        sourceRef: nextRef,
+        parentSourceRef: parentId(nextRef),
+        name,
+        kind: nextStat.isDirectory() ? "folder" : "file",
+        size: nextStat.isDirectory() ? null : nextStat.size,
+        mtimeMs: nextStat.mtimeMs,
+        providerVersion: nextStat.isDirectory() ? null : await computeBlake3File(newPath),
+      });
+    },
+    async delete(input) {
+      const config = parseLocalMount(mount);
+      const normalizedId = normalizeSourceRef(input.id);
+      if (!normalizedId) {
+        throw new Error("delete requires a non-empty id");
+      }
+      const targetPath = resolveRefPath(config.directory, normalizedId);
+      await rm(targetPath, { recursive: true, force: true });
+    },
     async watch(input) {
       const config = parseLocalMount(mount as VfsMountConfig);
       logger.info({ mountId: mount.mountId }, "local watch started");
@@ -183,6 +274,7 @@ function toProviderNode(input: {
   kind: "file" | "folder";
   size: number | null;
   mtimeMs: number;
+  providerVersion?: string | null;
 }): ListChildrenItem {
   return {
     nodeId: input.sourceRef,
@@ -193,20 +285,35 @@ function toProviderNode(input: {
     size: input.size,
     mtimeMs: input.mtimeMs,
     sourceRef: input.sourceRef,
-    providerVersion: null,
+    providerVersion: input.providerVersion ?? null,
     deletedAtMs: null,
     createdAtMs: 0,
     updatedAtMs: 0,
   };
 }
 
-function parseLocalMount(mount: Pick<VfsMount, "providerExtra">): { directory: string } {
+async function computeBlake3File(path: string): Promise<string> {
+  const content = await readFile(path);
+  return blake3(content);
+}
+
+function parseLocalMount(mount: Pick<VfsMount, "providerExtra">): {
+  directory: string;
+  syncName: boolean;
+} {
   const dir = mount.providerExtra.directory;
   if (typeof dir !== "string" || dir.trim().length === 0) {
     throw new Error("providerExtra.directory must be a non-empty string");
   }
+  const syncNameRaw = mount.providerExtra.syncName;
+  const syncName =
+    typeof syncNameRaw === "boolean"
+      ? syncNameRaw
+      : syncNameRaw === undefined
+        ? true
+        : Boolean(syncNameRaw);
   const resolved = isAbsolute(dir) ? dir : resolve(dir);
-  return { directory: resolved };
+  return { directory: resolved, syncName };
 }
 
 function parseCursorOffset(cursor?: string): number {
@@ -251,4 +358,38 @@ function parentId(id: string): string | null {
     return null;
   }
   return parent.split(sep).join("/");
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function nextAvailableName(dir: string, baseName: string): Promise<string> {
+  let index = 0;
+  while (true) {
+    const candidate = index === 0 ? baseName : `${baseName}(${index})`;
+    if (!(await fileExists(join(dir, candidate)))) {
+      return candidate;
+    }
+    index += 1;
+  }
+}
+
+function sanitizeName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("name must be non-empty");
+  }
+  if (trimmed.includes("/") || trimmed.includes("\\")) {
+    throw new Error("name must not contain path separators");
+  }
+  if (trimmed === "." || trimmed === "..") {
+    throw new Error("name is invalid");
+  }
+  return trimmed;
 }

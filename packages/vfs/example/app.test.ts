@@ -49,6 +49,9 @@ describe("vfs example app", () => {
       const pageHtml = await pageRes.text();
       expect(pageHtml).toContain("<th>Create Time</th>");
       expect(pageHtml).toContain("<th>Modify Time</th>");
+      expect(pageHtml).toContain("<th>Provider Version</th>");
+      expect(pageHtml).toContain("<th>Actions</th>");
+      expect(pageHtml).toContain("id=\"createKind\"");
       expect(Array.isArray(state.mounts)).toBe(true);
       expect(state.mounts.length).toBe(2);
       expect(
@@ -62,6 +65,17 @@ describe("vfs example app", () => {
       ).toBe(true);
       const localMount = state.mounts.find((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert");
       expect(localMount?.mountNodeId).toEqual(expect.any(String));
+      expect(localMount?.operations).toEqual({
+        create: true,
+        rename: true,
+        delete: true,
+      });
+      const hfMount = state.mounts.find((mount: { mountId: string }) => mount.mountId === "hf-tiny-random-bert");
+      expect(hfMount?.operations).toEqual({
+        create: false,
+        rename: false,
+        delete: false,
+      });
 
       let listed: { items: Array<{ name: string; kind: string; nodeId: string }> } = { items: [] };
       const deadline = Date.now() + 2_000;
@@ -110,6 +124,34 @@ describe("vfs example app", () => {
       expect(badListRes.status).toBe(404);
       const badListPayload = await badListRes.json();
       expect(badListPayload.error).toContain("Parent node not found");
+
+      const createRes = await fetch(`${baseUrl}/api/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          parentNodeId: localMount.mountNodeId,
+          name: "created-by-name.txt",
+        }),
+      });
+      expect(createRes.status).toBe(200);
+      const created = await createRes.json();
+      expect(created.node.name).toBe("created-by-name.txt");
+
+      const renameRes = await fetch(`${baseUrl}/api/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nodeId: created.node.nodeId, name: "renamed.txt" }),
+      });
+      expect(renameRes.status).toBe(200);
+      const renamed = await renameRes.json();
+      expect(renamed.node.name).toBe("renamed.txt");
+
+      const deleteRes = await fetch(`${baseUrl}/api/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nodeId: renamed.node.nodeId }),
+      });
+      expect(deleteRes.status).toBe(200);
 
       const eventsRes = await fetch(`${baseUrl}/api/events`);
       expect(eventsRes.status).toBe(200);

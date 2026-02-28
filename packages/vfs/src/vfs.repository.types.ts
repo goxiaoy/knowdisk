@@ -31,6 +31,17 @@ export type VfsPageCacheRow = {
   expiresAtMs: number;
 };
 
+export type VfsNodeEventRow = {
+  nodeId: string;
+  mountId: string;
+  parentId: string | null;
+  type: "upsert" | "delete";
+  contentUpdated: boolean;
+  metadataChanged: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 export type VfsRepository = {
   close: () => void;
   subscribeNodeChanges: (listener: (changes: VfsNodeChange[]) => void) => () => void;
@@ -48,6 +59,9 @@ export type VfsRepository = {
   upsertPageCache: (row: VfsPageCacheRow) => void;
   getPageCacheIfFresh: (cacheKey: string, nowMs: number) => VfsPageCacheRow | null;
   deletePageCacheByMountId: (mountId: string) => void;
+  upsertNodeEvents: (rows: VfsNodeEventRow[]) => void;
+  listNodeEvents: (limit?: number) => VfsNodeEventRow[];
+  deleteNodeEventsByNodeIds: (nodeIds: string[]) => void;
 };
 
 export type VfsNodeChange = {

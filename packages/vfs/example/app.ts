@@ -41,7 +41,16 @@ type MountStatus = {
 export type VfsExampleApp = {
   baseUrl: string;
   stop: () => Promise<void>;
-  mounts: Array<VfsMount & { mountNodeId: string }>;
+  mounts: Array<
+    VfsMount & {
+      mountNodeId: string;
+      operations: {
+        create: boolean;
+        rename: boolean;
+        delete: boolean;
+      };
+    }
+  >;
 };
 
 export async function createVfsExampleApp(input?: {
@@ -96,7 +105,16 @@ export async function createVfsExampleApp(input?: {
   void hfMount;
   void localMount;
 
-  const listMountedNodes = (): Array<VfsMount & { mountNodeId: string }> =>
+  const listMountedNodes = (): Array<
+    VfsMount & {
+      mountNodeId: string;
+      operations: {
+        create: boolean;
+        rename: boolean;
+        delete: boolean;
+      };
+    }
+  > =>
     repository.listNodeMountExts().flatMap((ext) => {
       const mountNode = repository
         .listNodesByMountId(ext.mountId)
@@ -109,16 +127,26 @@ export async function createVfsExampleApp(input?: {
       if (!mountNode) {
         return [];
       }
+      const mount: VfsMount = {
+        mountId: ext.mountId,
+        providerType: ext.providerType,
+        providerExtra: ext.providerExtra,
+        autoSync: ext.autoSync,
+        syncMetadata: ext.syncMetadata,
+        syncContent: ext.syncContent,
+        metadataTtlSec: ext.metadataTtlSec,
+        reconcileIntervalMs: ext.reconcileIntervalMs,
+      };
+      const provider = registry.get(mount);
       return [
         {
-          mountId: ext.mountId,
-          providerType: ext.providerType,
-          providerExtra: ext.providerExtra,
-          syncMetadata: ext.syncMetadata,
-          syncContent: ext.syncContent,
-          metadataTtlSec: ext.metadataTtlSec,
-          reconcileIntervalMs: ext.reconcileIntervalMs,
+          ...mount,
           mountNodeId: mountNode.nodeId,
+          operations: {
+            create: Boolean(provider.create),
+            rename: Boolean(provider.rename),
+            delete: Boolean(provider.delete),
+          },
         },
       ];
     });
@@ -246,7 +274,7 @@ export async function createVfsExampleApp(input?: {
               reconcileIntervalMs: ext.reconcileIntervalMs,
             };
             const provider = registry.get(mount);
-            if (provider.getMetadata) {
+            if (provider.getMetadata && ext.providerType !== "local") {
               try {
                 const fetched = await provider.getMetadata({
                   id: node.sourceRef,
@@ -269,6 +297,66 @@ export async function createVfsExampleApp(input?: {
           }
         }
         return Response.json({ metadata });
+      }
+
+      if (url.pathname === "/api/create" && request.method === "POST") {
+        try {
+          const body = await request.json() as {
+            parentNodeId?: string;
+            name?: string;
+            kind?: "file" | "folder";
+          };
+          if (!body.parentNodeId) {
+            return Response.json({ error: "parentNodeId is required" }, { status: 400 });
+          }
+          const created = await vfs.create({
+            parentId: body.parentNodeId,
+            name: body.name,
+            kind: body.kind,
+          });
+          return Response.json({ node: created });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return Response.json({ error: message }, { status: 400 });
+        }
+      }
+
+      if (url.pathname === "/api/rename" && request.method === "POST") {
+        try {
+          const body = await request.json() as {
+            nodeId?: string;
+            name?: string;
+          };
+          if (!body.nodeId || !body.name) {
+            return Response.json({ error: "nodeId and name are required" }, { status: 400 });
+          }
+          const renamed = await vfs.rename({
+            id: body.nodeId,
+            name: body.name,
+          });
+          return Response.json({ node: renamed });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return Response.json({ error: message }, { status: 400 });
+        }
+      }
+
+      if (url.pathname === "/api/delete" && request.method === "POST") {
+        try {
+          const body = await request.json() as {
+            nodeId?: string;
+          };
+          if (!body.nodeId) {
+            return Response.json({ error: "nodeId is required" }, { status: 400 });
+          }
+          await vfs.delete({
+            id: body.nodeId,
+          });
+          return Response.json({ ok: true });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return Response.json({ error: message }, { status: 400 });
+        }
       }
 
       if (url.pathname === "/api/events") {
@@ -355,6 +443,10 @@ function renderHtml(input: {
     .right { border-right: 1px solid var(--line); padding: 12px; overflow: auto; }
     .meta { padding: 12px; overflow: auto; }
     .path { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .toolbar button, .toolbar select { border: 1px solid var(--line); background: #f8fafc; border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; }
+    .toolbar button:hover { background: #eef2f7; }
+    .toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.item { width: 100%; border: 1px solid transparent; background: transparent; text-align: left; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
     button.item:hover { background: #f1f5f9; }
     button.item.active { background: #dff4ef; border-color: #a7f3d0; }
@@ -363,6 +455,10 @@ function renderHtml(input: {
     tr.row { cursor: default; }
     tr.row:hover { background: #f8fafc; }
     tr.row.active { background: #dff4ef; }
+    td.actions { white-space: nowrap; text-align: right; }
+    td.actions button { border: 1px solid #ef4444; color: #ef4444; background: #fff; border-radius: 6px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+    td.actions button:hover { background: #fff1f2; }
+    .name-cell { cursor: text; }
     .kind-folder { color: #0f766e; } .kind-file { color: #334155; }
     .meta-empty { color: var(--muted); font-size: 13px; }
     .meta-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -381,9 +477,18 @@ function renderHtml(input: {
         <div id="mounts"></div>
       </aside>
       <main class="right">
-        <div class="path" id="currentPath"></div>
+        <div class="toolbar">
+          <div class="path" id="currentPath"></div>
+          <div>
+            <select id="createKind">
+              <option value="file">file</option>
+              <option value="folder">folder</option>
+            </select>
+            <button id="createBtn" type="button">Create</button>
+          </div>
+        </div>
         <table>
-          <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>Create Time</th><th>Modify Time</th></tr></thead>
+          <thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>Provider Version</th><th>Create Time</th><th>Modify Time</th><th>Actions</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </main>
@@ -394,9 +499,14 @@ function renderHtml(input: {
     </section>
   </div>
   <script>
-    let mounts = ${JSON.stringify(input.mounts.map((item) => ({ mountId: item.mountId, mountNodeId: item.mountNodeId })))};
+    let mounts = ${JSON.stringify(input.mounts.map((item) => ({
+      mountId: item.mountId,
+      mountNodeId: item.mountNodeId,
+      operations: item.operations,
+    })))};
     let statuses = ${JSON.stringify(input.statuses)};
     let selectedPath = mounts[0]?.mountNodeId || "";
+    let selectedMountId = mounts[0]?.mountId || "";
     let selectedNodeId = "";
     let currentItems = [];
     let refreshPathTimer = null;
@@ -432,6 +542,32 @@ function renderHtml(input: {
       el.querySelectorAll("button[data-node-id]").forEach((button) => {
         button.addEventListener("click", () => loadPath(button.getAttribute("data-node-id")));
       });
+    }
+
+    function currentMount() {
+      if (selectedMountId) {
+        const byId = mounts.find((mount) => mount.mountId === selectedMountId);
+        if (byId) return byId;
+      }
+      return mounts.find((mount) => mount.mountNodeId === selectedPath) || null;
+    }
+
+    function can(operation) {
+      const mount = currentMount();
+      return Boolean(mount && mount.operations && mount.operations[operation]);
+    }
+
+    function renderToolbar() {
+      const createBtn = document.getElementById("createBtn");
+      const createKind = document.getElementById("createKind");
+      if (!createBtn) return;
+      const enabled = can("create") && Boolean(selectedPath);
+      createBtn.style.visibility = enabled ? "visible" : "hidden";
+      createBtn.disabled = !enabled;
+      if (createKind) {
+        createKind.style.visibility = enabled ? "visible" : "hidden";
+        createKind.disabled = !enabled;
+      }
     }
 
     function renderMetadata(metadata) {
@@ -476,11 +612,33 @@ function renderHtml(input: {
 
     function renderRows() {
       const rows = document.getElementById("rows");
+      const allowRename = can("rename");
+      const allowDelete = can("delete");
       rows.innerHTML = currentItems.map((item) => {
         const active = item.nodeId === selectedNodeId ? " active" : "";
         return "<tr class='row" + active + "' data-node-id='" + item.nodeId + "' data-kind='" + item.kind + "'>" +
-          "<td>" + item.name + "</td><td class='kind-" + item.kind + "'>" + item.kind + "</td><td>" + (item.size ?? "") + "</td><td>" + formatTime(item.createdAtMs) + "</td><td>" + formatTime(item.updatedAtMs) + "</td></tr>";
+          "<td class='name-cell' data-node-id='" + item.nodeId + "' data-name='" + item.name + "'>" + item.name + "</td>" +
+          "<td class='kind-" + item.kind + "'>" + item.kind + "</td><td>" + (item.size ?? "") + "</td><td>" + (item.providerVersion ?? "") + "</td><td>" + formatTime(item.createdAtMs) + "</td><td>" + formatTime(item.updatedAtMs) + "</td>" +
+          "<td class='actions'>" + (allowDelete ? "<button type='button' data-delete-node-id='" + item.nodeId + "'>Delete</button>" : "") + "</td></tr>";
       }).join("");
+      rows.querySelectorAll("td.name-cell").forEach((cell) => {
+        cell.addEventListener("dblclick", async (event) => {
+          event.stopPropagation();
+          if (!allowRename) return;
+          const nodeId = cell.getAttribute("data-node-id") || "";
+          const currentName = cell.getAttribute("data-name") || "";
+          const next = window.prompt("Rename", currentName);
+          if (!next || next === currentName) return;
+          await renameNode(nodeId, next);
+        });
+      });
+      rows.querySelectorAll("button[data-delete-node-id]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          event.stopPropagation();
+          const nodeId = button.getAttribute("data-delete-node-id") || "";
+          await deleteNode(nodeId);
+        });
+      });
       rows.querySelectorAll("tr[data-node-id]").forEach((row) => {
         row.addEventListener("click", async () => {
           selectedNodeId = row.getAttribute("data-node-id") || "";
@@ -489,10 +647,74 @@ function renderHtml(input: {
         });
         row.addEventListener("dblclick", () => {
           if (row.getAttribute("data-kind") === "folder") {
+            const item = currentItems.find((entry) => entry.nodeId === row.getAttribute("data-node-id"));
+            if (item?.mountId) {
+              selectedMountId = item.mountId;
+            }
             loadPath(row.getAttribute("data-node-id"));
           }
         });
       });
+    }
+
+    async function createNode() {
+      if (!can("create") || !selectedPath) return;
+      const createKind = document.getElementById("createKind");
+      const kind = createKind && createKind.value === "folder" ? "folder" : "file";
+      const typed = window.prompt("Create name (empty = untitled)", "");
+      if (typed === null) {
+        return;
+      }
+      const name = typed.trim();
+      const res = await fetch("/api/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          parentNodeId: selectedPath,
+          kind,
+          ...(name ? { name } : {}),
+        }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({ error: "create failed" }));
+        window.alert(payload.error || "create failed");
+        return;
+      }
+      await loadPath(selectedPath);
+    }
+
+    async function renameNode(nodeId, name) {
+      if (!can("rename")) return;
+      const res = await fetch("/api/rename", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nodeId, name }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({ error: "rename failed" }));
+        window.alert(payload.error || "rename failed");
+        return;
+      }
+      await loadPath(selectedPath);
+    }
+
+    async function deleteNode(nodeId) {
+      if (!can("delete")) return;
+      const res = await fetch("/api/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nodeId }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({ error: "delete failed" }));
+        window.alert(payload.error || "delete failed");
+        return;
+      }
+      if (selectedNodeId === nodeId) {
+        selectedNodeId = "";
+        renderMetadata(null);
+      }
+      await loadPath(selectedPath);
     }
 
     async function refreshStateAndMaybePath() {
@@ -503,6 +725,7 @@ function renderHtml(input: {
         mounts = payload.mounts.map((item) => ({
           mountId: item.mountId,
           mountNodeId: item.mountNodeId,
+          operations: item.operations || { create: false, rename: false, delete: false },
         }));
       }
       if (Array.isArray(payload.statuses)) {
@@ -510,10 +733,12 @@ function renderHtml(input: {
       }
       if (!mounts.some((mount) => mount.mountNodeId === selectedPath)) {
         selectedPath = mounts[0]?.mountNodeId || "";
+        selectedMountId = mounts[0]?.mountId || "";
         selectedNodeId = "";
       }
       renderStatus();
       renderMounts();
+      renderToolbar();
       if (selectedPath) {
         await loadPath(selectedPath);
       } else {
@@ -539,7 +764,12 @@ function renderHtml(input: {
       if (!parentNodeId) return;
       selectedPath = parentNodeId;
       selectedNodeId = "";
+      const selectedMount = mounts.find((mount) => mount.mountNodeId === parentNodeId);
+      if (selectedMount) {
+        selectedMountId = selectedMount.mountId;
+      }
       renderMounts();
+      renderToolbar();
       document.getElementById("currentPath").textContent = parentNodeId;
       const res = await fetch("/api/list?parentNodeId=" + encodeURIComponent(parentNodeId) + "&limit=200");
       if (!res.ok) {
@@ -550,6 +780,9 @@ function renderHtml(input: {
       }
       const data = await res.json();
       currentItems = data.items || [];
+      if (!selectedMountId && currentItems[0]?.mountId) {
+        selectedMountId = currentItems[0].mountId;
+      }
       renderRows();
       renderMetadata(null);
     }
@@ -557,6 +790,13 @@ function renderHtml(input: {
     async function start() {
       renderStatus();
       renderMounts();
+      renderToolbar();
+      const createBtn = document.getElementById("createBtn");
+      if (createBtn) {
+        createBtn.addEventListener("click", () => {
+          void createNode();
+        });
+      }
       if (selectedPath) {
         await loadPath(selectedPath);
       }

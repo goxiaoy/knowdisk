@@ -29,13 +29,22 @@ export type VfsOperationCore = {
     offset?: number;
     length?: number;
   }) => Promise<ReadableStream<Uint8Array>>;
+  create?: (input: {
+    parentId: string | null;
+    name?: string;
+    kind?: "file" | "folder";
+  }) => Promise<VfsNode>;
+  rename?: (input: { id: string; name: string }) => Promise<VfsNode>;
+  delete?: (input: { id: string }) => Promise<void>;
   getMetadata?: (input: { id: string }) => Promise<VfsNode | null>;
 };
 
 export type VfsChangeEvent = {
-  type: "add" | "update_metadata" | "update_content" | "delete";
+  type: "upsert" | "delete";
   id: string;
   parentId: string | null;
+  contentUpdated: boolean;
+  metadataChanged: boolean;
 };
 
 export type VfsService = VfsOperationCore & {

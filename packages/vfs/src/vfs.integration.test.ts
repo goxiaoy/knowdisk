@@ -167,4 +167,83 @@ describe("vfs integration", () => {
     expect(mount.mountId).toBe("explicit-id");
     ctx.cleanup();
   });
+
+  test("service create/rename/delete routes to provider operations", async () => {
+    const ctx = setup();
+    const calls: Array<{ op: string; id?: string | null; name?: string }> = [];
+    ctx.registry.register("mock-mutate", () => ({
+      type: "mock-mutate",
+      capabilities: { watch: false },
+      async listChildren() {
+        return { items: [] };
+      },
+      async create(input) {
+        calls.push({ op: "create", id: input.parentId, name: input.name });
+        return {
+          nodeId: "created.txt",
+          mountId: "ignored",
+          parentId: input.parentId,
+          name: input.name ?? "created.txt",
+          kind: "file",
+          size: 0,
+          mtimeMs: 1,
+          sourceRef: "created.txt",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+        };
+      },
+      async rename(input) {
+        calls.push({ op: "rename", id: input.id, name: input.name });
+        return {
+          nodeId: input.name,
+          mountId: "ignored",
+          parentId: null,
+          name: input.name,
+          kind: "file",
+          size: 0,
+          mtimeMs: 1,
+          sourceRef: input.name,
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+        };
+      },
+      async delete(input) {
+        calls.push({ op: "delete", id: input.id });
+      },
+    }));
+
+    const mount = await ctx.service.mount({
+      providerType: "mock-mutate",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+
+    const created = await ctx.service.create({
+      parentId: mountNode!.nodeId,
+      name: "custom-name.txt",
+    });
+    expect(created.name).toBe("custom-name.txt");
+
+    const renamed = await ctx.service.rename({
+      id: created.nodeId,
+      name: "renamed.txt",
+    });
+    expect(renamed.name).toBe("renamed.txt");
+
+    await ctx.service.delete({ id: renamed.nodeId });
+    expect(calls.map((item) => item.op)).toEqual(["create", "rename", "delete"]);
+    expect(calls[0]?.id).toBeNull();
+    expect(calls[0]?.name).toBe("custom-name.txt");
+
+    ctx.cleanup();
+  });
 });

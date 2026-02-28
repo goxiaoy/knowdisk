@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -64,6 +64,10 @@ describe("local vfs provider", () => {
         "file:a.txt",
         "folder:sub",
       ]);
+      const fileItem = root.items.find((item) => item.kind === "file" && item.name === "a.txt");
+      const folderItem = root.items.find((item) => item.kind === "folder" && item.name === "sub");
+      expect(fileItem?.providerVersion).toBeNull();
+      expect(folderItem?.providerVersion).toBeNull();
 
       const content = await readAll(
         await provider.createReadStream!({
@@ -79,6 +83,30 @@ describe("local vfs provider", () => {
       expect(metadata?.name).toBe("b.txt");
       expect(metadata?.parentId).toBe("sub");
       expect((metadata?.size ?? 0) > 0).toBe(true);
+      expect(metadata?.providerVersion).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("create/rename returns providerVersion for file mutations", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-hash-"));
+    try {
+      const provider = createLocalVfsProvider(makeMount(dir));
+      const created = await provider.create!({
+        parentId: null,
+        name: "hash.txt",
+      });
+      expect(created.providerVersion).toEqual(expect.any(String));
+      expect(created.providerVersion?.length).toBeGreaterThan(0);
+
+      writeFileSync(join(dir, "hash.txt"), "v2");
+      const renamed = await provider.rename!({
+        id: "hash.txt",
+        name: "hash-renamed.txt",
+      });
+      expect(renamed.providerVersion).toEqual(expect.any(String));
+      expect(renamed.providerVersion).not.toBe(created.providerVersion ?? null);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -151,6 +179,66 @@ describe("local vfs provider", () => {
           (record) => record.level === "info" && record.msg.includes("local listChildren"),
         ),
       ).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("create uses untitled naming with collision suffix; rename and delete mutate filesystem", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-mutate-"));
+    try {
+      const mount = makeMount(dir);
+      const provider = createLocalVfsProvider(mount);
+
+      const created1 = await provider.create!({
+        parentId: null,
+      });
+      const created2 = await provider.create!({
+        parentId: null,
+      });
+      expect(created1.name).toBe("untitled");
+      expect(created2.name).toBe("untitled(1)");
+      expect(existsSync(join(dir, "untitled"))).toBe(true);
+      expect(existsSync(join(dir, "untitled(1)"))).toBe(true);
+
+      const renamed = await provider.rename!({
+        id: created2.sourceRef,
+        name: "renamed.txt",
+      });
+      expect(renamed.name).toBe("renamed.txt");
+      expect(existsSync(join(dir, "untitled(1)"))).toBe(false);
+      expect(existsSync(join(dir, "renamed.txt"))).toBe(true);
+
+      await provider.delete!({
+        id: renamed.sourceRef,
+      });
+      expect(existsSync(join(dir, "renamed.txt"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("syncName=false: rename only changes metadata name without renaming real file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-sync-name-off-"));
+    try {
+      writeFileSync(join(dir, "real.txt"), "x");
+      const mount: VfsMount = {
+        ...makeMount(dir),
+        providerExtra: {
+          directory: dir,
+          syncName: false,
+        },
+      };
+      const provider = createLocalVfsProvider(mount);
+
+      const renamed = await provider.rename!({
+        id: "real.txt",
+        name: "display-name.txt",
+      });
+      expect(renamed.name).toBe("display-name.txt");
+      expect(renamed.sourceRef).toBe("real.txt");
+      expect(existsSync(join(dir, "real.txt"))).toBe(true);
+      expect(existsSync(join(dir, "display-name.txt"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

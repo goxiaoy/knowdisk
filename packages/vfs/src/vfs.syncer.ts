@@ -1,6 +1,7 @@
 import { existsSync, createWriteStream, rmSync, statSync } from "node:fs";
-import { mkdir, rename } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readFile, rename } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { blake3 } from "hash-wasm";
 import pino, { type Logger } from "pino";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
@@ -85,6 +86,11 @@ export function createVfsSyncer(input: {
     }
     return parts.slice(0, parts.length - 1).join("/");
   };
+  const preserveDbNameOnSync =
+    input.mount.providerType === "local" &&
+    (input.mount.providerExtra.syncName === false ||
+      input.mount.providerExtra.syncName === "false");
+  const localHashRoot = resolveLocalHashRoot(input.mount);
 
   async function walkAllFiles(): Promise<Map<string, ListChildrenItem>> {
     const discovered = new Map<string, ListChildrenItem>();
@@ -138,6 +144,16 @@ export function createVfsSyncer(input: {
       size: fetched.size ?? item.size,
       mtimeMs: fetched.mtimeMs ?? item.mtimeMs,
       providerVersion: fetched.providerVersion ?? item.providerVersion,
+    };
+  }
+
+  async function enrichProviderVersionIfNeeded(item: ListChildrenItem): Promise<ListChildrenItem> {
+    if (item.kind !== "file" || !localHashRoot) {
+      return item;
+    }
+    return {
+      ...item,
+      providerVersion: await computeLocalFileBlake3(localHashRoot, itemSourceRef(item)),
     };
   }
 
@@ -264,9 +280,14 @@ export function createVfsSyncer(input: {
       const restartSourceRefs = new Set<string>();
       const upsertRows: VfsNode[] = [];
       for (const item of walkedItems) {
-        const full = await enrichMetadataIfNeeded(item);
+        const full = await enrichProviderVersionIfNeeded(
+          await enrichMetadataIfNeeded(item),
+        );
         const node = toNode(full, now);
         const prev = existingByRef.get(node.sourceRef);
+        if (prev && preserveDbNameOnSync) {
+          node.name = prev.name;
+        }
         if (!prev) {
           added += 1;
         } else if (
@@ -449,9 +470,13 @@ export function createVfsSyncer(input: {
       return;
     }
 
-    const node = toNode(fetched, now);
+    const enriched = await enrichProviderVersionIfNeeded(fetched);
+    const node = toNode(enriched, now);
     if (prev) {
       node.createdAtMs = prev.createdAtMs;
+      if (preserveDbNameOnSync) {
+        node.name = prev.name;
+      }
     }
     input.repository.upsertNodes([node]);
     emit({
@@ -468,24 +493,49 @@ export function createVfsSyncer(input: {
     const shouldSyncSingle =
       input.mount.syncContent &&
       input.provider.createReadStream &&
-      fetched.kind === "file" &&
+      enriched.kind === "file" &&
       (event.type === "update_content" ||
         !prev ||
         prev.deletedAtMs !== null ||
         prev.size !== node.size ||
         prev.mtimeMs !== node.mtimeMs ||
         prev.providerVersion !== node.providerVersion ||
-        !existsSync(join(input.contentRootParent, input.mount.mountId, ...fetched.sourceRef.split("/"))));
+        !existsSync(join(input.contentRootParent, input.mount.mountId, ...enriched.sourceRef.split("/"))));
     if (!shouldSyncSingle) {
       return;
     }
 
     const restartSourceRefs = new Set<string>();
     if (prev && prev.providerVersion !== node.providerVersion) {
-      restartSourceRefs.add(fetched.sourceRef);
+      restartSourceRefs.add(enriched.sourceRef);
     }
-    await syncContent([fetched], { restartSourceRefs });
+    await syncContent([enriched], { restartSourceRefs });
   }
+}
+
+function resolveLocalHashRoot(mount: VfsMount): string | null {
+  if (mount.providerType !== "local") {
+    return null;
+  }
+  const raw = mount.providerExtra.directory;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return null;
+  }
+  return isAbsolute(raw) ? raw : resolve(raw);
+}
+
+async function computeLocalFileBlake3(root: string, sourceRef: string): Promise<string> {
+  const normalized = sourceRef
+    .split("/")
+    .filter((part) => part.length > 0)
+    .join("/");
+  const absPath = normalized.length === 0 ? root : resolve(root, ...normalized.split("/"));
+  const rel = relative(root, absPath);
+  if (rel.startsWith("..") || rel.includes(`..${sep}`)) {
+    throw new Error(`sourceRef escapes local root: "${sourceRef}"`);
+  }
+  const content = await readFile(absPath);
+  return blake3(content);
 }
 
 async function downloadWithResume(input: {

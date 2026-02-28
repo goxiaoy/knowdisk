@@ -23,34 +23,95 @@ export function createVfsService(deps: {
   contentRootParent?: string;
   nowMs?: () => number;
 }): VfsService {
+  const EVENT_DEBOUNCE_MS = 40;
   const nowMs = deps.nowMs ?? (() => Date.now());
   let started = false;
   const reconcileTimers = new Map<string, ReturnType<typeof setInterval>>();
   const reconcileRunning = new Set<string>();
   const listeners = new Set<(event: VfsChangeEvent) => void>();
+  let eventFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  let flushingEvents = false;
   const syncers = new Map<
     string,
     { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }
   >();
+  const flushNodeEvents = () => {
+    if (flushingEvents) {
+      return;
+    }
+    flushingEvents = true;
+    try {
+      while (true) {
+        const rows = deps.repository.listNodeEvents(1000);
+        if (rows.length === 0) {
+          break;
+        }
+        deps.repository.deleteNodeEventsByNodeIds(rows.map((row) => row.nodeId));
+        for (const row of rows) {
+          const event: VfsChangeEvent = {
+            type: row.type,
+            id: row.nodeId,
+            parentId: row.parentId,
+            contentUpdated: row.contentUpdated,
+            metadataChanged: row.metadataChanged,
+          };
+          for (const listener of listeners) {
+            listener(event);
+          }
+        }
+      }
+    } finally {
+      flushingEvents = false;
+    }
+  };
+  const scheduleNodeEventFlush = () => {
+    if (eventFlushTimer) {
+      return;
+    }
+    eventFlushTimer = setTimeout(() => {
+      eventFlushTimer = null;
+      flushNodeEvents();
+    }, EVENT_DEBOUNCE_MS);
+  };
   deps.repository.subscribeNodeChanges((changes) => {
     const touchedMountIds = new Set<string>();
+    const eventRows: Array<{
+      nodeId: string;
+      mountId: string;
+      parentId: string | null;
+      type: "upsert" | "delete";
+      contentUpdated: boolean;
+      metadataChanged: boolean;
+      createdAtMs: number;
+      updatedAtMs: number;
+    }> = [];
     for (const change of changes) {
       touchedMountIds.add(change.next.mountId);
       if (change.prev) {
         touchedMountIds.add(change.prev.mountId);
       }
-    }
-    for (const mountId of touchedMountIds) {
-      deps.repository.deletePageCacheByMountId(mountId);
-    }
-    for (const change of changes) {
       const event = toChangeEvent(change.prev, change.next);
       if (!event) {
         continue;
       }
-      for (const listener of listeners) {
-        listener(event);
-      }
+      const ts = nowMs();
+      eventRows.push({
+        nodeId: event.id,
+        mountId: change.next.mountId,
+        parentId: event.parentId,
+        type: event.type,
+        contentUpdated: event.contentUpdated,
+        metadataChanged: event.metadataChanged,
+        createdAtMs: ts,
+        updatedAtMs: ts,
+      });
+    }
+    for (const mountId of touchedMountIds) {
+      deps.repository.deletePageCacheByMountId(mountId);
+    }
+    if (eventRows.length > 0) {
+      deps.repository.upsertNodeEvents(eventRows);
+      scheduleNodeEventFlush();
     }
   });
 
@@ -194,6 +255,11 @@ export function createVfsService(deps: {
     },
 
     async close() {
+      if (eventFlushTimer) {
+        clearTimeout(eventFlushTimer);
+        eventFlushTimer = null;
+      }
+      flushNodeEvents();
       for (const mountId of [...reconcileTimers.keys()]) {
         clearReconcileTimer(mountId);
       }
@@ -313,6 +379,124 @@ export function createVfsService(deps: {
       throw new Error(
         `VfsService createReadStream is not supported: ${input.id}`,
       );
+    },
+
+    async create(input) {
+      const parentNode = deps.repository.getNodeById(input.parentId);
+      if (!parentNode) {
+        throw new Error(`Parent node not found: ${input.parentId}`);
+      }
+      if (parentNode.kind === "file") {
+        throw new Error(`Cannot create child under file: ${input.parentId}`);
+      }
+      const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
+      if (!ext) {
+        throw new Error(`Mount config not found: ${parentNode.mountId}`);
+      }
+      const mount = mountFromExt(ext);
+      const provider = deps.registry.get(mount);
+      if (!provider.create) {
+        throw new Error(`Provider "${mount.providerType}" does not support create`);
+      }
+      const created = await provider.create({
+        parentId: parentNode.kind === "mount" ? null : parentNode.sourceRef,
+        name: input.name ?? "untitled",
+        kind: input.kind ?? "file",
+      });
+      const now = nowMs();
+      const node = toRepositoryNode({
+        mountId: mount.mountId,
+        item: created,
+        now,
+      });
+      const prev = deps.repository.getNodeById(node.nodeId);
+      deps.repository.upsertNodes([
+        {
+          ...node,
+          createdAtMs: prev?.createdAtMs ?? node.createdAtMs,
+        },
+      ]);
+      return deps.repository.getNodeById(node.nodeId) ?? node;
+    },
+
+    async rename(input) {
+      const node = deps.repository.getNodeById(input.id);
+      if (!node) {
+        throw new Error(`Node not found: ${input.id}`);
+      }
+      if (node.kind === "mount") {
+        throw new Error(`Mount rename is not supported: ${input.id}`);
+      }
+      const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
+      if (!ext) {
+        throw new Error(`Mount config not found: ${node.mountId}`);
+      }
+      const mount = mountFromExt(ext);
+      const provider = deps.registry.get(mount);
+      if (!provider.rename) {
+        throw new Error(`Provider "${mount.providerType}" does not support rename`);
+      }
+      const renamed = await provider.rename({
+        id: node.sourceRef,
+        name: input.name,
+      });
+      const now = nowMs();
+      const renamedNode = toRepositoryNode({
+        mountId: mount.mountId,
+        item: renamed,
+        now,
+      });
+      renamedNode.createdAtMs = node.createdAtMs;
+      const upserts: VfsNode[] = [renamedNode];
+      if (renamedNode.nodeId !== node.nodeId) {
+        upserts.push({
+          ...node,
+          deletedAtMs: now,
+          updatedAtMs: now,
+        });
+      }
+      deps.repository.upsertNodes(upserts);
+      return deps.repository.getNodeById(renamedNode.nodeId) ?? renamedNode;
+    },
+
+    async delete(input) {
+      const node = deps.repository.getNodeById(input.id);
+      if (!node) {
+        throw new Error(`Node not found: ${input.id}`);
+      }
+      if (node.kind === "mount") {
+        throw new Error(`Use unmount for mount node: ${input.id}`);
+      }
+      const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
+      if (!ext) {
+        throw new Error(`Mount config not found: ${node.mountId}`);
+      }
+      const mount = mountFromExt(ext);
+      const provider = deps.registry.get(mount);
+      if (!provider.delete) {
+        throw new Error(`Provider "${mount.providerType}" does not support delete`);
+      }
+      await provider.delete({
+        id: node.sourceRef,
+      });
+      const now = nowMs();
+      const toDelete = deps.repository
+        .listNodesByMountId(node.mountId)
+        .filter(
+          (row) =>
+            row.deletedAtMs === null &&
+            (row.nodeId === node.nodeId ||
+              row.sourceRef === node.sourceRef ||
+              row.sourceRef.startsWith(`${node.sourceRef}/`)),
+        )
+        .map((row) => ({
+          ...row,
+          deletedAtMs: now,
+          updatedAtMs: now,
+        }));
+      if (toDelete.length > 0) {
+        deps.repository.upsertNodes(toDelete);
+      }
     },
 
     async walkChildren(input: WalkChildrenInput): Promise<WalkChildrenOutput> {
@@ -435,36 +619,62 @@ export function createVfsService(deps: {
 function toChangeEvent(prev: VfsNode | null, next: VfsNode): VfsChangeEvent | null {
   if (!prev) {
     return next.deletedAtMs === null
-      ? { type: "add", id: next.nodeId, parentId: next.parentId }
-      : { type: "delete", id: next.nodeId, parentId: next.parentId };
+      ? {
+          type: "upsert",
+          id: next.nodeId,
+          parentId: next.parentId,
+          contentUpdated: false,
+          metadataChanged: false,
+        }
+      : {
+          type: "delete",
+          id: next.nodeId,
+          parentId: next.parentId,
+          contentUpdated: false,
+          metadataChanged: false,
+        };
   }
 
   if (prev.deletedAtMs === null && next.deletedAtMs !== null) {
-    return { type: "delete", id: next.nodeId, parentId: next.parentId };
+    return {
+      type: "delete",
+      id: next.nodeId,
+      parentId: next.parentId,
+      contentUpdated: false,
+      metadataChanged: false,
+    };
   }
   if (prev.deletedAtMs !== null && next.deletedAtMs === null) {
-    return { type: "add", id: next.nodeId, parentId: next.parentId };
+    return {
+      type: "upsert",
+      id: next.nodeId,
+      parentId: next.parentId,
+      contentUpdated: false,
+      metadataChanged: false,
+    };
   }
   if (next.deletedAtMs !== null) {
     return null;
   }
 
-  const contentChanged =
+  const contentUpdated =
     prev.size !== next.size ||
     prev.mtimeMs !== next.mtimeMs ||
     prev.providerVersion !== next.providerVersion;
-  if (contentChanged) {
-    return { type: "update_content", id: next.nodeId, parentId: next.parentId };
-  }
-
   const metadataChanged =
     prev.parentId !== next.parentId ||
     prev.name !== next.name ||
     prev.kind !== next.kind ||
     prev.mountId !== next.mountId ||
     prev.sourceRef !== next.sourceRef;
-  if (metadataChanged) {
-    return { type: "update_metadata", id: next.nodeId, parentId: next.parentId };
+  if (contentUpdated || metadataChanged) {
+    return {
+      type: "upsert",
+      id: next.nodeId,
+      parentId: next.parentId,
+      contentUpdated,
+      metadataChanged,
+    };
   }
   return null;
 }
@@ -518,4 +728,59 @@ function decodeRemoteCursor(token?: string) {
     throw new Error("Expected remote cursor token");
   }
   return decoded.providerCursor;
+}
+
+function toRepositoryNode(input: {
+  mountId: string;
+  item: VfsNode;
+  now: number;
+}): VfsNode {
+  const sourceRef =
+    input.item.sourceRef ??
+    (input.item as unknown as { id?: string; nodeId?: string }).id ??
+    (input.item as unknown as { nodeId?: string }).nodeId ??
+    "";
+  const normalizedSourceRef = normalizeSourceRef(sourceRef);
+  const parentSourceRef =
+    input.item.parentId !== undefined && input.item.parentId !== null
+      ? normalizeSourceRef(input.item.parentId)
+      : parentSourceRefFromSourceRef(normalizedSourceRef);
+  return {
+    nodeId: createVfsNodeId({
+      mountId: input.mountId,
+      sourceRef: normalizedSourceRef,
+    }),
+    mountId: input.mountId,
+    parentId: createVfsNodeId({
+      mountId: input.mountId,
+      sourceRef: parentSourceRef,
+    }),
+    name: input.item.name,
+    kind: input.item.kind,
+    size: input.item.size ?? null,
+    mtimeMs: input.item.mtimeMs ?? null,
+    sourceRef: normalizedSourceRef,
+    providerVersion: input.item.providerVersion ?? null,
+    deletedAtMs: null,
+    createdAtMs: input.now,
+    updatedAtMs: input.now,
+  };
+}
+
+function normalizeSourceRef(sourceRef: string): string {
+  return sourceRef
+    .split("/")
+    .filter((part) => part.length > 0)
+    .join("/");
+}
+
+function parentSourceRefFromSourceRef(sourceRef: string): string {
+  if (!sourceRef) {
+    return "";
+  }
+  const parts = sourceRef.split("/").filter((part) => part.length > 0);
+  if (parts.length <= 1) {
+    return "";
+  }
+  return parts.slice(0, parts.length - 1).join("/");
 }
