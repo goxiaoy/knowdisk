@@ -168,6 +168,39 @@ describe("vfs integration", () => {
     ctx.cleanup();
   });
 
+  test("service getVersion reads providerVersion from metadata db", async () => {
+    const ctx = setup();
+    const mount = await ctx.service.mount({
+      providerType: "mock",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "version-node",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "v.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "v.txt",
+        providerVersion: "db-version",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    await expect(ctx.service.getVersion?.({ id: "version-node" })).resolves.toBe("db-version");
+    await expect(ctx.service.getVersion?.({ id: "missing-node" })).resolves.toBeNull();
+    ctx.cleanup();
+  });
+
   test("service create/rename/delete routes to provider operations", async () => {
     const ctx = setup();
     const calls: Array<{ op: string; id?: string | null; name?: string }> = [];

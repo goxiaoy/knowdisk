@@ -112,6 +112,20 @@ describe("local vfs provider", () => {
     }
   });
 
+  test("getVersion computes blake3 for local file", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-get-version-"));
+    try {
+      writeFileSync(join(dir, "a.txt"), "alpha");
+      const provider = createLocalVfsProvider(makeMount(dir));
+      const version = await provider.getVersion!({ id: "a.txt" });
+      expect(version).toEqual(expect.any(String));
+      expect(version?.length).toBeGreaterThan(0);
+      expect(await provider.getVersion!({ id: "missing.txt" })).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("watch emits add/update_content/delete events via chokidar", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-watch-"));
     try {

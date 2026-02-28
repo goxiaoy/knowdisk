@@ -198,7 +198,7 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("upsertNodeEvents compresses updates and lets delete replace history", () => {
+  test("upsertNodeEvents uses tri-state merge and lets delete replace history", () => {
     const { dir, repo } = makeRepo();
     repo.upsertNodeEvents([
       {
@@ -207,7 +207,7 @@ describe("vfs repository", () => {
         parentId: "p1",
         type: "upsert",
         contentUpdated: false,
-        metadataChanged: true,
+        metadataChanged: null,
         createdAtMs: 1,
         updatedAtMs: 1,
       },
@@ -218,10 +218,22 @@ describe("vfs repository", () => {
         mountId: "m1",
         parentId: "p2",
         type: "upsert",
-        contentUpdated: true,
+        contentUpdated: null,
         metadataChanged: false,
         createdAtMs: 2,
         updatedAtMs: 2,
+      },
+    ]);
+    repo.upsertNodeEvents([
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: "p3",
+        type: "upsert",
+        contentUpdated: true,
+        metadataChanged: false,
+        createdAtMs: 3,
+        updatedAtMs: 3,
       },
     ]);
     const merged = repo.listNodeEvents();
@@ -229,12 +241,12 @@ describe("vfs repository", () => {
     expect(merged[0]).toEqual({
       nodeId: "n1",
       mountId: "m1",
-      parentId: "p2",
+      parentId: "p3",
       type: "upsert",
       contentUpdated: true,
-      metadataChanged: true,
+      metadataChanged: null,
       createdAtMs: 1,
-      updatedAtMs: 2,
+      updatedAtMs: 3,
     });
 
     repo.upsertNodeEvents([

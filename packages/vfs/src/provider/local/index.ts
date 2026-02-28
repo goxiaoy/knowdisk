@@ -130,6 +130,20 @@ export function createLocalVfsProvider(
         return null;
       }
     },
+    async getVersion(input) {
+      const config = parseLocalMount(mount);
+      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
+      const targetPath = resolveRefPath(config.directory, id);
+      try {
+        const st = await stat(targetPath);
+        if (st.isDirectory()) {
+          return null;
+        }
+        return await computeBlake3File(targetPath);
+      } catch {
+        return null;
+      }
+    },
     async create(input) {
       const config = parseLocalMount(mount);
       const parentRef = input.parentId ?? null;

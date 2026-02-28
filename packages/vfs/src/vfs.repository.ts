@@ -382,15 +382,15 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         for (const row of items) {
           const prevRaw = selectByNodeId.get(row.nodeId) as
             | (Omit<VfsNodeEventRow, "contentUpdated" | "metadataChanged"> & {
-                contentUpdated: number;
-                metadataChanged: number;
+                contentUpdated: number | null;
+                metadataChanged: number | null;
               })
             | null;
           const prev: VfsNodeEventRow | null = prevRaw
             ? {
                 ...prevRaw,
-                contentUpdated: prevRaw.contentUpdated === 1,
-                metadataChanged: prevRaw.metadataChanged === 1,
+                contentUpdated: fromDbTriState(prevRaw.contentUpdated),
+                metadataChanged: fromDbTriState(prevRaw.metadataChanged),
               }
             : null;
           if (row.type === "delete") {
@@ -400,8 +400,8 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
               row.mountId,
               row.parentId,
               "delete",
-              0,
-              0,
+              toDbTriState(false),
+              toDbTriState(false),
               prev?.createdAtMs ?? row.createdAtMs,
               row.updatedAtMs,
             );
@@ -415,11 +415,11 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
                 type: "upsert",
                 contentUpdated:
                   prev.type === "upsert"
-                    ? prev.contentUpdated || row.contentUpdated
+                    ? mergeTriState(prev.contentUpdated, row.contentUpdated)
                     : row.contentUpdated,
                 metadataChanged:
                   prev.type === "upsert"
-                    ? prev.metadataChanged || row.metadataChanged
+                    ? mergeTriState(prev.metadataChanged, row.metadataChanged)
                     : row.metadataChanged,
                 createdAtMs: prev.createdAtMs,
                 updatedAtMs: row.updatedAtMs,
@@ -430,8 +430,8 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             merged.mountId,
             merged.parentId,
             merged.type,
-            merged.contentUpdated ? 1 : 0,
-            merged.metadataChanged ? 1 : 0,
+            toDbTriState(merged.contentUpdated),
+            toDbTriState(merged.metadataChanged),
             merged.createdAtMs,
             merged.updatedAtMs,
           );
@@ -458,14 +458,14 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         )
         .all(limit) as Array<
         Omit<VfsNodeEventRow, "contentUpdated" | "metadataChanged"> & {
-          contentUpdated: number;
-          metadataChanged: number;
+          contentUpdated: number | null;
+          metadataChanged: number | null;
         }
       >;
       return rows.map((row) => ({
         ...row,
-        contentUpdated: row.contentUpdated === 1,
-        metadataChanged: row.metadataChanged === 1,
+        contentUpdated: fromDbTriState(row.contentUpdated),
+        metadataChanged: fromDbTriState(row.metadataChanged),
       }));
     },
 
@@ -535,8 +535,8 @@ function migrate(db: Database): void {
       mount_id TEXT NOT NULL,
       parent_id TEXT,
       type TEXT NOT NULL,
-      content_updated INTEGER NOT NULL,
-      metadata_changed INTEGER NOT NULL,
+      content_updated INTEGER,
+      metadata_changed INTEGER,
       created_at_ms INTEGER NOT NULL,
       updated_at_ms INTEGER NOT NULL
     );
@@ -544,6 +544,30 @@ function migrate(db: Database): void {
       ON vfs_node_events (updated_at_ms, node_id);
   `);
   ensureColumnExists(db, "vfs_node_mount_ext", "auto_sync", "INTEGER NOT NULL DEFAULT 1");
+}
+
+function mergeTriState(prev: boolean | null, next: boolean | null): boolean | null {
+  if (prev === true || next === true) {
+    return true;
+  }
+  if (prev === null || next === null) {
+    return null;
+  }
+  return false;
+}
+
+function toDbTriState(value: boolean | null): number | null {
+  if (value === null) {
+    return null;
+  }
+  return value ? 1 : 0;
+}
+
+function fromDbTriState(value: number | null): boolean | null {
+  if (value === null) {
+    return null;
+  }
+  return value === 1;
 }
 
 function parseProviderExtra(raw: unknown): Record<string, unknown> {

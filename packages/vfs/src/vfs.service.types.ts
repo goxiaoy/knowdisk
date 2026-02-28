@@ -37,14 +37,15 @@ export type VfsOperationCore = {
   rename?: (input: { id: string; name: string }) => Promise<VfsNode>;
   delete?: (input: { id: string }) => Promise<void>;
   getMetadata?: (input: { id: string }) => Promise<VfsNode | null>;
+  getVersion?: (input: { id: string }) => Promise<string | null>;
 };
 
 export type VfsChangeEvent = {
   type: "upsert" | "delete";
   id: string;
   parentId: string | null;
-  contentUpdated: boolean;
-  metadataChanged: boolean;
+  contentUpdated: boolean | null;
+  metadataChanged: boolean | null;
 };
 
 export type VfsService = VfsOperationCore & {

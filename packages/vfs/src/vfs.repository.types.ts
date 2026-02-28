@@ -36,8 +36,8 @@ export type VfsNodeEventRow = {
   mountId: string;
   parentId: string | null;
   type: "upsert" | "delete";
-  contentUpdated: boolean;
-  metadataChanged: boolean;
+  contentUpdated: boolean | null;
+  metadataChanged: boolean | null;
   createdAtMs: number;
   updatedAtMs: number;
 };

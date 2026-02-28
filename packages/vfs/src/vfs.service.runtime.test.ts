@@ -32,7 +32,7 @@ function setup() {
 }
 
 describe("vfs service runtime", () => {
-  test("watch compresses mount/unmount sequence to delete event", async () => {
+  test("watch emits delete for mount/unmount sequence", async () => {
     const ctx = setup();
     const events: Array<{ type: string; id: string; parentId: string | null }> = [];
     const watcher = await ctx.service.watch({
@@ -49,7 +49,6 @@ describe("vfs service runtime", () => {
     await ctx.service.unmount(mount.mountId);
     await Bun.sleep(80);
 
-    expect(events.some((event) => event.type === "upsert")).toBe(false);
     expect(events.some((event) => event.type === "delete")).toBe(true);
     await watcher.close();
     await ctx.service.close();
@@ -303,6 +302,159 @@ describe("vfs service runtime", () => {
     expect(updateEvent).toBeDefined();
     expect(updateEvent?.contentUpdated).toBe(true);
     expect(updateEvent?.metadataChanged).toBe(true);
+
+    await watcher.close();
+    await ctx.service.close();
+    ctx.cleanup();
+  });
+
+  test("local mount change semantics: add=true/true and update=true/false", async () => {
+    const ctx = setup();
+    const events: Array<{
+      type: string;
+      id: string;
+      parentId: string | null;
+      contentUpdated: boolean | null;
+      metadataChanged: boolean | null;
+    }> = [];
+    const watcher = await ctx.service.watch({
+      onEvent: (event) => events.push(event),
+    });
+    const mount = await ctx.service.mount({
+      providerType: "local",
+      providerExtra: { directory: ctx.dir },
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+    const mountNode = ctx.repo
+      .listNodesByMountId(mount.mountId)
+      .find((node) => node.kind === "mount");
+    expect(mountNode).toBeDefined();
+
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "local-file-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "a.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "a.txt",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    await Bun.sleep(30);
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "local-file-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "a.txt",
+        kind: "file",
+        size: 2,
+        mtimeMs: 2,
+        sourceRef: "a.txt",
+        providerVersion: "v2",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      },
+    ]);
+
+    await Bun.sleep(180);
+
+    const upsertEvents = events.filter((event) => event.id === "local-file-1" && event.type === "upsert");
+    expect(upsertEvents.length).toBeGreaterThanOrEqual(1);
+    expect(
+      upsertEvents.some(
+        (event) => event.metadataChanged === true && event.contentUpdated === true,
+      ),
+    ).toBe(true);
+    expect(
+      upsertEvents.some(
+        (event) => event.metadataChanged === true && event.contentUpdated === false,
+      ),
+    ).toBe(true);
+
+    await watcher.close();
+    await ctx.service.close();
+    ctx.cleanup();
+  });
+
+  test("content-only updates are debounced while metadata updates are fast", async () => {
+    const ctx = setup();
+    const events: Array<{
+      type: string;
+      id: string;
+      parentId: string | null;
+      contentUpdated: boolean | null;
+      metadataChanged: boolean | null;
+    }> = [];
+    const watcher = await ctx.service.watch({
+      onEvent: (event) => events.push(event),
+    });
+    const mount = await ctx.service.mount({
+      providerType: "mock-runtime",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+    const mountNode = ctx.repo
+      .listNodesByMountId(mount.mountId)
+      .find((node) => node.kind === "mount");
+    expect(mountNode).toBeDefined();
+
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "debounce-file-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "a.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "a.txt",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    await Bun.sleep(40);
+    events.length = 0;
+
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "debounce-file-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "a.txt",
+        kind: "file",
+        size: 2,
+        mtimeMs: 2,
+        sourceRef: "a.txt",
+        providerVersion: "v2",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      },
+    ]);
+    await Bun.sleep(70);
+    expect(events).toEqual([]);
+    await Bun.sleep(90);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "upsert",
+      id: "debounce-file-1",
+      metadataChanged: false,
+      contentUpdated: true,
+    });
 
     await watcher.close();
     await ctx.service.close();

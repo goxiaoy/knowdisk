@@ -23,19 +23,32 @@ export function createVfsService(deps: {
   contentRootParent?: string;
   nowMs?: () => number;
 }): VfsService {
-  const EVENT_DEBOUNCE_MS = 40;
+  const EVENT_CONTENT_DEBOUNCE_MS = 120;
   const nowMs = deps.nowMs ?? (() => Date.now());
+  let disposed = false;
   let started = false;
   const reconcileTimers = new Map<string, ReturnType<typeof setInterval>>();
   const reconcileRunning = new Set<string>();
   const listeners = new Set<(event: VfsChangeEvent) => void>();
-  let eventFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingContentEvents = new Map<string, VfsChangeEvent>();
+  let eventContentFlushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushingEvents = false;
   const syncers = new Map<
     string,
     { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }
   >();
+  const emitEvents = (events: VfsChangeEvent[]) => {
+    for (const event of events) {
+      for (const listener of listeners) {
+        listener(event);
+      }
+    }
+  };
+
   const flushNodeEvents = () => {
+    if (disposed) {
+      return;
+    }
     if (flushingEvents) {
       return;
     }
@@ -47,6 +60,8 @@ export function createVfsService(deps: {
           break;
         }
         deps.repository.deleteNodeEventsByNodeIds(rows.map((row) => row.nodeId));
+        const metadataEvents: VfsChangeEvent[] = [];
+        let hasContentOnlyEvents = false;
         for (const row of rows) {
           const event: VfsChangeEvent = {
             type: row.type,
@@ -55,33 +70,54 @@ export function createVfsService(deps: {
             contentUpdated: row.contentUpdated,
             metadataChanged: row.metadataChanged,
           };
-          for (const listener of listeners) {
-            listener(event);
+          const needsMetadata = event.type === "delete" || event.metadataChanged !== false;
+          const needsContent = event.type === "delete" || event.contentUpdated !== false;
+          if (needsMetadata) {
+            metadataEvents.push(event);
+            continue;
           }
+          if (needsContent) {
+            pendingContentEvents.set(event.id, event);
+            hasContentOnlyEvents = true;
+          }
+        }
+        if (metadataEvents.length > 0) {
+          emitEvents(metadataEvents);
+        }
+        if (hasContentOnlyEvents) {
+          if (eventContentFlushTimer) {
+            clearTimeout(eventContentFlushTimer);
+          }
+          eventContentFlushTimer = setTimeout(() => {
+            eventContentFlushTimer = null;
+            const batch = [...pendingContentEvents.values()];
+            pendingContentEvents.clear();
+            emitEvents(batch);
+          }, EVENT_CONTENT_DEBOUNCE_MS);
         }
       }
     } finally {
       flushingEvents = false;
     }
   };
-  const scheduleNodeEventFlush = () => {
-    if (eventFlushTimer) {
+  const scheduleMetadataFlush = () => {
+    if (disposed) {
       return;
     }
-    eventFlushTimer = setTimeout(() => {
-      eventFlushTimer = null;
-      flushNodeEvents();
-    }, EVENT_DEBOUNCE_MS);
+    flushNodeEvents();
   };
   deps.repository.subscribeNodeChanges((changes) => {
+    if (disposed) {
+      return;
+    }
     const touchedMountIds = new Set<string>();
     const eventRows: Array<{
       nodeId: string;
       mountId: string;
       parentId: string | null;
       type: "upsert" | "delete";
-      contentUpdated: boolean;
-      metadataChanged: boolean;
+      contentUpdated: boolean | null;
+      metadataChanged: boolean | null;
       createdAtMs: number;
       updatedAtMs: number;
     }> = [];
@@ -90,7 +126,8 @@ export function createVfsService(deps: {
       if (change.prev) {
         touchedMountIds.add(change.prev.mountId);
       }
-      const event = toChangeEvent(change.prev, change.next);
+      const mountExt = deps.repository.getNodeMountExtByMountId(change.next.mountId);
+      const event = toChangeEvent(change.prev, change.next, mountExt?.providerType ?? null);
       if (!event) {
         continue;
       }
@@ -111,7 +148,7 @@ export function createVfsService(deps: {
     }
     if (eventRows.length > 0) {
       deps.repository.upsertNodeEvents(eventRows);
-      scheduleNodeEventFlush();
+      scheduleMetadataFlush();
     }
   });
 
@@ -255,11 +292,17 @@ export function createVfsService(deps: {
     },
 
     async close() {
-      if (eventFlushTimer) {
-        clearTimeout(eventFlushTimer);
-        eventFlushTimer = null;
+      disposed = true;
+      if (eventContentFlushTimer) {
+        clearTimeout(eventContentFlushTimer);
+        eventContentFlushTimer = null;
       }
       flushNodeEvents();
+      if (pendingContentEvents.size > 0) {
+        const batch = [...pendingContentEvents.values()];
+        pendingContentEvents.clear();
+        emitEvents(batch);
+      }
       for (const mountId of [...reconcileTimers.keys()]) {
         clearReconcileTimer(mountId);
       }
@@ -379,6 +422,10 @@ export function createVfsService(deps: {
       throw new Error(
         `VfsService createReadStream is not supported: ${input.id}`,
       );
+    },
+
+    async getVersion(input) {
+      return deps.repository.getNodeById(input.id)?.providerVersion ?? null;
     },
 
     async create(input) {
@@ -616,15 +663,19 @@ export function createVfsService(deps: {
   };
 }
 
-function toChangeEvent(prev: VfsNode | null, next: VfsNode): VfsChangeEvent | null {
+function toChangeEvent(
+  prev: VfsNode | null,
+  next: VfsNode,
+  providerType: string | null,
+): VfsChangeEvent | null {
   if (!prev) {
     return next.deletedAtMs === null
       ? {
           type: "upsert",
           id: next.nodeId,
           parentId: next.parentId,
-          contentUpdated: false,
-          metadataChanged: false,
+          contentUpdated: true,
+          metadataChanged: true,
         }
       : {
           type: "delete",
@@ -649,8 +700,8 @@ function toChangeEvent(prev: VfsNode | null, next: VfsNode): VfsChangeEvent | nu
       type: "upsert",
       id: next.nodeId,
       parentId: next.parentId,
-      contentUpdated: false,
-      metadataChanged: false,
+      contentUpdated: true,
+      metadataChanged: true,
     };
   }
   if (next.deletedAtMs !== null) {
@@ -668,6 +719,15 @@ function toChangeEvent(prev: VfsNode | null, next: VfsNode): VfsChangeEvent | nu
     prev.mountId !== next.mountId ||
     prev.sourceRef !== next.sourceRef;
   if (contentUpdated || metadataChanged) {
+    if (providerType === "local") {
+      return {
+        type: "upsert",
+        id: next.nodeId,
+        parentId: next.parentId,
+        contentUpdated: false,
+        metadataChanged: true,
+      };
+    }
     return {
       type: "upsert",
       id: next.nodeId,
