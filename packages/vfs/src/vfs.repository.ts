@@ -4,6 +4,7 @@ import { Database } from "bun:sqlite";
 import type {
   ListChildrenPageLocalInput,
   ListChildrenPageLocalOutput,
+  VfsNodeChange,
   VfsNodeMountExtRow,
   VfsPageCacheRow,
   VfsRepository,
@@ -14,10 +15,18 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
   mkdirSync(dirname(opts.dbPath), { recursive: true });
   const db = new Database(opts.dbPath, { create: true });
   migrate(db);
+  const nodeChangeListeners = new Set<(changes: VfsNodeChange[]) => void>();
 
   return {
     close() {
       db.close();
+    },
+
+    subscribeNodeChanges(listener) {
+      nodeChangeListeners.add(listener);
+      return () => {
+        nodeChangeListeners.delete(listener);
+      };
     },
 
     upsertNodeMountExt(row: VfsNodeMountExtRow) {
@@ -47,6 +56,42 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         row.createdAtMs,
         row.updatedAtMs,
       );
+    },
+
+    listNodeMountExts() {
+      const rows = db
+        .query(
+          `SELECT
+            node_id AS nodeId,
+            mount_id AS mountId,
+            provider_type AS providerType,
+            provider_extra AS providerExtra,
+            sync_metadata AS syncMetadata,
+            sync_content AS syncContent,
+            metadata_ttl_sec AS metadataTtlSec,
+            reconcile_interval_ms AS reconcileIntervalMs,
+            created_at_ms AS createdAtMs,
+            updated_at_ms AS updatedAtMs
+          FROM vfs_node_mount_ext
+          ORDER BY mount_id ASC`,
+        )
+        .all() as Array<
+          Omit<VfsNodeMountExtRow, "syncMetadata" | "syncContent" | "providerExtra"> & {
+            syncMetadata: number;
+            syncContent: number;
+            providerExtra: unknown;
+          }
+        >;
+      return rows.map((row) => ({
+        ...row,
+        providerExtra: parseProviderExtra(row.providerExtra),
+        syncMetadata: row.syncMetadata === 1,
+        syncContent: row.syncContent === 1,
+      }));
+    },
+
+    deleteNodeMountExtByMountId(mountId: string) {
+      db.query(`DELETE FROM vfs_node_mount_ext WHERE mount_id = ?`).run(mountId);
     },
 
     getNodeMountExtByMountId(mountId: string) {
@@ -88,6 +133,30 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       if (rows.length === 0) {
         return;
       }
+      const prevByNodeId = new Map<string, VfsNode>();
+      const selectByNodeId = db.query(
+        `SELECT
+          node_id AS nodeId,
+          mount_id AS mountId,
+          parent_id AS parentId,
+          name,
+          kind,
+          size,
+          mtime_ms AS mtimeMs,
+          source_ref AS sourceRef,
+          provider_version AS providerVersion,
+          deleted_at_ms AS deletedAtMs,
+          created_at_ms AS createdAtMs,
+          updated_at_ms AS updatedAtMs
+        FROM vfs_nodes
+        WHERE node_id = ?`,
+      );
+      for (const row of rows) {
+        const prev = selectByNodeId.get(row.nodeId) as VfsNode | null;
+        if (prev) {
+          prevByNodeId.set(row.nodeId, prev);
+        }
+      }
       const stmt = db.query(
         `INSERT INTO vfs_nodes (
           node_id, mount_id, parent_id, name, kind,
@@ -125,6 +194,15 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         }
       });
       tx(rows);
+      if (nodeChangeListeners.size > 0) {
+        const changes = rows.map((next) => ({
+          prev: prevByNodeId.get(next.nodeId) ?? null,
+          next,
+        }));
+        for (const listener of nodeChangeListeners) {
+          listener(changes);
+        }
+      }
     },
 
     listNodesByMountId(mountId: string) {

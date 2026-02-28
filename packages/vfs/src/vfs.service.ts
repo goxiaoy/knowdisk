@@ -7,7 +7,8 @@ import {
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
-import type { VfsService } from "./vfs.service.types";
+import { createVfsSyncer, type VfsSyncer } from "./vfs.syncer";
+import type { VfsChangeEvent, VfsService } from "./vfs.service.types";
 import type {
   VfsMount,
   VfsMountConfig,
@@ -19,11 +20,166 @@ import type {
 export function createVfsService(deps: {
   repository: VfsRepository;
   registry: VfsProviderRegistry;
+  contentRootParent?: string;
   nowMs?: () => number;
 }): VfsService {
   const nowMs = deps.nowMs ?? (() => Date.now());
+  let started = false;
+  const reconcileTimers = new Map<string, ReturnType<typeof setInterval>>();
+  const reconcileRunning = new Set<string>();
+  const listeners = new Set<(event: VfsChangeEvent) => void>();
+  const syncers = new Map<
+    string,
+    { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }
+  >();
+  deps.repository.subscribeNodeChanges((changes) => {
+    for (const change of changes) {
+      const event = toChangeEvent(change.prev, change.next);
+      if (!event) {
+        continue;
+      }
+      for (const listener of listeners) {
+        listener(event);
+      }
+    }
+  });
+
+  const mountFromExt = (ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>): VfsMount => {
+    if (!ext) {
+      throw new Error("mount config not found");
+    }
+    return {
+      mountId: ext.mountId,
+      providerType: ext.providerType,
+      providerExtra: ext.providerExtra,
+      syncMetadata: ext.syncMetadata,
+      syncContent: ext.syncContent,
+      metadataTtlSec: ext.metadataTtlSec,
+      reconcileIntervalMs: ext.reconcileIntervalMs,
+    };
+  };
+
+  const ensureSyncer = async (mount: VfsMount): Promise<VfsSyncer> => {
+    const existing = syncers.get(mount.mountId);
+    if (existing) {
+      return existing.syncer;
+    }
+    if (!deps.contentRootParent) {
+      throw new Error("contentRootParent is required when starting vfs runtime");
+    }
+    const syncer = createVfsSyncer({
+      mount,
+      provider: deps.registry.get(mount),
+      repository: deps.repository,
+      contentRootParent: deps.contentRootParent,
+      nowMs,
+    });
+    const stopSub = syncer.subscribe(() => {});
+    syncers.set(mount.mountId, { mount, syncer, stopSub });
+    return syncer;
+  };
+
+  const startSyncer = async (mount: VfsMount): Promise<void> => {
+    const syncer = await ensureSyncer(mount);
+    await syncer.fullSync();
+    await syncer.startWatching();
+  };
+
+  const stopSyncer = async (mountId: string): Promise<void> => {
+    const active = syncers.get(mountId);
+    if (!active) {
+      return;
+    }
+    await active.syncer.stopWatching();
+    active.stopSub();
+    syncers.delete(mountId);
+  };
+
+  const clearReconcileTimer = (mountId: string): void => {
+    const timer = reconcileTimers.get(mountId);
+    if (!timer) {
+      return;
+    }
+    clearInterval(timer);
+    reconcileTimers.delete(mountId);
+  };
+
+  const scheduleReconcile = (mount: VfsMount): void => {
+    clearReconcileTimer(mount.mountId);
+    if (!started || mount.reconcileIntervalMs <= 0) {
+      return;
+    }
+    const timer = setInterval(() => {
+      void runReconcile(mount.mountId);
+    }, mount.reconcileIntervalMs);
+    reconcileTimers.set(mount.mountId, timer);
+  };
+
+  const runReconcile = async (mountId: string): Promise<void> => {
+    if (reconcileRunning.has(mountId)) {
+      return;
+    }
+    reconcileRunning.add(mountId);
+    try {
+      const active = syncers.get(mountId);
+      if (active) {
+        await active.syncer.fullSync();
+        return;
+      }
+      if (!deps.contentRootParent) {
+        return;
+      }
+      const ext = deps.repository.getNodeMountExtByMountId(mountId);
+      if (!ext) {
+        return;
+      }
+      const mount = mountFromExt(ext);
+      const syncer = await ensureSyncer(mount);
+      try {
+        await syncer.fullSync();
+      } finally {
+        if (!started) {
+          await stopSyncer(mountId);
+        }
+      }
+    } finally {
+      reconcileRunning.delete(mountId);
+    }
+  };
 
   return {
+    async watch(input) {
+      listeners.add(input.onEvent);
+      return {
+        close: async () => {
+          listeners.delete(input.onEvent);
+        },
+      };
+    },
+
+    async start() {
+      if (started) {
+        return;
+      }
+      started = true;
+      const mounts = deps.repository.listNodeMountExts().map((ext) => mountFromExt(ext));
+      for (const mount of mounts) {
+        await startSyncer(mount);
+        scheduleReconcile(mount);
+      }
+    },
+
+    async close() {
+      for (const mountId of [...reconcileTimers.keys()]) {
+        clearReconcileTimer(mountId);
+      }
+      const ids = [...syncers.keys()];
+      for (const id of ids) {
+        await stopSyncer(id);
+      }
+      started = false;
+    },
+
     async mount(config: VfsMountConfig) {
       return this.mountInternal(randomUUID(), config);
     },
@@ -66,11 +222,29 @@ export function createVfsService(deps: {
         createdAtMs: now,
         updatedAtMs: now,
       });
+      if (started) {
+        await startSyncer(mount);
+        scheduleReconcile(mount);
+      }
       return mount;
     },
 
     async unmount(mountId: string) {
-      void mountId;
+      clearReconcileTimer(mountId);
+      await stopSyncer(mountId);
+      const now = nowMs();
+      const rows = deps.repository
+        .listNodesByMountId(mountId)
+        .filter((node) => node.deletedAtMs === null)
+        .map((node) => ({
+          ...node,
+          deletedAtMs: now,
+          updatedAtMs: now,
+        }));
+      if (rows.length > 0) {
+        deps.repository.upsertNodes(rows);
+      }
+      deps.repository.deleteNodeMountExtByMountId(mountId);
     },
 
     async listChildren(input) {
@@ -215,10 +389,47 @@ export function createVfsService(deps: {
       };
     },
 
-    async triggerReconcile() {
-      return;
+    async triggerReconcile(mountId: string) {
+      await runReconcile(mountId);
     },
   };
+}
+
+function toChangeEvent(prev: VfsNode | null, next: VfsNode): VfsChangeEvent | null {
+  if (!prev) {
+    return next.deletedAtMs === null
+      ? { type: "add", id: next.nodeId, parentId: next.parentId }
+      : { type: "delete", id: next.nodeId, parentId: next.parentId };
+  }
+
+  if (prev.deletedAtMs === null && next.deletedAtMs !== null) {
+    return { type: "delete", id: next.nodeId, parentId: next.parentId };
+  }
+  if (prev.deletedAtMs !== null && next.deletedAtMs === null) {
+    return { type: "add", id: next.nodeId, parentId: next.parentId };
+  }
+  if (next.deletedAtMs !== null) {
+    return null;
+  }
+
+  const contentChanged =
+    prev.size !== next.size ||
+    prev.mtimeMs !== next.mtimeMs ||
+    prev.providerVersion !== next.providerVersion;
+  if (contentChanged) {
+    return { type: "update_content", id: next.nodeId, parentId: next.parentId };
+  }
+
+  const metadataChanged =
+    prev.parentId !== next.parentId ||
+    prev.name !== next.name ||
+    prev.kind !== next.kind ||
+    prev.mountId !== next.mountId ||
+    prev.sourceRef !== next.sourceRef;
+  if (metadataChanged) {
+    return { type: "update_metadata", id: next.nodeId, parentId: next.parentId };
+  }
+  return null;
 }
 
 function walkLocalChildren(input: {

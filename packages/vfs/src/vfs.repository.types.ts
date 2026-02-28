@@ -33,8 +33,11 @@ export type VfsPageCacheRow = {
 
 export type VfsRepository = {
   close: () => void;
+  subscribeNodeChanges: (listener: (changes: VfsNodeChange[]) => void) => () => void;
 
   upsertNodeMountExt: (row: VfsNodeMountExtRow) => void;
+  listNodeMountExts: () => VfsNodeMountExtRow[];
+  deleteNodeMountExtByMountId: (mountId: string) => void;
   getNodeMountExtByMountId: (mountId: string) => VfsNodeMountExtRow | null;
 
   upsertNodes: (rows: VfsNode[]) => void;
@@ -44,4 +47,9 @@ export type VfsRepository = {
 
   upsertPageCache: (row: VfsPageCacheRow) => void;
   getPageCacheIfFresh: (cacheKey: string, nowMs: number) => VfsPageCacheRow | null;
+};
+
+export type VfsNodeChange = {
+  prev: VfsNode | null;
+  next: VfsNode;
 };

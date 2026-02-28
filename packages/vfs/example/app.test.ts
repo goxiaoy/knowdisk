@@ -45,6 +45,11 @@ describe("vfs example app", () => {
       const stateRes = await fetch(`${baseUrl}/api/state`);
       expect(stateRes.status).toBe(200);
       const state = await stateRes.json();
+      const pageRes = await fetch(`${baseUrl}/`);
+      expect(pageRes.status).toBe(200);
+      const pageHtml = await pageRes.text();
+      expect(pageHtml).toContain("<th>Create Time</th>");
+      expect(pageHtml).toContain("<th>Modify Time</th>");
       expect(Array.isArray(state.mounts)).toBe(true);
       expect(state.mounts.length).toBe(2);
       expect(
@@ -68,6 +73,28 @@ describe("vfs example app", () => {
       expect(
         listed.items.some((item: { name: string; kind: string }) => item.name === "hello.txt" && item.kind === "file"),
       ).toBe(true);
+      const hello = listed.items.find((item: { name: string }) => item.name === "hello.txt");
+      expect(hello?.nodeId).toEqual(expect.any(String));
+
+      const metadataRes = await fetch(
+        `${baseUrl}/api/metadata?nodeId=${encodeURIComponent(hello.nodeId)}`,
+      );
+      expect(metadataRes.status).toBe(200);
+      const metadataPayload = await metadataRes.json();
+      expect(metadataPayload.metadata).toEqual(
+        expect.objectContaining({
+          nodeId: hello.nodeId,
+          name: "hello.txt",
+          kind: "file",
+        }),
+      );
+
+      const badListRes = await fetch(
+        `${baseUrl}/api/list?parentNodeId=${encodeURIComponent("invalid-node-id")}&limit=50`,
+      );
+      expect(badListRes.status).toBe(404);
+      const badListPayload = await badListRes.json();
+      expect(badListPayload.error).toContain("Parent node not found");
 
       const eventsRes = await fetch(`${baseUrl}/api/events`);
       expect(eventsRes.status).toBe(200);
