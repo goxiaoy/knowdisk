@@ -55,6 +55,23 @@ describe("vfs syncer", () => {
         {
           nodeId: createVfsNodeId({
             mountId: mount.mountId,
+            sourceRef: "",
+          }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+        {
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
             sourceRef: "legacy.txt",
           }),
           mountId: mount.mountId,
@@ -127,10 +144,11 @@ describe("vfs syncer", () => {
       const a = all.find((n) => n.sourceRef === "a.txt");
       const b = all.find((n) => n.sourceRef === "b.txt");
       const legacy = all.find((n) => n.sourceRef === "legacy.txt");
+      const mountNode = all.find((n) => n.kind === "mount" && n.sourceRef === "");
       expect(a?.size).toBe(5);
       expect(b?.size).toBe(2);
       expect(() => decodeBase64UrlNodeIdToUuid(a!.nodeId)).not.toThrow();
-      expect(a?.parentId).toBeNull();
+      expect(a?.parentId).toBe(mountNode?.nodeId ?? null);
       expect(legacy?.deletedAtMs).toBe(1000);
       expect(events.some((e) => e.type === "status")).toBe(true);
       expect(events.some((e) => e.type === "metadata_progress")).toBe(true);

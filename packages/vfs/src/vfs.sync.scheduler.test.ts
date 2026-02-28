@@ -3,7 +3,7 @@ import { createVfsSyncScheduler } from "./vfs.sync.scheduler";
 
 describe("vfs sync scheduler", () => {
   test("watch events are debounced per sourceRef", async () => {
-    let now = 0;
+    const now = 0;
     const processed: string[] = [];
     const scheduler = createVfsSyncScheduler({
       debounceMs: 100,
@@ -96,7 +96,7 @@ describe("vfs sync scheduler", () => {
   });
 
   test("failed nodes do not block queue", async () => {
-    let now = 0;
+    const now = 0;
     const processed: string[] = [];
     const scheduler = createVfsSyncScheduler({
       debounceMs: 0,

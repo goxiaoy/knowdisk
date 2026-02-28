@@ -32,13 +32,14 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     upsertNodeMountExt(row: VfsNodeMountExtRow) {
       db.query(
         `INSERT INTO vfs_node_mount_ext (
-          node_id, mount_id, provider_type, provider_extra, sync_metadata, sync_content,
+          node_id, mount_id, provider_type, provider_extra, auto_sync, sync_metadata, sync_content,
           metadata_ttl_sec, reconcile_interval_ms, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(node_id) DO UPDATE SET
           mount_id=excluded.mount_id,
           provider_type=excluded.provider_type,
           provider_extra=excluded.provider_extra,
+          auto_sync=excluded.auto_sync,
           sync_metadata=excluded.sync_metadata,
           sync_content=excluded.sync_content,
           metadata_ttl_sec=excluded.metadata_ttl_sec,
@@ -49,6 +50,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         row.mountId,
         row.providerType,
         JSON.stringify(row.providerExtra ?? {}),
+        row.autoSync === false ? 0 : 1,
         row.syncMetadata ? 1 : 0,
         row.syncContent ? 1 : 0,
         row.metadataTtlSec,
@@ -66,6 +68,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mount_id AS mountId,
             provider_type AS providerType,
             provider_extra AS providerExtra,
+            auto_sync AS autoSync,
             sync_metadata AS syncMetadata,
             sync_content AS syncContent,
             metadata_ttl_sec AS metadataTtlSec,
@@ -76,7 +79,8 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           ORDER BY mount_id ASC`,
         )
         .all() as Array<
-          Omit<VfsNodeMountExtRow, "syncMetadata" | "syncContent" | "providerExtra"> & {
+          Omit<VfsNodeMountExtRow, "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"> & {
+            autoSync: number | null;
             syncMetadata: number;
             syncContent: number;
             providerExtra: unknown;
@@ -85,6 +89,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       return rows.map((row) => ({
         ...row,
         providerExtra: parseProviderExtra(row.providerExtra),
+        autoSync: row.autoSync === null ? true : row.autoSync === 1,
         syncMetadata: row.syncMetadata === 1,
         syncContent: row.syncContent === 1,
       }));
@@ -102,6 +107,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             mount_id AS mountId,
             provider_type AS providerType,
             provider_extra AS providerExtra,
+            auto_sync AS autoSync,
             sync_metadata AS syncMetadata,
             sync_content AS syncContent,
             metadata_ttl_sec AS metadataTtlSec,
@@ -112,7 +118,8 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           WHERE mount_id = ?`,
         )
         .get(mountId) as
-        | (Omit<VfsNodeMountExtRow, "syncMetadata" | "syncContent" | "providerExtra"> & {
+        | (Omit<VfsNodeMountExtRow, "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"> & {
+            autoSync: number | null;
             syncMetadata: number;
             syncContent: number;
             providerExtra: unknown;
@@ -124,6 +131,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       return {
         ...row,
         providerExtra: parseProviderExtra(row.providerExtra),
+        autoSync: row.autoSync === null ? true : row.autoSync === 1,
         syncMetadata: row.syncMetadata === 1,
         syncContent: row.syncContent === 1,
       };
@@ -334,6 +342,10 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         )
         .get(cacheKey, nowMs) as VfsPageCacheRow | null;
     },
+
+    deletePageCacheByMountId(mountId: string) {
+      db.query(`DELETE FROM vfs_page_cache WHERE cache_key LIKE ?`).run(`${mountId}::%`);
+    },
   };
 }
 
@@ -364,6 +376,7 @@ function migrate(db: Database): void {
       mount_id TEXT UNIQUE NOT NULL,
       provider_type TEXT NOT NULL,
       provider_extra TEXT NOT NULL,
+      auto_sync INTEGER NOT NULL DEFAULT 1,
       sync_metadata INTEGER NOT NULL,
       sync_content INTEGER NOT NULL DEFAULT 0,
       metadata_ttl_sec INTEGER NOT NULL,
@@ -382,6 +395,7 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_vfs_page_cache_exp
       ON vfs_page_cache (expires_at_ms);
   `);
+  ensureColumnExists(db, "vfs_node_mount_ext", "auto_sync", "INTEGER NOT NULL DEFAULT 1");
 }
 
 function parseProviderExtra(raw: unknown): Record<string, unknown> {
@@ -397,4 +411,17 @@ function parseProviderExtra(raw: unknown): Record<string, unknown> {
     return {};
   }
   return {};
+}
+
+function ensureColumnExists(
+  db: Database,
+  table: string,
+  column: string,
+  definition: string,
+): void {
+  const columns = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (columns.some((item) => item.name === column)) {
+    return;
+  }
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

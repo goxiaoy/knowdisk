@@ -34,6 +34,7 @@ describe("vfs repository", () => {
       .query("PRAGMA table_info(vfs_nodes)")
       .all() as Array<{ name: string }>;
     expect(mountColumns.map((item) => item.name)).toContain("provider_extra");
+    expect(mountColumns.map((item) => item.name)).toContain("auto_sync");
     expect(mountColumns.map((item) => item.name)).toContain("sync_content");
     expect(nodeColumns.map((item) => item.name)).not.toContain("title");
 
@@ -64,6 +65,7 @@ describe("vfs repository", () => {
       mountId: "m1",
       providerType: "google_drive",
       providerExtra: { token: "secret-token", tenant: "acme" },
+      autoSync: false,
       syncMetadata: true,
       syncContent: true,
       metadataTtlSec: 60,
@@ -74,6 +76,7 @@ describe("vfs repository", () => {
 
     const mount = repo.getNodeMountExtByMountId("m1");
     expect(mount).not.toBeNull();
+    expect(mount?.autoSync).toBe(false);
     expect(mount?.syncMetadata).toBe(true);
     expect(mount?.syncContent).toBe(true);
     expect(mount?.nodeId).toBe("mount-node-1");
@@ -165,6 +168,30 @@ describe("vfs repository", () => {
 
     expect(repo.getPageCacheIfFresh("m1::root::cursor0", 50)?.itemsJson).toBe("[]");
     expect(repo.getPageCacheIfFresh("m1::root::cursor0", 101)).toBeNull();
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("delete page cache by mount id removes only matched mount keys", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertPageCache({
+      cacheKey: "m1::p1::::10",
+      itemsJson: '[{"id":"a"}]',
+      nextCursor: null,
+      expiresAtMs: 1000,
+    });
+    repo.upsertPageCache({
+      cacheKey: "m2::p1::::10",
+      itemsJson: '[{"id":"b"}]',
+      nextCursor: null,
+      expiresAtMs: 1000,
+    });
+
+    repo.deletePageCacheByMountId("m1");
+
+    expect(repo.getPageCacheIfFresh("m1::p1::::10", 1)).toBeNull();
+    expect(repo.getPageCacheIfFresh("m2::p1::::10", 1)?.itemsJson).toBe('[{"id":"b"}]');
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

@@ -2,7 +2,7 @@ import { existsSync, createWriteStream, rmSync, statSync } from "node:fs";
 import { mkdir, rename } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import pino, { type Logger } from "pino";
-import { createVfsNodeId, createVfsParentId } from "./vfs.node-id";
+import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsRepository } from "./vfs.repository.types";
 import type { ListChildrenItem } from "./vfs.service.types";
@@ -146,10 +146,16 @@ export function createVfsSyncer(input: {
       mountId: input.mount.mountId,
       sourceRef: itemSourceRef(item),
     });
-    const parentId = createVfsParentId({
-      mountId: input.mount.mountId,
-      parentSourceRef: sourceRefParent(itemSourceRef(item)),
-    });
+    const parentSourceRef = sourceRefParent(itemSourceRef(item));
+    const parentId = parentSourceRef
+      ? createVfsNodeId({
+          mountId: input.mount.mountId,
+          sourceRef: parentSourceRef,
+        })
+      : createVfsNodeId({
+          mountId: input.mount.mountId,
+          sourceRef: "",
+        });
     return {
       nodeId,
       mountId: input.mount.mountId,

@@ -47,6 +47,7 @@ export type VfsRepository = {
 
   upsertPageCache: (row: VfsPageCacheRow) => void;
   getPageCacheIfFresh: (cacheKey: string, nowMs: number) => VfsPageCacheRow | null;
+  deletePageCacheByMountId: (mountId: string) => void;
 };
 
 export type VfsNodeChange = {

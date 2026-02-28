@@ -202,6 +202,63 @@ describe("vfs service walkChildren", () => {
     ctx.cleanup();
   });
 
+  test("syncMetadata=false: node change invalidates remote page cache for same mount", async () => {
+    const ctx = setup();
+    let called = 0;
+    ctx.registry.register("mock-remote-invalidate", () => ({
+      type: "mock-remote-invalidate",
+      capabilities: { watch: false },
+      async listChildren() {
+        called += 1;
+        if (called === 1) {
+          return {
+            items: [
+              {
+                id: "r1",
+                parentId: null,
+                name: "cached.md",
+                kind: "file",
+                providerVersion: "v1",
+              },
+            ],
+          };
+        }
+        return { items: [] };
+      },
+    }));
+
+    const mount = await ctx.service.mount({
+      providerType: "mock-remote-invalidate",
+      providerExtra: {},
+      syncMetadata: false,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+
+    const first = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
+    expect(first.items).toHaveLength(1);
+    expect(called).toBe(1);
+
+    const deletedAtMs = 5_000;
+    ctx.repo.upsertNodes([
+      {
+        ...first.items[0]!,
+        deletedAtMs,
+        updatedAtMs: deletedAtMs,
+      },
+    ]);
+
+    const second = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
+    expect(called).toBe(2);
+    expect(second.items).toEqual([]);
+
+    ctx.cleanup();
+  });
+
   test("walkChildren reads mount config from db on every call", async () => {
     const ctx = setup();
     let called = 0;

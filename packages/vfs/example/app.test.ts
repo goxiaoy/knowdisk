@@ -34,7 +34,6 @@ describe("vfs example app", () => {
     const app = await createVfsExampleApp({
       rootDir: root,
       port: 0,
-      startSyncOnBoot: false,
       providerOverrides: {
         huggingface: () => mockHfProvider(),
       },
@@ -64,14 +63,30 @@ describe("vfs example app", () => {
       const localMount = state.mounts.find((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert");
       expect(localMount?.mountNodeId).toEqual(expect.any(String));
 
-      const listRes = await fetch(
-        `${baseUrl}/api/list?parentNodeId=${encodeURIComponent(localMount.mountNodeId)}&limit=50`,
-      );
-      expect(listRes.status).toBe(200);
-      const listed = await listRes.json();
+      let listed: { items: Array<{ name: string; kind: string; nodeId: string }> } = { items: [] };
+      const deadline = Date.now() + 2_000;
+      while (Date.now() < deadline) {
+        const listRes = await fetch(
+          `${baseUrl}/api/list?parentNodeId=${encodeURIComponent(localMount.mountNodeId)}&limit=50`,
+        );
+        expect(listRes.status).toBe(200);
+        listed = await listRes.json();
+        if (
+          listed.items.some(
+            (item: { name: string; kind: string }) =>
+              item.name === "hello.txt" && item.kind === "file",
+          )
+        ) {
+          break;
+        }
+        await Bun.sleep(50);
+      }
       expect(Array.isArray(listed.items)).toBe(true);
       expect(
-        listed.items.some((item: { name: string; kind: string }) => item.name === "hello.txt" && item.kind === "file"),
+        listed.items.some(
+          (item: { name: string; kind: string }) =>
+            item.name === "hello.txt" && item.kind === "file",
+        ),
       ).toBe(true);
       const hello = listed.items.find((item: { name: string }) => item.name === "hello.txt");
       expect(hello?.nodeId).toEqual(expect.any(String));

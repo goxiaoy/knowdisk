@@ -5,6 +5,7 @@ export type VfsNodeKind = "mount" | "file" | "folder";
 export type VfsMountConfig = {
   providerType: string;
   providerExtra: Record<string, unknown>;
+  autoSync?: boolean;
   syncMetadata: boolean;
   syncContent?: boolean;
   metadataTtlSec: number;

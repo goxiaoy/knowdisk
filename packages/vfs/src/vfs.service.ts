@@ -33,6 +33,16 @@ export function createVfsService(deps: {
     { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }
   >();
   deps.repository.subscribeNodeChanges((changes) => {
+    const touchedMountIds = new Set<string>();
+    for (const change of changes) {
+      touchedMountIds.add(change.next.mountId);
+      if (change.prev) {
+        touchedMountIds.add(change.prev.mountId);
+      }
+    }
+    for (const mountId of touchedMountIds) {
+      deps.repository.deletePageCacheByMountId(mountId);
+    }
     for (const change of changes) {
       const event = toChangeEvent(change.prev, change.next);
       if (!event) {
@@ -52,12 +62,15 @@ export function createVfsService(deps: {
       mountId: ext.mountId,
       providerType: ext.providerType,
       providerExtra: ext.providerExtra,
+      autoSync: ext.autoSync !== false,
       syncMetadata: ext.syncMetadata,
       syncContent: ext.syncContent,
       metadataTtlSec: ext.metadataTtlSec,
       reconcileIntervalMs: ext.reconcileIntervalMs,
     };
   };
+
+  const isAutoSyncEnabled = (mount: VfsMount): boolean => mount.autoSync !== false;
 
   const ensureSyncer = async (mount: VfsMount): Promise<VfsSyncer> => {
     const existing = syncers.get(mount.mountId);
@@ -81,8 +94,8 @@ export function createVfsService(deps: {
 
   const startSyncer = async (mount: VfsMount): Promise<void> => {
     const syncer = await ensureSyncer(mount);
-    await syncer.fullSync();
     await syncer.startWatching();
+    void syncer.fullSync().catch(() => {});
   };
 
   const stopSyncer = async (mountId: string): Promise<void> => {
@@ -106,11 +119,11 @@ export function createVfsService(deps: {
 
   const scheduleReconcile = (mount: VfsMount): void => {
     clearReconcileTimer(mount.mountId);
-    if (!started || mount.reconcileIntervalMs <= 0) {
+    if (!started || !isAutoSyncEnabled(mount) || mount.reconcileIntervalMs <= 0) {
       return;
     }
     const timer = setInterval(() => {
-      void runReconcile(mount.mountId);
+      void runReconcile(mount.mountId).catch(() => {});
     }, mount.reconcileIntervalMs);
     reconcileTimers.set(mount.mountId, timer);
   };
@@ -134,6 +147,9 @@ export function createVfsService(deps: {
         return;
       }
       const mount = mountFromExt(ext);
+      if (!isAutoSyncEnabled(mount)) {
+        return;
+      }
       const syncer = await ensureSyncer(mount);
       try {
         await syncer.fullSync();
@@ -164,7 +180,15 @@ export function createVfsService(deps: {
       started = true;
       const mounts = deps.repository.listNodeMountExts().map((ext) => mountFromExt(ext));
       for (const mount of mounts) {
-        await startSyncer(mount);
+        if (!isAutoSyncEnabled(mount)) {
+          clearReconcileTimer(mount.mountId);
+          continue;
+        }
+        try {
+          await startSyncer(mount);
+        } catch {
+          // keep runtime alive; reconcile timer will retry
+        }
         scheduleReconcile(mount);
       }
     },
@@ -188,6 +212,7 @@ export function createVfsService(deps: {
       const mount: VfsMount = {
         mountId,
         ...config,
+        autoSync: config.autoSync !== false,
       };
       const now = nowMs();
       const mountNodeId = createVfsNodeId({
@@ -215,6 +240,7 @@ export function createVfsService(deps: {
         mountId: mount.mountId,
         providerType: mount.providerType,
         providerExtra: mount.providerExtra,
+        autoSync: mount.autoSync !== false,
         syncMetadata: mount.syncMetadata,
         syncContent: mount.syncContent ?? false,
         metadataTtlSec: mount.metadataTtlSec,
@@ -223,8 +249,17 @@ export function createVfsService(deps: {
         updatedAtMs: now,
       });
       if (started) {
-        await startSyncer(mount);
-        scheduleReconcile(mount);
+        if (isAutoSyncEnabled(mount)) {
+          try {
+            await startSyncer(mount);
+          } catch {
+            // keep runtime alive; reconcile timer will retry
+          }
+          scheduleReconcile(mount);
+        } else {
+          clearReconcileTimer(mount.mountId);
+          await stopSyncer(mount.mountId);
+        }
       }
       return mount;
     },
@@ -265,6 +300,7 @@ export function createVfsService(deps: {
         mountId: ext.mountId,
         providerType: ext.providerType,
         providerExtra: ext.providerExtra,
+        autoSync: ext.autoSync !== false,
         syncMetadata: ext.syncMetadata,
         syncContent: ext.syncContent,
         metadataTtlSec: ext.metadataTtlSec,
@@ -299,6 +335,7 @@ export function createVfsService(deps: {
         mountId: ext.mountId,
         providerType: ext.providerType,
         providerExtra: ext.providerExtra,
+        autoSync: ext.autoSync !== false,
         syncMetadata: ext.syncMetadata,
         syncContent: ext.syncContent,
         metadataTtlSec: ext.metadataTtlSec,

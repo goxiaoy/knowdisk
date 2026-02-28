@@ -12,6 +12,8 @@
 		"build": "vite build && electrobun build",
 		"build:prod": "vite build && electrobun build --channel prod",
 		"start": "bun run dev",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
 		"test": "bun test",
 		"vfs:example": "bun run --cwd packages/vfs example"
 	},
@@ -34,6 +36,7 @@
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@eslint/js": "^10.0.1",
 		"@types/bun": "latest",
 		"@types/react": "^18.3.12",
 		"@types/react-dom": "^18.3.1",
@@ -41,10 +44,13 @@
 		"@vitejs/plugin-react": "^4.3.4",
 		"autoprefixer": "^10.4.20",
 		"concurrently": "^9.1.0",
+		"eslint": "^10.0.2",
+		"globals": "^17.3.0",
 		"postcss": "^8.4.49",
 		"react-test-renderer": "18.3.1",
 		"tailwindcss": "^3.4.16",
 		"typescript": "^5.7.2",
+		"typescript-eslint": "^8.56.1",
 		"vite": "^6.0.3"
 	}
 }

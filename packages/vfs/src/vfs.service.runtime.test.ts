@@ -134,4 +134,109 @@ describe("vfs service runtime", () => {
     await ctx.service.close();
     ctx.cleanup();
   });
+
+  test("start continues when one mount fullSync fails", async () => {
+    const ctx = setup();
+    ctx.registry.register("mock-fail-start", () => ({
+      type: "mock-fail-start",
+      capabilities: { watch: false },
+      async listChildren() {
+        throw new Error("sync failed");
+      },
+    }));
+    ctx.registry.register("mock-ok-start", () => ({
+      type: "mock-ok-start",
+      capabilities: { watch: false },
+      async listChildren() {
+        return { items: [] };
+      },
+    }));
+
+    await ctx.service.mount({
+      providerType: "mock-fail-start",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 20,
+    });
+    await ctx.service.mount({
+      providerType: "mock-ok-start",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 20,
+    });
+
+    await expect(ctx.service.start()).resolves.toBeUndefined();
+    await ctx.service.close();
+    ctx.cleanup();
+  });
+
+  test("start does not wait for initial fullSync completion", async () => {
+    const ctx = setup();
+    ctx.registry.register("mock-slow-start", () => ({
+      type: "mock-slow-start",
+      capabilities: { watch: false },
+      async listChildren() {
+        await Bun.sleep(80);
+        return { items: [] };
+      },
+    }));
+
+    await ctx.service.mount({
+      providerType: "mock-slow-start",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+
+    const startPromise = ctx.service.start().then(() => true);
+    const settledQuickly = await Promise.race([
+      startPromise,
+      Bun.sleep(20).then(() => false),
+    ]);
+    expect(settledQuickly).toBe(true);
+
+    await ctx.service.close();
+    ctx.cleanup();
+  });
+
+  test("autoSync=false: start does not watch/fullSync/reconcile", async () => {
+    const ctx = setup();
+    let starts = 0;
+    let listCalls = 0;
+    ctx.registry.register("mock-auto-sync-off", () => ({
+      type: "mock-auto-sync-off",
+      capabilities: { watch: true },
+      async listChildren() {
+        listCalls += 1;
+        return { items: [] };
+      },
+      async watch() {
+        starts += 1;
+        return {
+          close: async () => {},
+        };
+      },
+    }));
+
+    await ctx.service.mount({
+      providerType: "mock-auto-sync-off",
+      providerExtra: {},
+      autoSync: false,
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 20,
+    });
+
+    await ctx.service.start();
+    await Bun.sleep(80);
+
+    expect(starts).toBe(0);
+    expect(listCalls).toBe(0);
+
+    await ctx.service.close();
+    ctx.cleanup();
+  });
 });

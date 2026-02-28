@@ -88,7 +88,7 @@ export async function createVfsExampleApp(input?: {
   const localMount = await vfs.mountInternal("local-testdata", {
     providerType: "local",
     providerExtra: { directory: testdataDir },
-    syncMetadata: false,
+    syncMetadata: true,
     syncContent: true,
     metadataTtlSec: 30,
     reconcileIntervalMs: 10_000,
