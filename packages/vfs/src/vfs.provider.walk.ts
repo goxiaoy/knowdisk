@@ -83,6 +83,5 @@ async function enrichMetadataIfNeeded(
     size: metadata.size ?? item.size,
     mtimeMs: metadata.mtimeMs ?? item.mtimeMs,
     providerVersion: metadata.providerVersion ?? item.providerVersion,
-    title: metadata.title ?? item.title,
   };
 }

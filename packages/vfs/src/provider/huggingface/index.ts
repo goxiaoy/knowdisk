@@ -368,7 +368,6 @@ function toProviderNode(input: {
     parentId: input.parentSourceRef,
     name: input.name,
     kind: input.kind,
-    title: input.name,
     size: input.size,
     mtimeMs: null,
     sourceRef: input.sourceRef,

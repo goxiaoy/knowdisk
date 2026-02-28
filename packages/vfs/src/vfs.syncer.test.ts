@@ -61,7 +61,6 @@ describe("vfs syncer", () => {
           parentId: null,
           name: "legacy.txt",
           kind: "file",
-          title: "legacy.txt",
           size: 11,
           mtimeMs: 1,
           sourceRef: "legacy.txt",
@@ -214,7 +213,6 @@ describe("vfs syncer", () => {
           parentId: null,
           name: "f.txt",
           kind: "file",
-          title: "f.txt",
           size: 3,
           mtimeMs: 1,
           sourceRef: "f.txt",
@@ -342,6 +340,125 @@ describe("vfs syncer", () => {
           (record) => record.level === "info" && record.msg.includes("syncer status changed"),
         ),
       ).toBe(true);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fullSync traverses children by provider node id instead of sourceRef", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-provider-id-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount();
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: false },
+        async listChildren(input) {
+          if (input.parentId === null) {
+            return {
+              items: [
+                {
+                  nodeId: "folder-id",
+                  mountId: mount.mountId,
+                  parentId: null,
+                  sourceRef: "dir",
+                  name: "dir",
+                  kind: "folder",
+                  size: null,
+                  mtimeMs: null,
+                  providerVersion: null,
+                  deletedAtMs: null,
+                  createdAtMs: 0,
+                  updatedAtMs: 0,
+                },
+              ],
+            };
+          }
+          if (input.parentId === "folder-id") {
+            return {
+              items: [
+                {
+                  nodeId: "child-id",
+                  mountId: mount.mountId,
+                  parentId: "folder-id",
+                  sourceRef: "dir/file.txt",
+                  name: "file.txt",
+                  kind: "file",
+                  size: 4,
+                  mtimeMs: 1,
+                  providerVersion: null,
+                  deletedAtMs: null,
+                  createdAtMs: 0,
+                  updatedAtMs: 0,
+                },
+              ],
+            };
+          }
+          return { items: [] };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 4000,
+      });
+      await syncer.fullSync();
+
+      const all = repo.listNodesByMountId(mount.mountId);
+      const child = all.find((n) => n.sourceRef === "dir/file.txt");
+      expect(child).toBeDefined();
+      expect(child?.deletedAtMs).toBeNull();
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fullSync does not mark mount root node as deleted", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-mount-root-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount({ mountId: "local-testdata" });
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: false },
+        async listChildren() {
+          return { items: [] };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 5000,
+      });
+      await syncer.fullSync();
+
+      const node = repo.listNodesByMountId(mount.mountId).find((n) => n.sourceRef === "");
+      expect(node?.kind).toBe("mount");
+      expect(node?.deletedAtMs).toBeNull();
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });

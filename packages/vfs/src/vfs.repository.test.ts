@@ -30,8 +30,12 @@ describe("vfs repository", () => {
     const mountColumns = db
       .query("PRAGMA table_info(vfs_node_mount_ext)")
       .all() as Array<{ name: string }>;
+    const nodeColumns = db
+      .query("PRAGMA table_info(vfs_nodes)")
+      .all() as Array<{ name: string }>;
     expect(mountColumns.map((item) => item.name)).toContain("provider_extra");
     expect(mountColumns.map((item) => item.name)).toContain("sync_content");
+    expect(nodeColumns.map((item) => item.name)).not.toContain("title");
 
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -46,7 +50,6 @@ describe("vfs repository", () => {
         parentId: null,
         name: "m1",
         kind: "mount",
-        title: "m1",
         size: null,
         mtimeMs: null,
         sourceRef: "",
@@ -89,7 +92,6 @@ describe("vfs repository", () => {
         parentId: "p1",
         name: "b.md",
         kind: "file",
-        title: "B",
         size: 2,
         mtimeMs: 2,
         sourceRef: "s2",
@@ -104,7 +106,6 @@ describe("vfs repository", () => {
         parentId: "p1",
         name: "a.md",
         kind: "file",
-        title: "A",
         size: 1,
         mtimeMs: 1,
         sourceRef: "s1",
@@ -119,7 +120,6 @@ describe("vfs repository", () => {
         parentId: "p1",
         name: "a.md",
         kind: "file",
-        title: "A2",
         size: 3,
         mtimeMs: 3,
         sourceRef: "s3",

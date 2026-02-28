@@ -90,16 +90,15 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       }
       const stmt = db.query(
         `INSERT INTO vfs_nodes (
-          node_id, mount_id, parent_id, name, kind, title,
+          node_id, mount_id, parent_id, name, kind,
           size, mtime_ms, source_ref, provider_version,
           deleted_at_ms, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(node_id) DO UPDATE SET
           mount_id=excluded.mount_id,
           parent_id=excluded.parent_id,
           name=excluded.name,
           kind=excluded.kind,
-          title=excluded.title,
           size=excluded.size,
           mtime_ms=excluded.mtime_ms,
           source_ref=excluded.source_ref,
@@ -115,7 +114,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             row.parentId,
             row.name,
             row.kind,
-            row.title,
             row.size,
             row.mtimeMs,
             row.sourceRef,
@@ -138,7 +136,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             parent_id AS parentId,
             name,
             kind,
-            title,
             size,
             mtime_ms AS mtimeMs,
             source_ref AS sourceRef,
@@ -161,7 +158,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             parent_id AS parentId,
             name,
             kind,
-            title,
             size,
             mtime_ms AS mtimeMs,
             source_ref AS sourceRef,
@@ -201,7 +197,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             parent_id AS parentId,
             name,
             kind,
-            title,
             size,
             mtime_ms AS mtimeMs,
             source_ref AS sourceRef,
@@ -272,7 +267,6 @@ function migrate(db: Database): void {
       parent_id TEXT,
       name TEXT NOT NULL,
       kind TEXT NOT NULL,
-      title TEXT NOT NULL,
       size INTEGER,
       mtime_ms INTEGER,
       source_ref TEXT NOT NULL,

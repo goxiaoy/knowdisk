@@ -21,7 +21,6 @@ export type VfsNode = {
   parentId: string | null;
   name: string;
   kind: VfsNodeKind;
-  title: string;
   size: number | null;
   mtimeMs: number | null;
   sourceRef: string;

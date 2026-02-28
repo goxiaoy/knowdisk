@@ -21,7 +21,6 @@ describe("vfs types", () => {
       parentId: null,
       name: "doc.md",
       kind: "file",
-      title: "doc",
       size: 10,
       mtimeMs: 1,
       sourceRef: "provider-id",

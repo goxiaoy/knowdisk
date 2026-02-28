@@ -45,7 +45,6 @@ export function createVfsService(deps: {
           parentId: null,
           name: mount.mountId,
           kind: "mount",
-          title: mount.mountId,
           size: null,
           mtimeMs: null,
           sourceRef: "",
@@ -76,7 +75,9 @@ export function createVfsService(deps: {
 
     async listChildren(input) {
       if (input.parentId === null) {
-        throw new Error("listChildren requires parentId; use walkChildren for root listing");
+        throw new Error(
+          "listChildren requires parentId; use walkChildren for root listing",
+        );
       }
       const parentNode = deps.repository.getNodeById(input.parentId);
       if (!parentNode) {
@@ -99,7 +100,9 @@ export function createVfsService(deps: {
     },
 
     async createReadStream(input) {
-      throw new Error(`VfsService createReadStream is not supported: ${input.id}`);
+      throw new Error(
+        `VfsService createReadStream is not supported: ${input.id}`,
+      );
     },
 
     async walkChildren(input: WalkChildrenInput): Promise<WalkChildrenOutput> {
@@ -110,7 +113,6 @@ export function createVfsService(deps: {
           cursorToken: input.cursor?.token,
         });
       }
-
       const parentNode = deps.repository.getNodeById(input.parentNodeId);
       if (!parentNode) {
         throw new Error(`Parent node not found: ${input.parentNodeId}`);
@@ -152,7 +154,9 @@ export function createVfsService(deps: {
           nextCursor: cached.nextCursor
             ? {
                 mode: "remote",
-                token: encodeVfsRemoteCursorToken({ providerCursor: cached.nextCursor }),
+                token: encodeVfsRemoteCursorToken({
+                  providerCursor: cached.nextCursor,
+                }),
               }
             : undefined,
           source: "remote",
@@ -169,8 +173,7 @@ export function createVfsService(deps: {
       const now = nowMs();
       const items = listed.items.map((item) => {
         const sourceRef =
-          item.sourceRef ??
-          ((item as unknown as { id?: string }).id ?? "");
+          item.sourceRef ?? (item as unknown as { id?: string }).id ?? "";
         return {
           nodeId: createVfsNodeId({
             mountId: resolvedMount.mountId,
@@ -180,7 +183,6 @@ export function createVfsService(deps: {
           parentId: parentNode.nodeId,
           name: item.name,
           kind: item.kind,
-          title: item.title ?? item.name,
           size: item.size ?? null,
           mtimeMs: item.mtimeMs ?? null,
           sourceRef,
@@ -204,7 +206,9 @@ export function createVfsService(deps: {
         nextCursor: listed.nextCursor
           ? {
               mode: "remote",
-              token: encodeVfsRemoteCursorToken({ providerCursor: listed.nextCursor }),
+              token: encodeVfsRemoteCursorToken({
+                providerCursor: listed.nextCursor,
+              }),
             }
           : undefined,
         source: "remote",

@@ -76,27 +76,38 @@ export function createVfsSyncer(input: {
     }
   };
 
-  const itemId = (item: ListChildrenItem): string => item.sourceRef;
-  const itemParentId = (item: ListChildrenItem): string | null =>
-    item.parentId ?? ((item as unknown as { parentSourceRef?: string | null }).parentSourceRef ?? null);
+  const itemSourceRef = (item: ListChildrenItem): string => item.sourceRef;
+  const itemProviderId = (item: ListChildrenItem): string => item.nodeId || item.sourceRef;
+  const sourceRefParent = (sourceRef: string): string | null => {
+    const parts = sourceRef.split("/").filter((part) => part.length > 0);
+    if (parts.length <= 1) {
+      return null;
+    }
+    return parts.slice(0, parts.length - 1).join("/");
+  };
 
   async function walkAllFiles(): Promise<Map<string, ListChildrenItem>> {
     const discovered = new Map<string, ListChildrenItem>();
-    const queue: Array<string | null> = [null];
+    const queue: Array<{ parentId: string | null; parentSourceRef: string | null }> = [
+      { parentId: null, parentSourceRef: null },
+    ];
     while (queue.length > 0) {
-      const parentId = queue.shift() ?? null;
+      const { parentId, parentSourceRef } = queue.shift()!;
       let cursor: string | undefined;
       do {
         const page = await input.provider.listChildren({
           parentId,
-          parentSourceRef: parentId,
+          parentSourceRef,
           limit: 200,
           cursor,
         } as unknown as Parameters<typeof input.provider.listChildren>[0]);
         for (const item of page.items) {
-          discovered.set(itemId(item), item);
+          discovered.set(itemSourceRef(item), item);
           if (item.kind === "folder") {
-            queue.push(itemId(item));
+            queue.push({
+              parentId: itemProviderId(item),
+              parentSourceRef: itemSourceRef(item),
+            });
           }
         }
         cursor = page.nextCursor;
@@ -116,8 +127,8 @@ export function createVfsSyncer(input: {
       return item;
     }
     const fetched = await input.provider.getMetadata({
-      id: itemId(item),
-      sourceRef: itemId(item),
+      id: itemProviderId(item),
+      sourceRef: itemSourceRef(item),
     } as unknown as Parameters<NonNullable<typeof input.provider.getMetadata>>[0]);
     if (!fetched) {
       return item;
@@ -127,18 +138,17 @@ export function createVfsSyncer(input: {
       size: fetched.size ?? item.size,
       mtimeMs: fetched.mtimeMs ?? item.mtimeMs,
       providerVersion: fetched.providerVersion ?? item.providerVersion,
-      title: fetched.title ?? item.title,
     };
   }
 
   function toNode(item: ListChildrenItem, now: number): VfsNode {
     const nodeId = createVfsNodeId({
       mountId: input.mount.mountId,
-      sourceRef: itemId(item),
+      sourceRef: itemSourceRef(item),
     });
     const parentId = createVfsParentId({
       mountId: input.mount.mountId,
-      parentSourceRef: itemParentId(item),
+      parentSourceRef: sourceRefParent(itemSourceRef(item)),
     });
     return {
       nodeId,
@@ -146,10 +156,9 @@ export function createVfsSyncer(input: {
       parentId,
       name: item.name,
       kind: item.kind,
-      title: item.title ?? item.name,
       size: item.size ?? null,
       mtimeMs: item.mtimeMs ?? null,
-      sourceRef: itemId(item),
+      sourceRef: itemSourceRef(item),
       providerVersion: item.providerVersion ?? null,
       deletedAtMs: null,
       createdAtMs: now,
@@ -169,11 +178,11 @@ export function createVfsSyncer(input: {
       if (item.kind !== "file") {
         continue;
       }
-      const id = itemId(item);
-      const finalPath = join(input.contentRootParent, input.mount.mountId, ...id.split("/"));
+      const sourceRef = itemSourceRef(item);
+      const finalPath = join(input.contentRootParent, input.mount.mountId, ...sourceRef.split("/"));
       const partPath = `${finalPath}.part`;
       await mkdir(dirname(finalPath), { recursive: true });
-      const forceRestart = options?.restartSourceRefs?.has(id) ?? false;
+      const forceRestart = options?.restartSourceRefs?.has(sourceRef) ?? false;
 
       if (forceRestart) {
         rmSync(partPath, { force: true });
@@ -186,7 +195,7 @@ export function createVfsSyncer(input: {
           emit({
             type: "download_progress",
             payload: {
-              sourceRef: id,
+              sourceRef,
               totalSize: item.size ?? 0,
               downloadedBytes: current,
               downloadPath: finalPath,
@@ -218,7 +227,7 @@ export function createVfsSyncer(input: {
           emit({
             type: "download_progress",
             payload: {
-              sourceRef: id,
+              sourceRef,
               totalSize: item.size ?? 0,
               downloadedBytes,
               downloadPath: finalPath,
@@ -282,9 +291,14 @@ export function createVfsSyncer(input: {
         });
       }
 
-      const seen = new Set(walkedItems.map((item) => itemId(item)));
+      const seen = new Set(walkedItems.map((item) => itemSourceRef(item)));
       const deletedRows = existing
-        .filter((node) => node.deletedAtMs === null && !seen.has(node.sourceRef))
+        .filter(
+          (node) =>
+            node.kind !== "mount" &&
+            node.deletedAtMs === null &&
+            !seen.has(node.sourceRef),
+        )
         .map((node) => ({
           ...node,
           deletedAtMs: now,
@@ -481,7 +495,7 @@ async function downloadWithResume(input: {
   while (true) {
     try {
       const stream = await input.provider.createReadStream!({
-        id: input.item.sourceRef,
+        id: input.item.nodeId || input.item.sourceRef,
         sourceRef: input.item.sourceRef,
         offset: startOffset > 0 ? startOffset : undefined,
       } as unknown as Parameters<NonNullable<typeof input.provider.createReadStream>>[0]);
