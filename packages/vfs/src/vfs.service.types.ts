@@ -41,7 +41,7 @@ export type VfsOperationCore = {
 };
 
 export type VfsChangeEvent = {
-  type: "upsert" | "delete";
+  type: "add" | "update" | "delete";
   id: string;
   parentId: string | null;
   contentUpdated: boolean | null;

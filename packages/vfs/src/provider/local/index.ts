@@ -1,6 +1,15 @@
 import chokidar from "chokidar";
 import { createReadStream } from "node:fs";
-import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { blake3 } from "hash-wasm";
@@ -29,7 +38,9 @@ export function createLocalVfsProvider(
       const config = parseLocalMount(mount);
       const parentId =
         input.parentId ??
-        ((input as unknown as { parentSourceRef?: string | null }).parentSourceRef ?? null);
+        (input as unknown as { parentSourceRef?: string | null })
+          .parentSourceRef ??
+        null;
       logger.info(
         {
           mountId: mount.mountId,
@@ -74,7 +85,10 @@ export function createLocalVfsProvider(
     },
     async createReadStream(input) {
       const config = parseLocalMount(mount);
-      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
+      const id =
+        input.id ??
+        (input as unknown as { sourceRef?: string }).sourceRef ??
+        "";
       logger.info(
         {
           mountId: mount.mountId,
@@ -88,7 +102,9 @@ export function createLocalVfsProvider(
       const hasOffset = typeof input.offset === "number";
       const hasLength = typeof input.length === "number";
       if (hasOffset && (!Number.isFinite(input.offset) || input.offset! < 0)) {
-        throw new Error("createReadStream offset must be a non-negative number");
+        throw new Error(
+          "createReadStream offset must be a non-negative number",
+        );
       }
       if (hasLength && (!Number.isFinite(input.length) || input.length! <= 0)) {
         throw new Error("createReadStream length must be a positive number");
@@ -104,7 +120,10 @@ export function createLocalVfsProvider(
     },
     async getMetadata(input) {
       const config = parseLocalMount(mount);
-      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
+      const id =
+        input.id ??
+        (input as unknown as { sourceRef?: string }).sourceRef ??
+        "";
       logger.info(
         {
           mountId: mount.mountId,
@@ -132,7 +151,10 @@ export function createLocalVfsProvider(
     },
     async getVersion(input) {
       const config = parseLocalMount(mount);
-      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
+      const id =
+        input.id ??
+        (input as unknown as { sourceRef?: string }).sourceRef ??
+        "";
       const targetPath = resolveRefPath(config.directory, id);
       try {
         const st = await stat(targetPath);
@@ -167,7 +189,9 @@ export function createLocalVfsProvider(
         kind: targetStat.isDirectory() ? "folder" : "file",
         size: targetStat.isDirectory() ? null : targetStat.size,
         mtimeMs: targetStat.mtimeMs,
-        providerVersion: targetStat.isDirectory() ? null : await computeBlake3File(targetPath),
+        providerVersion: targetStat.isDirectory()
+          ? null
+          : await computeBlake3File(targetPath),
       });
     },
     async rename(input) {
@@ -178,7 +202,9 @@ export function createLocalVfsProvider(
       }
       const name = sanitizeName(input.name);
       if (!config.syncName) {
-        const sameStat = await stat(resolveRefPath(config.directory, normalizedId));
+        const sameStat = await stat(
+          resolveRefPath(config.directory, normalizedId),
+        );
         return toProviderNode({
           mountId: mount.mountId,
           sourceRef: normalizedId,
@@ -189,7 +215,9 @@ export function createLocalVfsProvider(
           mtimeMs: sameStat.mtimeMs,
           providerVersion: sameStat.isDirectory()
             ? null
-            : await computeBlake3File(resolveRefPath(config.directory, normalizedId)),
+            : await computeBlake3File(
+                resolveRefPath(config.directory, normalizedId),
+              ),
         });
       }
       const oldPath = resolveRefPath(config.directory, normalizedId);
@@ -205,7 +233,9 @@ export function createLocalVfsProvider(
           kind: sameStat.isDirectory() ? "folder" : "file",
           size: sameStat.isDirectory() ? null : sameStat.size,
           mtimeMs: sameStat.mtimeMs,
-          providerVersion: sameStat.isDirectory() ? null : await computeBlake3File(oldPath),
+          providerVersion: sameStat.isDirectory()
+            ? null
+            : await computeBlake3File(oldPath),
         });
       }
       if (await fileExists(newPath)) {
@@ -222,7 +252,9 @@ export function createLocalVfsProvider(
         kind: nextStat.isDirectory() ? "folder" : "file",
         size: nextStat.isDirectory() ? null : nextStat.size,
         mtimeMs: nextStat.mtimeMs,
-        providerVersion: nextStat.isDirectory() ? null : await computeBlake3File(newPath),
+        providerVersion: nextStat.isDirectory()
+          ? null
+          : await computeBlake3File(newPath),
       });
     },
     async delete(input) {
@@ -241,10 +273,7 @@ export function createLocalVfsProvider(
         ignoreInitial: true,
         persistent: true,
       });
-      const emit = (
-        type: "add" | "update_metadata" | "update_content" | "delete",
-        absPath: string,
-      ) => {
+      const emit = (type: "add" | "update" | "delete", absPath: string) => {
         const id = toSourceRef(config.directory, absPath);
         logger.info(
           {
@@ -263,7 +292,7 @@ export function createLocalVfsProvider(
         } as unknown as Parameters<typeof input.onEvent>[0]);
       };
       watcher.on("add", (path) => emit("add", path));
-      watcher.on("change", (path) => emit("update_content", path));
+      watcher.on("change", (path) => emit("update", path));
       watcher.on("addDir", (path) => emit("add", path));
       watcher.on("unlink", (path) => emit("delete", path));
       watcher.on("unlinkDir", (path) => emit("delete", path));
@@ -350,7 +379,8 @@ function normalizeSourceRef(ref: string): string {
 
 function resolveRefPath(root: string, id: string | null): string {
   const normalized = id ? normalizeSourceRef(id) : "";
-  const candidate = normalized.length === 0 ? root : resolve(root, ...normalized.split("/"));
+  const candidate =
+    normalized.length === 0 ? root : resolve(root, ...normalized.split("/"));
   const rel = relative(root, candidate);
   if (rel.startsWith("..") || rel.includes(`..${sep}`)) {
     throw new Error(`id escapes provider root: "${id ?? ""}"`);
@@ -383,7 +413,10 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-async function nextAvailableName(dir: string, baseName: string): Promise<string> {
+async function nextAvailableName(
+  dir: string,
+  baseName: string,
+): Promise<string> {
   let index = 0;
   while (true) {
     const candidate = index === 0 ? baseName : `${baseName}(${index})`;

@@ -80,13 +80,16 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           ORDER BY mount_id ASC`,
         )
         .all() as Array<
-          Omit<VfsNodeMountExtRow, "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"> & {
-            autoSync: number | null;
-            syncMetadata: number;
-            syncContent: number;
-            providerExtra: unknown;
-          }
-        >;
+        Omit<
+          VfsNodeMountExtRow,
+          "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"
+        > & {
+          autoSync: number | null;
+          syncMetadata: number;
+          syncContent: number;
+          providerExtra: unknown;
+        }
+      >;
       return rows.map((row) => ({
         ...row,
         providerExtra: parseProviderExtra(row.providerExtra),
@@ -97,7 +100,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     },
 
     deleteNodeMountExtByMountId(mountId: string) {
-      db.query(`DELETE FROM vfs_node_mount_ext WHERE mount_id = ?`).run(mountId);
+      db.query(`DELETE FROM vfs_node_mount_ext WHERE mount_id = ?`).run(
+        mountId,
+      );
     },
 
     getNodeMountExtByMountId(mountId: string) {
@@ -119,7 +124,10 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           WHERE mount_id = ?`,
         )
         .get(mountId) as
-        | (Omit<VfsNodeMountExtRow, "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"> & {
+        | (Omit<
+            VfsNodeMountExtRow,
+            "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"
+          > & {
             autoSync: number | null;
             syncMetadata: number;
             syncContent: number;
@@ -259,7 +267,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         .get(nodeId) as VfsNode | null;
     },
 
-    listChildrenPageLocal(input: ListChildrenPageLocalInput): ListChildrenPageLocalOutput {
+    listChildrenPageLocal(
+      input: ListChildrenPageLocalInput,
+    ): ListChildrenPageLocalOutput {
       const { mountId, parentId, limit, cursor } = input;
       const args = [] as Array<string | null>;
       let mountClause = "";
@@ -345,95 +355,28 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     },
 
     deletePageCacheByMountId(mountId: string) {
-      db.query(`DELETE FROM vfs_page_cache WHERE cache_key LIKE ?`).run(`${mountId}::%`);
+      db.query(`DELETE FROM vfs_page_cache WHERE cache_key LIKE ?`).run(
+        `${mountId}::%`,
+      );
     },
 
-    upsertNodeEvents(rows: VfsNodeEventRow[]) {
+    insertNodeEvents(rows: Array<Omit<VfsNodeEventRow, "id">>) {
       if (rows.length === 0) {
         return;
       }
-      const selectByNodeId = db.query(
-        `SELECT
-          node_id AS nodeId,
-          mount_id AS mountId,
-          parent_id AS parentId,
-          type,
-          content_updated AS contentUpdated,
-          metadata_changed AS metadataChanged,
-          created_at_ms AS createdAtMs,
-          updated_at_ms AS updatedAtMs
-        FROM vfs_node_events
-        WHERE node_id = ?`,
-      );
-      const deleteByNodeId = db.query(`DELETE FROM vfs_node_events WHERE node_id = ?`);
-      const upsertStmt = db.query(
+      const insertStmt = db.query(
         `INSERT INTO vfs_node_events (
-          node_id, mount_id, parent_id, type, content_updated, metadata_changed, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(node_id) DO UPDATE SET
-          mount_id=excluded.mount_id,
-          parent_id=excluded.parent_id,
-          type=excluded.type,
-          content_updated=excluded.content_updated,
-          metadata_changed=excluded.metadata_changed,
-          updated_at_ms=excluded.updated_at_ms`,
+          node_id, mount_id, parent_id, type, created_at_ms
+        ) VALUES (?, ?, ?, ?, ?)`,
       );
-      const tx = db.transaction((items: VfsNodeEventRow[]) => {
+      const tx = db.transaction((items: Array<Omit<VfsNodeEventRow, "id">>) => {
         for (const row of items) {
-          const prevRaw = selectByNodeId.get(row.nodeId) as
-            | (Omit<VfsNodeEventRow, "contentUpdated" | "metadataChanged"> & {
-                contentUpdated: number | null;
-                metadataChanged: number | null;
-              })
-            | null;
-          const prev: VfsNodeEventRow | null = prevRaw
-            ? {
-                ...prevRaw,
-                contentUpdated: fromDbTriState(prevRaw.contentUpdated),
-                metadataChanged: fromDbTriState(prevRaw.metadataChanged),
-              }
-            : null;
-          if (row.type === "delete") {
-            deleteByNodeId.run(row.nodeId);
-            upsertStmt.run(
-              row.nodeId,
-              row.mountId,
-              row.parentId,
-              "delete",
-              toDbTriState(false),
-              toDbTriState(false),
-              prev?.createdAtMs ?? row.createdAtMs,
-              row.updatedAtMs,
-            );
-            continue;
-          }
-          const merged: VfsNodeEventRow = prev
-            ? {
-                nodeId: row.nodeId,
-                mountId: row.mountId,
-                parentId: row.parentId,
-                type: "upsert",
-                contentUpdated:
-                  prev.type === "upsert"
-                    ? mergeTriState(prev.contentUpdated, row.contentUpdated)
-                    : row.contentUpdated,
-                metadataChanged:
-                  prev.type === "upsert"
-                    ? mergeTriState(prev.metadataChanged, row.metadataChanged)
-                    : row.metadataChanged,
-                createdAtMs: prev.createdAtMs,
-                updatedAtMs: row.updatedAtMs,
-              }
-            : row;
-          upsertStmt.run(
-            merged.nodeId,
-            merged.mountId,
-            merged.parentId,
-            merged.type,
-            toDbTriState(merged.contentUpdated),
-            toDbTriState(merged.metadataChanged),
-            merged.createdAtMs,
-            merged.updatedAtMs,
+          insertStmt.run(
+            row.nodeId,
+            row.mountId,
+            row.parentId,
+            row.type,
+            row.createdAtMs,
           );
         }
       });
@@ -441,45 +384,33 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     },
 
     listNodeEvents(limit = 1000) {
-      const rows = db
+      return db
         .query(
           `SELECT
+            id,
             node_id AS nodeId,
             mount_id AS mountId,
             parent_id AS parentId,
             type,
-            content_updated AS contentUpdated,
-            metadata_changed AS metadataChanged,
-            created_at_ms AS createdAtMs,
-            updated_at_ms AS updatedAtMs
+            created_at_ms AS createdAtMs
           FROM vfs_node_events
-          ORDER BY updated_at_ms ASC, node_id ASC
+          ORDER BY id ASC
           LIMIT ?`,
         )
-        .all(limit) as Array<
-        Omit<VfsNodeEventRow, "contentUpdated" | "metadataChanged"> & {
-          contentUpdated: number | null;
-          metadataChanged: number | null;
-        }
-      >;
-      return rows.map((row) => ({
-        ...row,
-        contentUpdated: fromDbTriState(row.contentUpdated),
-        metadataChanged: fromDbTriState(row.metadataChanged),
-      }));
+        .all(limit) as VfsNodeEventRow[];
     },
 
-    deleteNodeEventsByNodeIds(nodeIds: string[]) {
-      if (nodeIds.length === 0) {
+    deleteNodeEventsByIds(ids: number[]) {
+      if (ids.length === 0) {
         return;
       }
-      const stmt = db.query(`DELETE FROM vfs_node_events WHERE node_id = ?`);
-      const tx = db.transaction((ids: string[]) => {
-        for (const nodeId of ids) {
-          stmt.run(nodeId);
+      const stmt = db.query(`DELETE FROM vfs_node_events WHERE id = ?`);
+      const tx = db.transaction((eventIds: number[]) => {
+        for (const id of eventIds) {
+          stmt.run(id);
         }
       });
-      tx(nodeIds);
+      tx(ids);
     },
   };
 }
@@ -530,44 +461,17 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_vfs_page_cache_exp
       ON vfs_page_cache (expires_at_ms);
 
-    CREATE TABLE IF NOT EXISTS vfs_node_events (
-      node_id TEXT PRIMARY KEY,
+    CREATE TABLE vfs_node_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       mount_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
       parent_id TEXT,
       type TEXT NOT NULL,
-      content_updated INTEGER,
-      metadata_changed INTEGER,
-      created_at_ms INTEGER NOT NULL,
-      updated_at_ms INTEGER NOT NULL
+      created_at_ms INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_vfs_node_events_updated
-      ON vfs_node_events (updated_at_ms, node_id);
+      ON vfs_node_events (id);
   `);
-  ensureColumnExists(db, "vfs_node_mount_ext", "auto_sync", "INTEGER NOT NULL DEFAULT 1");
-}
-
-function mergeTriState(prev: boolean | null, next: boolean | null): boolean | null {
-  if (prev === true || next === true) {
-    return true;
-  }
-  if (prev === null || next === null) {
-    return null;
-  }
-  return false;
-}
-
-function toDbTriState(value: boolean | null): number | null {
-  if (value === null) {
-    return null;
-  }
-  return value ? 1 : 0;
-}
-
-function fromDbTriState(value: number | null): boolean | null {
-  if (value === null) {
-    return null;
-  }
-  return value === 1;
 }
 
 function parseProviderExtra(raw: unknown): Record<string, unknown> {
@@ -583,17 +487,4 @@ function parseProviderExtra(raw: unknown): Record<string, unknown> {
     return {};
   }
   return {};
-}
-
-function ensureColumnExists(
-  db: Database,
-  table: string,
-  column: string,
-  definition: string,
-): void {
-  const columns = db.query(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (columns.some((item) => item.name === column)) {
-    return;
-  }
-  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

@@ -59,32 +59,33 @@ export function createVfsService(deps: {
         if (rows.length === 0) {
           break;
         }
-        deps.repository.deleteNodeEventsByNodeIds(rows.map((row) => row.nodeId));
-        const metadataEvents: VfsChangeEvent[] = [];
-        let hasContentOnlyEvents = false;
+        deps.repository.deleteNodeEventsByIds(rows.map((row) => row.id));
+        const immediateEvents: VfsChangeEvent[] = [];
+        let hasContentEvents = false;
         for (const row of rows) {
-          const event: VfsChangeEvent = {
-            type: row.type,
-            id: row.nodeId,
-            parentId: row.parentId,
-            contentUpdated: row.contentUpdated,
-            metadataChanged: row.metadataChanged,
-          };
-          const needsMetadata = event.type === "delete" || event.metadataChanged !== false;
-          const needsContent = event.type === "delete" || event.contentUpdated !== false;
-          if (needsMetadata) {
-            metadataEvents.push(event);
+          if (row.type === "update_content") {
+            pendingContentEvents.set(row.nodeId, {
+              type: "update",
+              id: row.nodeId,
+              parentId: row.parentId,
+              contentUpdated: true,
+              metadataChanged: false,
+            });
+            hasContentEvents = true;
             continue;
           }
-          if (needsContent) {
-            pendingContentEvents.set(event.id, event);
-            hasContentOnlyEvents = true;
-          }
+          immediateEvents.push({
+            type: row.type === "add" ? "add" : row.type === "delete" ? "delete" : "update",
+            id: row.nodeId,
+            parentId: row.parentId,
+            contentUpdated: row.type === "add",
+            metadataChanged: row.type !== "delete",
+          });
         }
-        if (metadataEvents.length > 0) {
-          emitEvents(metadataEvents);
+        if (immediateEvents.length > 0) {
+          emitEvents(immediateEvents);
         }
-        if (hasContentOnlyEvents) {
+        if (hasContentEvents) {
           if (eventContentFlushTimer) {
             clearTimeout(eventContentFlushTimer);
           }
@@ -115,11 +116,8 @@ export function createVfsService(deps: {
       nodeId: string;
       mountId: string;
       parentId: string | null;
-      type: "upsert" | "delete";
-      contentUpdated: boolean | null;
-      metadataChanged: boolean | null;
+      type: "add" | "update_metadata" | "update_content" | "delete";
       createdAtMs: number;
-      updatedAtMs: number;
     }> = [];
     for (const change of changes) {
       touchedMountIds.add(change.next.mountId);
@@ -132,22 +130,53 @@ export function createVfsService(deps: {
         continue;
       }
       const ts = nowMs();
-      eventRows.push({
-        nodeId: event.id,
-        mountId: change.next.mountId,
-        parentId: event.parentId,
-        type: event.type,
-        contentUpdated: event.contentUpdated,
-        metadataChanged: event.metadataChanged,
-        createdAtMs: ts,
-        updatedAtMs: ts,
-      });
+      if (event.type === "delete") {
+        pendingContentEvents.delete(event.id);
+        eventRows.push({
+          nodeId: event.id,
+          mountId: change.next.mountId,
+          parentId: event.parentId,
+          type: "delete",
+          createdAtMs: ts,
+        });
+        continue;
+      }
+      if (event.type === "add") {
+        eventRows.push({
+          nodeId: event.id,
+          mountId: change.next.mountId,
+          parentId: event.parentId,
+          type: "add",
+          createdAtMs: ts,
+        });
+        continue;
+      }
+      const metadataChanged = event.metadataChanged ?? true;
+      const contentUpdated = event.contentUpdated ?? true;
+      if (metadataChanged) {
+        eventRows.push({
+          nodeId: event.id,
+          mountId: change.next.mountId,
+          parentId: event.parentId,
+          type: "update_metadata",
+          createdAtMs: ts,
+        });
+      }
+      if (contentUpdated) {
+        eventRows.push({
+          nodeId: event.id,
+          mountId: change.next.mountId,
+          parentId: event.parentId,
+          type: "update_content",
+          createdAtMs: ts,
+        });
+      }
     }
     for (const mountId of touchedMountIds) {
       deps.repository.deletePageCacheByMountId(mountId);
     }
     if (eventRows.length > 0) {
-      deps.repository.upsertNodeEvents(eventRows);
+      deps.repository.insertNodeEvents(eventRows);
       scheduleMetadataFlush();
     }
   });
@@ -671,7 +700,7 @@ function toChangeEvent(
   if (!prev) {
     return next.deletedAtMs === null
       ? {
-          type: "upsert",
+          type: "add",
           id: next.nodeId,
           parentId: next.parentId,
           contentUpdated: true,
@@ -697,7 +726,7 @@ function toChangeEvent(
   }
   if (prev.deletedAtMs !== null && next.deletedAtMs === null) {
     return {
-      type: "upsert",
+      type: "add",
       id: next.nodeId,
       parentId: next.parentId,
       contentUpdated: true,
@@ -721,15 +750,15 @@ function toChangeEvent(
   if (contentUpdated || metadataChanged) {
     if (providerType === "local") {
       return {
-        type: "upsert",
+        type: "update",
         id: next.nodeId,
         parentId: next.parentId,
-        contentUpdated: false,
+        contentUpdated: true,
         metadataChanged: true,
       };
     }
     return {
-      type: "upsert",
+      type: "update",
       id: next.nodeId,
       parentId: next.parentId,
       contentUpdated,

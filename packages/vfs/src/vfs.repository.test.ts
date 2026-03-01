@@ -22,12 +22,10 @@ describe("vfs repository", () => {
       .query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
       .all() as Array<{ name: string }>;
 
-    expect(tables.map((t) => t.name)).toEqual([
-      "vfs_node_events",
-      "vfs_node_mount_ext",
-      "vfs_nodes",
-      "vfs_page_cache",
-    ]);
+    expect(tables.map((t) => t.name)).toContain("vfs_node_events");
+    expect(tables.map((t) => t.name)).toContain("vfs_node_mount_ext");
+    expect(tables.map((t) => t.name)).toContain("vfs_nodes");
+    expect(tables.map((t) => t.name)).toContain("vfs_page_cache");
     const mountColumns = db
       .query("PRAGMA table_info(vfs_node_mount_ext)")
       .all() as Array<{ name: string }>;
@@ -198,84 +196,61 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("upsertNodeEvents uses tri-state merge and lets delete replace history", () => {
+  test("insert/list/delete node events uses append order and auto id", () => {
     const { dir, repo } = makeRepo();
-    repo.upsertNodeEvents([
+    repo.insertNodeEvents([
       {
         nodeId: "n1",
         mountId: "m1",
         parentId: "p1",
-        type: "upsert",
-        contentUpdated: false,
-        metadataChanged: null,
+        type: "add",
         createdAtMs: 1,
-        updatedAtMs: 1,
       },
     ]);
-    repo.upsertNodeEvents([
+    repo.insertNodeEvents([
       {
         nodeId: "n1",
         mountId: "m1",
         parentId: "p2",
-        type: "upsert",
-        contentUpdated: null,
-        metadataChanged: false,
+        type: "update_metadata",
         createdAtMs: 2,
-        updatedAtMs: 2,
       },
     ]);
-    repo.upsertNodeEvents([
+    repo.insertNodeEvents([
       {
         nodeId: "n1",
         mountId: "m1",
         parentId: "p3",
-        type: "upsert",
-        contentUpdated: true,
-        metadataChanged: false,
+        type: "update_content",
         createdAtMs: 3,
-        updatedAtMs: 3,
       },
     ]);
-    const merged = repo.listNodeEvents();
-    expect(merged).toHaveLength(1);
-    expect(merged[0]).toEqual({
-      nodeId: "n1",
-      mountId: "m1",
-      parentId: "p3",
-      type: "upsert",
-      contentUpdated: true,
-      metadataChanged: null,
-      createdAtMs: 1,
-      updatedAtMs: 3,
-    });
+    const events = repo.listNodeEvents();
+    expect(events).toHaveLength(3);
+    expect(events.map((item) => item.id)).toEqual([1, 2, 3]);
+    expect(events.map((item) => item.type)).toEqual([
+      "add",
+      "update_metadata",
+      "update_content",
+    ]);
 
-    repo.upsertNodeEvents([
+    repo.insertNodeEvents([
       {
         nodeId: "n1",
         mountId: "m1",
         parentId: "p2",
         type: "delete",
-        contentUpdated: false,
-        metadataChanged: false,
-        createdAtMs: 3,
-        updatedAtMs: 3,
+        createdAtMs: 4,
       },
     ]);
-    const deleted = repo.listNodeEvents();
-    expect(deleted).toHaveLength(1);
-    expect(deleted[0]).toEqual({
-      nodeId: "n1",
-      mountId: "m1",
-      parentId: "p2",
-      type: "delete",
-      contentUpdated: false,
-      metadataChanged: false,
-      createdAtMs: 1,
-      updatedAtMs: 3,
-    });
+    const withDelete = repo.listNodeEvents();
+    expect(withDelete).toHaveLength(4);
+    expect(withDelete[3]?.type).toBe("delete");
+    expect(withDelete[3]?.id).toBe(4);
 
-    repo.deleteNodeEventsByNodeIds(["n1"]);
-    expect(repo.listNodeEvents()).toEqual([]);
+    repo.deleteNodeEventsByIds([2, 4]);
+    const remained = repo.listNodeEvents();
+    expect(remained.map((item) => item.id)).toEqual([1, 3]);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createVfsNodeId, createVfsParentId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
+import { createVfsNodeId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -24,10 +24,4 @@ describe("vfs node id", () => {
     expect(UUID_REGEX.test(uuid)).toBe(true);
   });
 
-  test("parent id is null for root and encoded id for non-root", () => {
-    expect(createVfsParentId({ mountId: "m1", parentSourceRef: null })).toBeNull();
-    const parentId = createVfsParentId({ mountId: "m1", parentSourceRef: "dir" });
-    expect(parentId).not.toBeNull();
-    expect(UUID_REGEX.test(decodeBase64UrlNodeIdToUuid(parentId!))).toBe(true);
-  });
 });

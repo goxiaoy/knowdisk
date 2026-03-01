@@ -297,18 +297,26 @@ describe("vfs service runtime", () => {
       },
     ]);
 
-    await Bun.sleep(80);
-    const updateEvent = events.find((event) => event.id === "file-1" && event.type === "upsert");
-    expect(updateEvent).toBeDefined();
-    expect(updateEvent?.contentUpdated).toBe(true);
-    expect(updateEvent?.metadataChanged).toBe(true);
+    await Bun.sleep(180);
+    const updateEvents = events.filter((event) => event.id === "file-1" && event.type === "update");
+    expect(updateEvents.length).toBeGreaterThanOrEqual(2);
+    expect(
+      updateEvents.some(
+        (event) => event.metadataChanged === true && event.contentUpdated === false,
+      ),
+    ).toBe(true);
+    expect(
+      updateEvents.some(
+        (event) => event.metadataChanged === false && event.contentUpdated === true,
+      ),
+    ).toBe(true);
 
     await watcher.close();
     await ctx.service.close();
     ctx.cleanup();
   });
 
-  test("local mount change semantics: add=true/true and update=true/false", async () => {
+  test("local mount change semantics: add=true/true and update=true/true", async () => {
     const ctx = setup();
     const events: Array<{
       type: string;
@@ -368,16 +376,32 @@ describe("vfs service runtime", () => {
 
     await Bun.sleep(180);
 
-    const upsertEvents = events.filter((event) => event.id === "local-file-1" && event.type === "upsert");
-    expect(upsertEvents.length).toBeGreaterThanOrEqual(1);
+    const fileEvents = events.filter((event) => event.id === "local-file-1");
+    expect(fileEvents.length).toBeGreaterThanOrEqual(2);
     expect(
-      upsertEvents.some(
-        (event) => event.metadataChanged === true && event.contentUpdated === true,
+      fileEvents.some(
+        (event) => event.type === "add" && event.metadataChanged === true && event.contentUpdated === true,
       ),
     ).toBe(true);
     expect(
-      upsertEvents.some(
-        (event) => event.metadataChanged === true && event.contentUpdated === false,
+      fileEvents.some(
+        (event) => event.type === "update" && event.metadataChanged === true && event.contentUpdated === false,
+      ),
+    ).toBe(true);
+    expect(
+      fileEvents.some(
+        (event) => event.type === "update" && event.metadataChanged === false && event.contentUpdated === true,
+      ),
+    ).toBe(true);
+    expect(
+      fileEvents.every(
+        (event) =>
+          (event.type === "add" &&
+            event.metadataChanged === true &&
+            event.contentUpdated === true) ||
+          (event.type === "update" &&
+            ((event.metadataChanged === true && event.contentUpdated === false) ||
+              (event.metadataChanged === false && event.contentUpdated === true))),
       ),
     ).toBe(true);
 
@@ -450,7 +474,7 @@ describe("vfs service runtime", () => {
     await Bun.sleep(90);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      type: "upsert",
+      type: "update",
       id: "debounce-file-1",
       metadataChanged: false,
       contentUpdated: true,

@@ -126,12 +126,12 @@ describe("local vfs provider", () => {
     }
   });
 
-  test("watch emits add/update_content/delete events via chokidar", async () => {
+  test("watch emits add/update/delete events via chokidar", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-watch-"));
     try {
       const mount = makeMount(dir);
       const provider = createLocalVfsProvider(mount);
-      const events: Array<{ type: "add" | "update_content" | "delete"; id: string }> = [];
+      const events: Array<{ type: "add" | "update" | "delete"; id: string }> = [];
       const watcher = await provider.watch!({
         onEvent(event) {
           events.push({ type: event.type, id: event.id });
@@ -151,7 +151,7 @@ describe("local vfs provider", () => {
       const sawUpdate = await waitUntil(
         () =>
           events.some(
-            (event) => event.type === "update_content" && event.id === "watch.txt",
+            (event) => event.type === "update" && event.id === "watch.txt",
           ),
         4000,
       );

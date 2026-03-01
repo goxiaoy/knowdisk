@@ -5,19 +5,6 @@ export function createVfsNodeId(input: { mountId: string; sourceRef: string }): 
   return Buffer.from(uuid, "utf8").toString("base64url");
 }
 
-export function createVfsParentId(input: {
-  mountId: string;
-  parentSourceRef: string | null;
-}): string | null {
-  if (!input.parentSourceRef) {
-    return null;
-  }
-  return createVfsNodeId({
-    mountId: input.mountId,
-    sourceRef: input.parentSourceRef,
-  });
-}
-
 export function decodeBase64UrlNodeIdToUuid(nodeId: string): string {
   return Buffer.from(nodeId, "base64url").toString("utf8");
 }

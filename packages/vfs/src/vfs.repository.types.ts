@@ -32,14 +32,12 @@ export type VfsPageCacheRow = {
 };
 
 export type VfsNodeEventRow = {
+  id: number;
   nodeId: string;
   mountId: string;
   parentId: string | null;
-  type: "upsert" | "delete";
-  contentUpdated: boolean | null;
-  metadataChanged: boolean | null;
+  type: "add" | "update_metadata" | "update_content" | "delete";
   createdAtMs: number;
-  updatedAtMs: number;
 };
 
 export type VfsRepository = {
@@ -59,9 +57,9 @@ export type VfsRepository = {
   upsertPageCache: (row: VfsPageCacheRow) => void;
   getPageCacheIfFresh: (cacheKey: string, nowMs: number) => VfsPageCacheRow | null;
   deletePageCacheByMountId: (mountId: string) => void;
-  upsertNodeEvents: (rows: VfsNodeEventRow[]) => void;
+  insertNodeEvents: (rows: Array<Omit<VfsNodeEventRow, "id">>) => void;
   listNodeEvents: (limit?: number) => VfsNodeEventRow[];
-  deleteNodeEventsByNodeIds: (nodeIds: string[]) => void;
+  deleteNodeEventsByIds: (ids: number[]) => void;
 };
 
 export type VfsNodeChange = {
