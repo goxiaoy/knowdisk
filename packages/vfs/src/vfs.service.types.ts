@@ -6,10 +6,6 @@ import type {
   WalkChildrenOutput,
 } from "./vfs.types";
 
-export const VFS_OPERATION_SERVICE_READY = true;
-
-export type ListChildrenItem = VfsNode;
-
 export type ListChildrenResult = {
   items: VfsNode[];
   nextCursor?: string;
@@ -36,7 +32,7 @@ export type VfsOperationCore = {
   }) => Promise<VfsNode>;
   rename?: (input: { id: string; name: string }) => Promise<VfsNode>;
   delete?: (input: { id: string }) => Promise<void>;
-  getMetadata?: (input: { id: string }) => Promise<VfsNode | null>;
+  getMetadata: (input: { id: string }) => Promise<VfsNode | null>;
   getVersion?: (input: { id: string }) => Promise<string | null>;
 };
 

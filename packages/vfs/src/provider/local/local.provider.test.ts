@@ -198,6 +198,27 @@ describe("local vfs provider", () => {
     }
   });
 
+  test("listChildren ignores cursor and limit", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-no-cursor-"));
+    try {
+      writeFileSync(join(dir, "a.txt"), "a");
+      writeFileSync(join(dir, "b.txt"), "b");
+      writeFileSync(join(dir, "c.txt"), "c");
+      const provider = createLocalVfsProvider(makeMount(dir));
+
+      const first = await provider.listChildren({
+        parentId: null,
+        limit: 1,
+        cursor: "999",
+      });
+
+      expect(first.items.map((item) => item.name)).toEqual(["a.txt", "b.txt", "c.txt"]);
+      expect(first.nextCursor).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("create uses untitled naming with collision suffix; rename and delete mutate filesystem", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-mutate-"));
     try {

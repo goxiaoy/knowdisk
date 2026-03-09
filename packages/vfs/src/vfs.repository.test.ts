@@ -32,10 +32,15 @@ describe("vfs repository", () => {
     const nodeColumns = db
       .query("PRAGMA table_info(vfs_nodes)")
       .all() as Array<{ name: string }>;
+    const eventColumns = db
+      .query("PRAGMA table_info(vfs_node_events)")
+      .all() as Array<{ name: string }>;
     expect(mountColumns.map((item) => item.name)).toContain("provider_extra");
     expect(mountColumns.map((item) => item.name)).toContain("auto_sync");
     expect(mountColumns.map((item) => item.name)).toContain("sync_content");
     expect(nodeColumns.map((item) => item.name)).not.toContain("title");
+    expect(eventColumns.map((item) => item.name)).toContain("source_ref");
+    expect(eventColumns.map((item) => item.name)).not.toContain("node_id");
 
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -236,61 +241,164 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("insert/list/delete node events uses append order and auto id", () => {
+  test("insert/list/delete node events refreshes id on conflict and deletes by id", () => {
     const { dir, repo } = makeRepo();
     repo.insertNodeEvents([
       {
-        nodeId: "n1",
+        sourceRef: "s1",
         mountId: "m1",
         parentId: "p1",
         type: "add",
+        node: {
+          nodeId: "n1",
+          mountId: "m1",
+          parentId: "p1",
+          name: "a.txt",
+          kind: "file",
+          size: 1,
+          mtimeMs: 1,
+          sourceRef: "s1",
+          providerVersion: "v1",
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
         createdAtMs: 1,
       },
     ]);
+    const addIdBefore = repo.listNodeEvents()[0]?.id;
+    expect(addIdBefore).toEqual(expect.any(String));
     repo.insertNodeEvents([
       {
-        nodeId: "n1",
+        sourceRef: "s1",
         mountId: "m1",
         parentId: "p2",
         type: "update_metadata",
+        node: null,
         createdAtMs: 2,
       },
     ]);
     repo.insertNodeEvents([
       {
-        nodeId: "n1",
+        sourceRef: "s1",
         mountId: "m1",
         parentId: "p3",
         type: "update_content",
+        node: null,
         createdAtMs: 3,
+      },
+    ]);
+    repo.insertNodeEvents([
+      {
+        sourceRef: "s1",
+        mountId: "m1",
+        parentId: "p1-new",
+        type: "add",
+        node: {
+          nodeId: "n1-next",
+          mountId: "m1",
+          parentId: "p1-new",
+          name: "a-next.txt",
+          kind: "file",
+          size: 9,
+          mtimeMs: 10,
+          sourceRef: "s1",
+          providerVersion: "v2",
+          deletedAtMs: null,
+          createdAtMs: 10,
+          updatedAtMs: 10,
+        },
+        createdAtMs: 10,
       },
     ]);
     const events = repo.listNodeEvents();
     expect(events).toHaveLength(3);
-    expect(events.map((item) => item.id)).toEqual([1, 2, 3]);
+    expect(events.every((item) => typeof item.id === "string" && item.id.length > 0)).toBe(true);
+    expect(events.map((item) => item.sourceRef)).toEqual(["s1", "s1", "s1"]);
     expect(events.map((item) => item.type)).toEqual([
-      "add",
       "update_metadata",
       "update_content",
+      "add",
     ]);
+    expect(events[2]?.id).not.toBe(addIdBefore);
+    expect(events[2]).toEqual({
+      id: events[2]!.id,
+      sourceRef: "s1",
+      mountId: "m1",
+      parentId: "p1-new",
+      type: "add",
+      node: {
+        nodeId: "n1-next",
+        mountId: "m1",
+        parentId: "p1-new",
+        name: "a-next.txt",
+        kind: "file",
+        size: 9,
+        mtimeMs: 10,
+        sourceRef: "s1",
+        providerVersion: "v2",
+        deletedAtMs: null,
+        createdAtMs: 10,
+        updatedAtMs: 10,
+      },
+      createdAtMs: 10,
+    });
 
     repo.insertNodeEvents([
       {
-        nodeId: "n1",
+        sourceRef: "s1",
         mountId: "m1",
         parentId: "p2",
         type: "delete",
+        node: null,
         createdAtMs: 4,
       },
     ]);
     const withDelete = repo.listNodeEvents();
     expect(withDelete).toHaveLength(4);
-    expect(withDelete[3]?.type).toBe("delete");
-    expect(withDelete[3]?.id).toBe(4);
+    expect(new Set(withDelete.map((item) => item.id)).size).toBe(4);
+    expect(withDelete.map((item) => item.type)).toEqual([
+      "update_metadata",
+      "update_content",
+      "delete",
+      "add",
+    ]);
 
-    repo.deleteNodeEventsByIds([2, 4]);
+    repo.deleteNodeEventsByIds([withDelete[0]!.id, withDelete[2]!.id]);
     const remained = repo.listNodeEvents();
-    expect(remained.map((item) => item.id)).toEqual([1, 3]);
+    expect(remained).toEqual([
+      {
+        id: withDelete[1]!.id,
+        sourceRef: "s1",
+        mountId: "m1",
+        parentId: "p3",
+        type: "update_content",
+        node: null,
+        createdAtMs: 3,
+      },
+      {
+        id: withDelete[3]!.id,
+        sourceRef: "s1",
+        mountId: "m1",
+        parentId: "p1-new",
+        type: "add",
+        node: {
+          nodeId: "n1-next",
+          mountId: "m1",
+          parentId: "p1-new",
+          name: "a-next.txt",
+          kind: "file",
+          size: 9,
+          mtimeMs: 10,
+          sourceRef: "s1",
+          providerVersion: "v2",
+          deletedAtMs: null,
+          createdAtMs: 10,
+          updatedAtMs: 10,
+        },
+        createdAtMs: 10,
+      },
+    ]);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });

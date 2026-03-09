@@ -1,10 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { Database } from "bun:sqlite";
 import type {
   ListChildrenPageLocalInput,
   ListChildrenPageLocalOutput,
-  VfsNodeChange,
   VfsNodeEventRow,
   VfsNodeMountExtRow,
   VfsPageCacheRow,
@@ -16,7 +16,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
   mkdirSync(dirname(opts.dbPath), { recursive: true });
   const db = new Database(opts.dbPath, { create: true });
   migrate(db);
-  const nodeChangeListeners = new Set<(changes: VfsNodeChange[]) => void>();
+  const nodeChangeListeners = new Set<() => void>();
 
   return {
     close() {
@@ -150,30 +150,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       if (rows.length === 0) {
         return;
       }
-      const prevByNodeId = new Map<string, VfsNode>();
-      const selectByNodeId = db.query(
-        `SELECT
-          node_id AS nodeId,
-          mount_id AS mountId,
-          parent_id AS parentId,
-          name,
-          kind,
-          size,
-          mtime_ms AS mtimeMs,
-          source_ref AS sourceRef,
-          provider_version AS providerVersion,
-          deleted_at_ms AS deletedAtMs,
-          created_at_ms AS createdAtMs,
-          updated_at_ms AS updatedAtMs
-        FROM vfs_nodes
-        WHERE node_id = ?`,
-      );
-      for (const row of rows) {
-        const prev = selectByNodeId.get(row.nodeId) as VfsNode | null;
-        if (prev) {
-          prevByNodeId.set(row.nodeId, prev);
-        }
-      }
       const stmt = db.query(
         `INSERT INTO vfs_nodes (
           node_id, mount_id, parent_id, name, kind,
@@ -212,12 +188,8 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       });
       tx(rows);
       if (nodeChangeListeners.size > 0) {
-        const changes = rows.map((next) => ({
-          prev: prevByNodeId.get(next.nodeId) ?? null,
-          next,
-        }));
         for (const listener of nodeChangeListeners) {
-          listener(changes);
+          listener();
         }
       }
     },
@@ -390,21 +362,36 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       }
       const insertStmt = db.query(
         `INSERT INTO vfs_node_events (
-          node_id, mount_id, parent_id, type, created_at_ms
-        ) VALUES (?, ?, ?, ?, ?)`,
+          id, source_ref, mount_id, parent_id, type, node_json, created_at_ms
+        ) VALUES (
+          ?,
+          ?, ?, ?, ?, ?, ?
+        )
+        ON CONFLICT(source_ref, mount_id, type) DO UPDATE SET
+          id=excluded.id,
+          parent_id=excluded.parent_id,
+          node_json=excluded.node_json,
+          created_at_ms=excluded.created_at_ms`,
       );
       const tx = db.transaction((items: Array<Omit<VfsNodeEventRow, "id">>) => {
         for (const row of items) {
           insertStmt.run(
-            row.nodeId,
+            randomUUID(),
+            row.sourceRef,
             row.mountId,
             row.parentId,
             row.type,
+            row.node ? JSON.stringify(row.node) : null,
             row.createdAtMs,
           );
         }
       });
       tx(rows);
+      if (nodeChangeListeners.size > 0) {
+        for (const listener of nodeChangeListeners) {
+          listener();
+        }
+      }
     },
 
     listNodeEvents(limit = 1000) {
@@ -412,25 +399,47 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         .query(
           `SELECT
             id,
-            node_id AS nodeId,
+            source_ref AS sourceRef,
             mount_id AS mountId,
             parent_id AS parentId,
             type,
+            node_json AS nodeJson,
             created_at_ms AS createdAtMs
           FROM vfs_node_events
-          ORDER BY id ASC
+          ORDER BY created_at_ms ASC, mount_id ASC, source_ref ASC, type ASC
           LIMIT ?`,
         )
-        .all(limit) as VfsNodeEventRow[];
+        .all(limit)
+        .map(mapNodeEventRow) as VfsNodeEventRow[];
     },
 
-    deleteNodeEventsByIds(ids: number[]) {
+    listNodeEventsByMountId(mountId: string, limit = 1000) {
+      return db
+        .query(
+          `SELECT
+            id,
+            source_ref AS sourceRef,
+            mount_id AS mountId,
+            parent_id AS parentId,
+            type,
+            node_json AS nodeJson,
+            created_at_ms AS createdAtMs
+          FROM vfs_node_events
+          WHERE mount_id = ?
+          ORDER BY created_at_ms ASC, source_ref ASC, type ASC
+          LIMIT ?`,
+        )
+        .all(mountId, limit)
+        .map(mapNodeEventRow) as VfsNodeEventRow[];
+    },
+
+    deleteNodeEventsByIds(ids: string[]) {
       if (ids.length === 0) {
         return;
       }
       const stmt = db.query(`DELETE FROM vfs_node_events WHERE id = ?`);
-      const tx = db.transaction((eventIds: number[]) => {
-        for (const id of eventIds) {
+      const tx = db.transaction((items: string[]) => {
+        for (const id of items) {
           stmt.run(id);
         }
       });
@@ -485,17 +494,50 @@ function migrate(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_vfs_page_cache_exp
       ON vfs_page_cache (expires_at_ms);
 
-    CREATE TABLE vfs_node_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+    CREATE TABLE IF NOT EXISTS vfs_node_events (
+      id TEXT PRIMARY KEY,
       mount_id TEXT NOT NULL,
-      node_id TEXT NOT NULL,
+      source_ref TEXT NOT NULL,
       parent_id TEXT,
       type TEXT NOT NULL,
-      created_at_ms INTEGER NOT NULL
+      node_json TEXT,
+      created_at_ms INTEGER NOT NULL,
+      UNIQUE (source_ref, mount_id, type)
     );
     CREATE INDEX IF NOT EXISTS idx_vfs_node_events_updated
       ON vfs_node_events (id);
   `);
+}
+
+function mapNodeEventRow(row: {
+  id: string;
+  sourceRef: string;
+  mountId: string;
+  parentId: string | null;
+  type: VfsNodeEventRow["type"];
+  nodeJson: string | null;
+  createdAtMs: number;
+}): VfsNodeEventRow {
+  return {
+    id: row.id,
+    sourceRef: row.sourceRef,
+    mountId: row.mountId,
+    parentId: row.parentId,
+    type: row.type,
+    node: parseNodeJson(row.nodeJson),
+    createdAtMs: row.createdAtMs,
+  };
+}
+
+function parseNodeJson(raw: string | null): VfsNode | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as VfsNode;
+  } catch {
+    return null;
+  }
 }
 
 function parseProviderExtra(raw: unknown): Record<string, unknown> {

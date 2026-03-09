@@ -15,8 +15,7 @@ import { Readable } from "node:stream";
 import { blake3 } from "hash-wasm";
 import pino, { type Logger } from "pino";
 import type { VfsProviderAdapter } from "../../vfs.provider.types";
-import type { ListChildrenItem } from "../../vfs.service.types";
-import type { VfsMount, VfsMountConfig } from "../../vfs.types";
+import type { VfsMount, VfsMountConfig, VfsNode } from "../../vfs.types";
 
 type CreateLocalVfsProviderDeps = {
   logger?: Logger;
@@ -36,23 +35,17 @@ export function createLocalVfsProvider(
     capabilities: { watch: true },
     async listChildren(input) {
       const config = parseLocalMount(mount);
-      const parentId =
-        input.parentId ??
-        (input as unknown as { parentSourceRef?: string | null })
-          .parentSourceRef ??
-        null;
+      const parentId = input.parentId;
       logger.info(
         {
           mountId: mount.mountId,
           parentId,
-          limit: input.limit,
-          cursor: input.cursor,
         },
         "local listChildren",
       );
       const dirPath = resolveRefPath(config.directory, parentId);
       const entries = await readdir(dirPath, { withFileTypes: true });
-      const items: ListChildrenItem[] = [];
+      const items: VfsNode[] = [];
       for (const entry of entries) {
         const absPath = join(dirPath, entry.name);
         const entryStat = await stat(absPath);
@@ -75,12 +68,8 @@ export function createLocalVfsProvider(
         }
         return a.name.localeCompare(b.name);
       });
-      const offset = parseCursorOffset(input.cursor);
-      const page = items.slice(offset, offset + input.limit);
-      const nextOffset = offset + input.limit;
       return {
-        items: page,
-        nextCursor: nextOffset < items.length ? String(nextOffset) : undefined,
+        items,
       };
     },
     async createReadStream(input) {
@@ -287,8 +276,8 @@ export function createLocalVfsProvider(
           type,
           id,
           parentId: parentId(id),
-          sourceRef: id,
-          parentSourceRef: parentId(id),
+          metadataChanged: true,
+          contentUpdated: true,
         } as unknown as Parameters<typeof input.onEvent>[0]);
       };
       watcher.on("add", (path) => emit("add", path));
@@ -318,7 +307,7 @@ function toProviderNode(input: {
   size: number | null;
   mtimeMs: number;
   providerVersion?: string | null;
-}): ListChildrenItem {
+}): VfsNode {
   return {
     nodeId: input.sourceRef,
     mountId: input.mountId,
@@ -357,17 +346,6 @@ function parseLocalMount(mount: Pick<VfsMount, "providerExtra">): {
         : Boolean(syncNameRaw);
   const resolved = isAbsolute(dir) ? dir : resolve(dir);
   return { directory: resolved, syncName };
-}
-
-function parseCursorOffset(cursor?: string): number {
-  if (!cursor) {
-    return 0;
-  }
-  const offset = Number(cursor);
-  if (!Number.isFinite(offset) || offset < 0) {
-    return 0;
-  }
-  return Math.floor(offset);
 }
 
 function normalizeSourceRef(ref: string): string {

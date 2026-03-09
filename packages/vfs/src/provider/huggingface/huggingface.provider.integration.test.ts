@@ -3,7 +3,7 @@ import { createWriteStream, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { walkProvider } from "../../vfs.provider.walk";
+import { walk } from "../../vfs.provider.walk";
 import type { VfsMount } from "../../vfs.types";
 import { createHuggingFaceVfsProvider } from "./index";
 
@@ -170,7 +170,7 @@ describe("huggingface vfs provider integration", () => {
       try {
         await provider.listChildren({ parentId: null, limit: 1 });
 
-        const files = (await walkProvider({ provider, mount }))
+        const files = (await walk({ provider, mount }))
           .filter((entry) => entry.kind === "file")
           .map((entry) => ({ sourceRef: entry.sourceRef, size: entry.size }));
         expect(files.length).toBeGreaterThan(0);

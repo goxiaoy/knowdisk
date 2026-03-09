@@ -1,6 +1,5 @@
 import type { VfsProviderAdapter } from "../../vfs.provider.types";
-import type { ListChildrenItem } from "../../vfs.service.types";
-import type { VfsMount } from "../../vfs.types";
+import type { VfsMount, VfsNode } from "../../vfs.types";
 import pino, { type Logger } from "pino";
 
 type HuggingFaceRepoResponse = {
@@ -42,9 +41,7 @@ export function createHuggingFaceVfsProvider(
     capabilities: { watch: false },
     async listChildren(input) {
       const config = parseMountConfig(mount);
-      const parentId =
-        input.parentId ??
-        ((input as unknown as { parentSourceRef?: string | null }).parentSourceRef ?? null);
+      const parentId = input.parentId;
       logger.info(
         {
           mountId: mount.mountId,
@@ -78,12 +75,16 @@ export function createHuggingFaceVfsProvider(
       const nextOffset = offset + input.limit;
       return {
         items: page,
-        nextCursor: nextOffset < directChildren.length ? String(nextOffset) : undefined,
+        nextCursor:
+          nextOffset < directChildren.length ? String(nextOffset) : undefined,
       };
     },
     async createReadStream(input) {
       const config = parseMountConfig(mount);
-      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
+      const id =
+        input.id ??
+        (input as unknown as { sourceRef?: string }).sourceRef ??
+        "";
       logger.info(
         {
           mountId: mount.mountId,
@@ -115,7 +116,10 @@ export function createHuggingFaceVfsProvider(
     },
     async getMetadata(input) {
       const config = parseMountConfig(mount);
-      const id = input.id ?? ((input as unknown as { sourceRef?: string }).sourceRef ?? "");
+      const id =
+        input.id ??
+        (input as unknown as { sourceRef?: string }).sourceRef ??
+        "";
       logger.info(
         {
           mountId: mount.mountId,
@@ -187,7 +191,10 @@ function buildRangeHeaders(
   return { Range: `bytes=${start}-` };
 }
 
-function parseMountConfig(mount: VfsMount): { endpoint: string; model: string } {
+function parseMountConfig(mount: VfsMount): {
+  endpoint: string;
+  model: string;
+} {
   const endpoint = pickOptionalNonEmptyString(mount.providerExtra, "endpoint");
   const model = pickNonEmptyString(mount.providerExtra, "model");
   return { endpoint: endpoint ?? DEFAULT_HUGGINGFACE_ENDPOINT, model };
@@ -240,7 +247,10 @@ function encodePathSegment(value: string): string {
     .join("/");
 }
 
-async function probeRemoteFileSize(fetchFn: typeof fetch, fileUrl: string): Promise<number> {
+async function probeRemoteFileSize(
+  fetchFn: typeof fetch,
+  fileUrl: string,
+): Promise<number> {
   try {
     const head = await fetchFn(fileUrl, { method: "HEAD" });
     if (head.ok) {
@@ -254,7 +264,9 @@ async function probeRemoteFileSize(fetchFn: typeof fetch, fileUrl: string): Prom
   }
   try {
     const ranged = await fetchFn(fileUrl, { headers: { Range: "bytes=0-0" } });
-    const fromRange = parseContentRangeTotal(ranged.headers.get("content-range"));
+    const fromRange = parseContentRangeTotal(
+      ranged.headers.get("content-range"),
+    );
     if (fromRange && fromRange > 0) {
       return fromRange;
     }
@@ -283,16 +295,21 @@ function parseContentRangeTotal(value: string | null): number | null {
 function buildListItems(
   mountId: string,
   siblings: Array<{ rfilename?: string; size?: number }>,
-): ListChildrenItem[] {
-  const byKey = new Map<string, ListChildrenItem>();
+): VfsNode[] {
+  const byKey = new Map<string, VfsNode>();
   for (const sibling of siblings) {
-    if (typeof sibling.rfilename !== "string" || sibling.rfilename.length === 0) {
+    if (
+      typeof sibling.rfilename !== "string" ||
+      sibling.rfilename.length === 0
+    ) {
       continue;
     }
     if (!isWhitelistedFile(sibling.rfilename)) {
       continue;
     }
-    const parts = sibling.rfilename.split("/").filter((part) => part.length > 0);
+    const parts = sibling.rfilename
+      .split("/")
+      .filter((part) => part.length > 0);
     if (parts.length === 0) {
       continue;
     }
@@ -316,10 +333,14 @@ function buildListItems(
       }
     }
     const fileName = parts[parts.length - 1]!;
-    const fileParent = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
+    const fileParent =
+      parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
     const fileKey = `file|${fileParent ?? ""}|${fileName}`;
     if (!byKey.has(fileKey)) {
-      byKey.set(fileKey, toListChildrenItem(mountId, sibling.rfilename, sibling.size));
+      byKey.set(
+        fileKey,
+        toListChildrenItem(mountId, sibling.rfilename, sibling.size),
+      );
     }
   }
   return [...byKey.values()];
@@ -329,20 +350,18 @@ function toListChildrenItem(
   mountId: string,
   sourceRef: string,
   size?: number,
-): ListChildrenItem {
+): VfsNode {
   const parts = sourceRef.split("/").filter((part) => part.length > 0);
   const name = parts[parts.length - 1] ?? sourceRef;
-  const parentId = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
+  const parentId =
+    parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
   return toProviderNode({
     mountId,
     sourceRef,
     parentSourceRef: parentId,
     name,
     kind: "file",
-    size:
-      Number.isFinite(size) && (size ?? 0) >= 0
-        ? Number(size)
-        : null,
+    size: Number.isFinite(size) && (size ?? 0) >= 0 ? Number(size) : null,
   });
 }
 
@@ -361,7 +380,7 @@ function toProviderNode(input: {
   name: string;
   kind: "file" | "folder";
   size: number | null;
-}): ListChildrenItem {
+}): VfsNode {
   return {
     nodeId: input.sourceRef,
     mountId: input.mountId,

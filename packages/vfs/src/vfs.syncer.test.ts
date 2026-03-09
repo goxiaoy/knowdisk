@@ -49,6 +49,14 @@ describe("vfs syncer", () => {
   test("fullSync reconciles metadata add/update/delete and enriches incomplete metadata", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-meta-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    const insertedEvents: Array<{
+      sourceRef: string;
+      mountId: string;
+      parentId: string | null;
+      type: "add" | "update_metadata" | "update_content" | "delete";
+      node: import("./vfs.types").VfsNode | null;
+      createdAtMs: number;
+    }> = [];
     try {
       const mount = makeMount();
       repo.upsertNodes([
@@ -131,7 +139,13 @@ describe("vfs syncer", () => {
       const syncer = createVfsSyncer({
         mount,
         provider,
-        repository: repo,
+        repository: {
+          ...repo,
+          insertNodeEvents(rows) {
+            insertedEvents.push(...rows);
+            repo.insertNodeEvents(rows);
+          },
+        },
         contentRootParent: join(dir, "content"),
         nowMs: () => 1000,
       });
@@ -150,6 +164,12 @@ describe("vfs syncer", () => {
       expect(() => decodeBase64UrlNodeIdToUuid(a!.nodeId)).not.toThrow();
       expect(a?.parentId).toBe(mountNode?.nodeId ?? null);
       expect(legacy?.deletedAtMs).toBe(1000);
+      expect(insertedEvents.map((event) => [event.sourceRef, event.type])).toEqual([
+        ["a.txt", "add"],
+        ["b.txt", "add"],
+        ["legacy.txt", "delete"],
+      ]);
+      expect(insertedEvents.find((event) => event.sourceRef === "a.txt")?.node?.size).toBe(5);
       expect(events.some((e) => e.type === "status")).toBe(true);
       expect(events.some((e) => e.type === "metadata_progress")).toBe(true);
     } finally {
@@ -158,7 +178,7 @@ describe("vfs syncer", () => {
     }
   });
 
-  test("fullSync resumes content download from .part file and emits download progress", async () => {
+  test("fullSync only enqueues update_content event and does not download content immediately", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-content-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
@@ -178,6 +198,15 @@ describe("vfs syncer", () => {
                 size: 6,
               },
             ],
+          };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "f.txt",
+            parentSourceRef: null,
+            name: "f.txt",
+            kind: "file",
+            size: 6,
           };
         },
         async createReadStream(input) {
@@ -207,9 +236,80 @@ describe("vfs syncer", () => {
       await syncer.fullSync();
       off();
 
-      expect(offsets).toEqual([3]);
-      expect(readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toBe("abcdef");
-      expect(events.some((e) => e.type === "download_progress")).toBe(true);
+      expect(offsets).toEqual([]);
+      expect(() => readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toThrow();
+      const queued = repo.listNodeEventsByMountId(mount.mountId);
+      expect(queued.some((event) => event.sourceRef === "f.txt" && event.type === "update_content")).toBe(true);
+      expect(events.some((e) => e.type === "download_progress")).toBe(false);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fullSync consumes queued node events without startWatching", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-fullsync-events-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount();
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({
+            mountId: mount.mountId,
+            sourceRef: "",
+          }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: false },
+        async listChildren() {
+          return {
+            items: [
+              {
+                sourceRef: "f.txt",
+                parentSourceRef: null,
+                name: "f.txt",
+                kind: "file",
+                size: 3,
+              },
+            ],
+          };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "f.txt",
+            parentSourceRef: null,
+            name: "f.txt",
+            kind: "file",
+            size: 3,
+          };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 3000,
+      });
+
+      await syncer.fullSync();
+
+      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([]);
+      expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });
@@ -421,6 +521,9 @@ describe("vfs syncer", () => {
         async listChildren() {
           return { items: [] };
         },
+        async getMetadata() {
+          return null;
+        },
       };
       const mock = createMockLogger();
       const syncer = createVfsSyncer({
@@ -493,6 +596,31 @@ describe("vfs syncer", () => {
           }
           return { items: [] };
         },
+        async getMetadata(input) {
+          if (input.id === "dir/file.txt") {
+            return {
+              sourceRef: "dir/file.txt",
+              parentSourceRef: "dir",
+              name: "file.txt",
+              kind: "file",
+              size: 4,
+              mtimeMs: 1,
+              providerVersion: null,
+            };
+          }
+          if (input.id === "dir") {
+            return {
+              sourceRef: "dir",
+              parentSourceRef: null,
+              name: "dir",
+              kind: "folder",
+              size: null,
+              mtimeMs: null,
+              providerVersion: null,
+            };
+          }
+          return null;
+        },
       };
 
       const syncer = createVfsSyncer({
@@ -540,6 +668,9 @@ describe("vfs syncer", () => {
         capabilities: { watch: false },
         async listChildren() {
           return { items: [] };
+        },
+        async getMetadata() {
+          return null;
         },
       };
 
@@ -624,6 +755,15 @@ describe("vfs syncer", () => {
                 size: 2,
               },
             ],
+          };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "a.txt",
+            parentSourceRef: null,
+            name: "a.txt",
+            kind: "file",
+            size: 2,
           };
         },
       };
@@ -806,6 +946,15 @@ describe("vfs syncer", () => {
             ],
           };
         },
+        async getMetadata() {
+          return {
+            sourceRef: "a.txt",
+            parentSourceRef: null,
+            name: "a.txt",
+            kind: "file",
+            size: 2,
+          };
+        },
       };
 
       const syncer = createVfsSyncer({
@@ -879,6 +1028,15 @@ describe("vfs syncer", () => {
                 size: 2,
               },
             ],
+          };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "a.txt",
+            parentSourceRef: null,
+            name: "a.txt",
+            kind: "file",
+            size: 2,
           };
         },
         async getVersion() {

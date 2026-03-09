@@ -3,11 +3,17 @@ import { mkdir, readFile, rename } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { blake3 } from "hash-wasm";
 import pino, { type Logger } from "pino";
+import { walk } from "./vfs.provider.walk";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
-import type { VfsRepository } from "./vfs.repository.types";
-import type { ListChildrenItem, VfsChangeEvent } from "./vfs.service.types";
-import { complete, type VfsMount, type VfsNode, type VfsNodeRequiredField } from "./vfs.types";
+import type { VfsNodeEventRow, VfsRepository } from "./vfs.repository.types";
+import type { VfsChangeEvent } from "./vfs.service.types";
+import {
+  complete,
+  type VfsMount,
+  type VfsNode,
+  type VfsNodeRequiredField,
+} from "./vfs.types";
 
 export type VfsSyncerEvent =
   | {
@@ -53,6 +59,7 @@ export function createVfsSyncer(input: {
   nowMs?: () => number;
   logger?: Logger;
 }): VfsSyncer {
+  type NodeEventInsertRow = Omit<VfsNodeEventRow, "id">;
   const nowMs = input.nowMs ?? (() => Date.now());
   const logger =
     input.logger ??
@@ -62,6 +69,13 @@ export function createVfsSyncer(input: {
   const listeners = new Set<(event: VfsSyncerEvent) => void>();
   let watchClose: (() => Promise<void>) | null = null;
   let watchQueue: Promise<void> = Promise.resolve();
+  let stopNodeEventsSub: (() => void) | null = null;
+  let nodeEventsRunning = false;
+  let nodeEventsRunPromise: Promise<void> | null = null;
+  let nodeEventsWakeTimer: ReturnType<typeof setTimeout> | null = null;
+  let nodeEventsImmediateRequested = false;
+  const NODE_EVENTS_BATCH = 200;
+  const NODE_EVENTS_IDLE_MS = 1200;
   const emit = (event: VfsSyncerEvent) => {
     if (event.type === "status") {
       logger.info(
@@ -78,8 +92,9 @@ export function createVfsSyncer(input: {
     }
   };
 
-  const itemSourceRef = (item: ListChildrenItem): string => item.sourceRef;
-  const itemProviderId = (item: ListChildrenItem): string => item.nodeId || item.sourceRef;
+  const itemSourceRef = (item: VfsNode): string => item.sourceRef;
+  const itemProviderId = (item: VfsNode): string =>
+    item.nodeId || item.sourceRef;
   const sourceRefParent = (sourceRef: string): string | null => {
     const parts = sourceRef.split("/").filter((part) => part.length > 0);
     if (parts.length <= 1) {
@@ -94,50 +109,21 @@ export function createVfsSyncer(input: {
   const localHashRoot = resolveLocalHashRoot(input.mount);
   const requiredFields = input.requiredFields ?? ["size", "providerVersion"];
 
-  async function walkAllFiles(): Promise<Map<string, ListChildrenItem>> {
-    const discovered = new Map<string, ListChildrenItem>();
-    const queue: Array<{ parentId: string | null; parentSourceRef: string | null }> = [
-      { parentId: null, parentSourceRef: null },
-    ];
-    while (queue.length > 0) {
-      const { parentId, parentSourceRef } = queue.shift()!;
-      let cursor: string | undefined;
-      do {
-        const page = await input.provider.listChildren({
-          parentId,
-          parentSourceRef,
-          limit: 200,
-          cursor,
-        } as unknown as Parameters<typeof input.provider.listChildren>[0]);
-        for (const item of page.items) {
-          discovered.set(itemSourceRef(item), item);
-          if (item.kind === "folder") {
-            queue.push({
-              parentId: itemProviderId(item),
-              parentSourceRef: itemSourceRef(item),
-            });
-          }
-        }
-        cursor = page.nextCursor;
-      } while (cursor);
-    }
-    return discovered;
-  }
-
-  async function enrichMetadataIfNeeded(item: ListChildrenItem): Promise<ListChildrenItem> {
+  async function enrichMetadataIfNeeded(
+    item: VfsNode,
+  ): Promise<VfsNode> {
     if (item.kind !== "file") {
       return item;
     }
     if (complete(item, requiredFields)) {
       return item;
     }
-    if (!input.provider.getMetadata) {
-      return item;
-    }
     const fetched = await input.provider.getMetadata({
       id: itemProviderId(item),
       sourceRef: itemSourceRef(item),
-    } as unknown as Parameters<NonNullable<typeof input.provider.getMetadata>>[0]);
+    } as unknown as Parameters<
+      NonNullable<typeof input.provider.getMetadata>
+    >[0]);
     if (!fetched) {
       return item;
     }
@@ -149,7 +135,9 @@ export function createVfsSyncer(input: {
     };
   }
 
-  async function enrichProviderVersionIfNeeded(item: ListChildrenItem): Promise<ListChildrenItem> {
+  async function enrichProviderVersionIfNeeded(
+    item: VfsNode,
+  ): Promise<VfsNode> {
     if (item.kind !== "file") {
       return item;
     }
@@ -163,7 +151,9 @@ export function createVfsSyncer(input: {
       const fetched = await input.provider.getVersion({
         id: itemProviderId(item),
         sourceRef: itemSourceRef(item),
-      } as unknown as Parameters<NonNullable<typeof input.provider.getVersion>>[0]);
+      } as unknown as Parameters<
+        NonNullable<typeof input.provider.getVersion>
+      >[0]);
       if (typeof fetched === "string" && fetched.length > 0) {
         return {
           ...item,
@@ -176,11 +166,14 @@ export function createVfsSyncer(input: {
     }
     return {
       ...item,
-      providerVersion: await computeLocalFileBlake3(localHashRoot, itemSourceRef(item)),
+      providerVersion: await computeLocalFileBlake3(
+        localHashRoot,
+        itemSourceRef(item),
+      ),
     };
   }
 
-  function toNode(item: ListChildrenItem, now: number): VfsNode {
+  function toNode(item: VfsNode, now: number): VfsNode {
     const nodeId = createVfsNodeId({
       mountId: input.mount.mountId,
       sourceRef: itemSourceRef(item),
@@ -212,7 +205,7 @@ export function createVfsSyncer(input: {
   }
 
   async function syncContent(
-    items: ListChildrenItem[],
+    items: VfsNode[],
     options?: { restartSourceRefs?: Set<string> },
   ): Promise<void> {
     if (!input.mount.syncContent || !input.provider.createReadStream) {
@@ -224,7 +217,11 @@ export function createVfsSyncer(input: {
         continue;
       }
       const sourceRef = itemSourceRef(item);
-      const finalPath = join(input.contentRootParent, input.mount.mountId, ...sourceRef.split("/"));
+      const finalPath = join(
+        input.contentRootParent,
+        input.mount.mountId,
+        ...sourceRef.split("/"),
+      );
       const partPath = `${finalPath}.part`;
       await mkdir(dirname(finalPath), { recursive: true });
       const forceRestart = options?.restartSourceRefs?.has(sourceRef) ?? false;
@@ -288,10 +285,14 @@ export function createVfsSyncer(input: {
       emit({ type: "status", payload: { isSyncing: true, phase: "metadata" } });
       const now = nowMs();
       const existing = input.repository.listNodesByMountId(input.mount.mountId);
-      const existingByRef = new Map(existing.map((node) => [node.sourceRef, node]));
+      const existingByRef = new Map(
+        existing.map((node) => [node.sourceRef, node]),
+      );
 
-      const walked = await walkAllFiles();
-      const walkedItems = [...walked.values()];
+      const walkedItems = await walk({
+        provider: input.provider,
+        requiredFields,
+      });
       logger.info(
         { mountId: input.mount.mountId, discoveredCount: walkedItems.length },
         "syncer discovered remote metadata",
@@ -300,8 +301,7 @@ export function createVfsSyncer(input: {
       let processed = 0;
       let added = 0;
       let updated = 0;
-      const restartSourceRefs = new Set<string>();
-      const upsertRows: VfsNode[] = [];
+      const eventRows: NodeEventInsertRow[] = [];
       for (const item of walkedItems) {
         const full = await enrichProviderVersionIfNeeded(
           await enrichMetadataIfNeeded(item),
@@ -313,21 +313,55 @@ export function createVfsSyncer(input: {
         }
         if (!prev) {
           added += 1;
+          appendNodeEventsFromDiff(eventRows, {
+            sourceRef: node.sourceRef,
+            parentId: node.parentId,
+            createdAtMs: now,
+            kind: "add",
+            node,
+          });
+          if (
+            input.mount.syncContent &&
+            input.provider.createReadStream &&
+            node.kind === "file"
+          ) {
+            appendNodeEventsFromDiff(eventRows, {
+              sourceRef: node.sourceRef,
+              parentId: node.parentId,
+              createdAtMs: now,
+              kind: "update",
+              metadataChanged: false,
+              contentChanged: true,
+              node,
+            });
+          }
         } else if (
           prev.deletedAtMs !== null ||
+          prev.name !== node.name ||
+          prev.kind !== node.kind ||
           prev.size !== node.size ||
           prev.mtimeMs !== node.mtimeMs ||
           prev.providerVersion !== node.providerVersion
         ) {
           updated += 1;
+          const shouldEmitContentUpdate =
+            prev.deletedAtMs !== null ||
+            prev.size !== node.size ||
+            prev.mtimeMs !== node.mtimeMs ||
+            prev.providerVersion !== node.providerVersion;
+          appendNodeEventsFromDiff(eventRows, {
+            sourceRef: node.sourceRef,
+            parentId: node.parentId,
+            createdAtMs: now,
+            kind: "update",
+            metadataChanged: true,
+            contentChanged: shouldEmitContentUpdate,
+            node,
+          });
           node.createdAtMs = prev.createdAtMs;
-          if (prev.providerVersion !== node.providerVersion) {
-            restartSourceRefs.add(node.sourceRef);
-          }
         } else {
           node.createdAtMs = prev.createdAtMs;
         }
-        upsertRows.push(node);
         processed += 1;
         emit({
           type: "metadata_progress",
@@ -354,13 +388,22 @@ export function createVfsSyncer(input: {
           deletedAtMs: now,
           updatedAtMs: now,
         }));
-
-      if (upsertRows.length > 0) {
-        input.repository.upsertNodes(upsertRows);
+      for (const node of deletedRows) {
+        appendNodeEventsFromDiff(eventRows, {
+          sourceRef: node.sourceRef,
+          parentId: node.parentId,
+          createdAtMs: now,
+          kind: "delete",
+          node,
+        });
       }
-      if (deletedRows.length > 0) {
-        input.repository.upsertNodes(deletedRows);
+      if (eventRows.length > 0) {
+        input.repository.insertNodeEvents(eventRows);
       }
+      await runNodeEventsHandler({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       emit({
         type: "metadata_progress",
         payload: {
@@ -381,8 +424,6 @@ export function createVfsSyncer(input: {
         },
         "syncer metadata reconcile completed",
       );
-
-      await syncContent(walkedItems, { restartSourceRefs });
       emit({ type: "status", payload: { isSyncing: false, phase: "idle" } });
     },
 
@@ -391,16 +432,27 @@ export function createVfsSyncer(input: {
         return;
       }
       logger.info({ mountId: input.mount.mountId }, "syncer watch started");
+      ensureNodeEventsSubscription();
+      triggerNodeEventsScan(true);
       const active = await input.provider.watch({
         onEvent: (event) => {
           watchQueue = watchQueue
             .then(async () => {
-              emit({ type: "status", payload: { isSyncing: true, phase: "metadata" } });
+              emit({
+                type: "status",
+                payload: { isSyncing: true, phase: "metadata" },
+              });
               await handleWatchEvent(event);
-              emit({ type: "status", payload: { isSyncing: false, phase: "idle" } });
+              emit({
+                type: "status",
+                payload: { isSyncing: false, phase: "idle" },
+              });
             })
             .catch(() => {
-              emit({ type: "status", payload: { isSyncing: false, phase: "idle" } });
+              emit({
+                type: "status",
+                payload: { isSyncing: false, phase: "idle" },
+              });
             });
         },
       });
@@ -408,13 +460,20 @@ export function createVfsSyncer(input: {
     },
 
     async stopWatching() {
-      if (!watchClose) {
-        return;
+      if (watchClose) {
+        await watchQueue;
+        await watchClose();
+        watchClose = null;
+        logger.info({ mountId: input.mount.mountId }, "syncer watch stopped");
       }
-      await watchQueue;
-      await watchClose();
-      watchClose = null;
-      logger.info({ mountId: input.mount.mountId }, "syncer watch stopped");
+      if (stopNodeEventsSub) {
+        stopNodeEventsSub();
+        stopNodeEventsSub = null;
+      }
+      if (nodeEventsWakeTimer) {
+        clearTimeout(nodeEventsWakeTimer);
+        nodeEventsWakeTimer = null;
+      }
     },
 
     subscribe(listener) {
@@ -425,17 +484,117 @@ export function createVfsSyncer(input: {
     },
   };
 
-  async function handleWatchEvent(event: VfsChangeEvent): Promise<void> {
+  function ensureNodeEventsSubscription(): void {
+    if (stopNodeEventsSub) {
+      return;
+    }
+    stopNodeEventsSub = input.repository.subscribeNodeChanges(() => {
+      if (!nodeEventsRunning) {
+        triggerNodeEventsScan(true);
+      }
+    });
+  }
+
+  function triggerNodeEventsScan(immediate = false): void {
+    if (immediate) {
+      nodeEventsImmediateRequested = true;
+      if (nodeEventsWakeTimer) {
+        clearTimeout(nodeEventsWakeTimer);
+        nodeEventsWakeTimer = null;
+      }
+    }
+    if (nodeEventsRunning) {
+      return;
+    }
+    const runPromise = runNodeEventsHandler();
+    nodeEventsRunPromise = runPromise.finally(() => {
+      if (nodeEventsRunPromise === runPromise) {
+        nodeEventsRunPromise = null;
+      }
+    });
+  }
+
+  function scheduleNodeEventsSlowScan(): void {
+    if (nodeEventsWakeTimer) {
+      return;
+    }
+    nodeEventsWakeTimer = setTimeout(() => {
+      nodeEventsWakeTimer = null;
+      triggerNodeEventsScan(false);
+    }, NODE_EVENTS_IDLE_MS);
+  }
+
+  async function runNodeEventsHandler(options?: {
+    allowContentSync?: boolean;
+    includeContentUpdates?: boolean;
+  }): Promise<void> {
+    if (nodeEventsRunning) {
+      return;
+    }
+    nodeEventsRunning = true;
+    try {
+      while (true) {
+        const rows = input.repository
+          .listNodeEventsByMountId(input.mount.mountId, NODE_EVENTS_BATCH)
+          .filter(
+            (row) =>
+              options?.includeContentUpdates !== false ||
+              row.type !== "update_content",
+          );
+        if (rows.length === 0) {
+          break;
+        }
+        for (const event of rows) {
+          try {
+            await applyNodeEvent(event, {
+              allowContentSync: options?.allowContentSync,
+            });
+          } catch (error) {
+            logger.warn(
+              {
+                mountId: input.mount.mountId,
+                sourceRef: event.sourceRef,
+                error: String(error),
+              },
+              "syncer nodeEvents handler failed",
+            );
+          }
+          input.repository.deleteNodeEventsByIds([event.id]);
+        }
+      }
+    } finally {
+      nodeEventsRunning = false;
+      if (nodeEventsImmediateRequested) {
+        nodeEventsImmediateRequested = false;
+        triggerNodeEventsScan(false);
+        return;
+      }
+      scheduleNodeEventsSlowScan();
+    }
+  }
+
+  async function applyNodeEvent(event: {
+    id: string;
+    sourceRef: string;
+    mountId: string;
+    parentId: string | null;
+    type: "add" | "update_metadata" | "update_content" | "delete";
+    node: VfsNode | null;
+    createdAtMs: number;
+  }, options?: { allowContentSync?: boolean }): Promise<void> {
     logger.info(
       {
         mountId: input.mount.mountId,
-        type: event.type,
-        id: event.id,
+        type: event.type === "delete" ? "delete" : "upsert",
+        id: event.sourceRef,
       },
       "syncer watch event received",
     );
     const now = nowMs();
-    const prev = input.repository.listNodesByMountIdAndSourceRef(input.mount.mountId, event.id);
+    const prev = input.repository.listNodesByMountIdAndSourceRef(
+      input.mount.mountId,
+      event.sourceRef,
+    );
 
     if (event.type === "delete") {
       if (!prev || prev.deletedAtMs !== null) {
@@ -455,14 +614,19 @@ export function createVfsSyncer(input: {
       return;
     }
 
-    if (!input.provider.getMetadata) {
-      return;
+    let enriched = event.node;
+    if (!enriched) {
+      const fetched = await input.provider.getMetadata({
+        id: event.sourceRef,
+        sourceRef: event.sourceRef,
+      } as unknown as Parameters<
+        NonNullable<typeof input.provider.getMetadata>
+      >[0]);
+      if (fetched) {
+        enriched = await enrichProviderVersionIfNeeded(fetched);
+      }
     }
-    const fetched = await input.provider.getMetadata({
-      id: event.id,
-      sourceRef: event.id,
-    } as unknown as Parameters<NonNullable<typeof input.provider.getMetadata>>[0]);
-    if (!fetched) {
+    if (!enriched) {
       if (!prev || prev.deletedAtMs !== null) {
         return;
       }
@@ -479,8 +643,6 @@ export function createVfsSyncer(input: {
       });
       return;
     }
-
-    const enriched = await enrichProviderVersionIfNeeded(fetched);
     const node = toNode(enriched, now);
     if (prev) {
       node.createdAtMs = prev.createdAtMs;
@@ -501,16 +663,24 @@ export function createVfsSyncer(input: {
     });
 
     const shouldSyncSingle =
+      options?.allowContentSync !== false &&
       input.mount.syncContent &&
       input.provider.createReadStream &&
       enriched.kind === "file" &&
-      ((event.type === "update" && event.contentUpdated === true) ||
+      (event.type === "add" ||
+        event.type === "update_content" ||
         !prev ||
         prev.deletedAtMs !== null ||
         prev.size !== node.size ||
         prev.mtimeMs !== node.mtimeMs ||
         prev.providerVersion !== node.providerVersion ||
-        !existsSync(join(input.contentRootParent, input.mount.mountId, ...enriched.sourceRef.split("/"))));
+        !existsSync(
+          join(
+            input.contentRootParent,
+            input.mount.mountId,
+            ...enriched.sourceRef.split("/"),
+          ),
+        ));
     if (!shouldSyncSingle) {
       return;
     }
@@ -520,6 +690,81 @@ export function createVfsSyncer(input: {
       restartSourceRefs.add(enriched.sourceRef);
     }
     await syncContent([enriched], { restartSourceRefs });
+  }
+
+  async function handleWatchEvent(event: VfsChangeEvent): Promise<void> {
+    const createdAtMs = nowMs();
+    const rows: NodeEventInsertRow[] = [];
+    if (event.type === "delete") {
+      appendNodeEventsFromDiff(rows, {
+        sourceRef: event.id,
+        parentId: event.parentId,
+        createdAtMs,
+        kind: "delete",
+      });
+    } else if (event.type === "add") {
+      appendNodeEventsFromDiff(rows, {
+        sourceRef: event.id,
+        parentId: event.parentId,
+        createdAtMs,
+        kind: "add",
+        expandAddToUpdates: true,
+      });
+    } else if (event.type === "update") {
+      appendNodeEventsFromDiff(rows, {
+        sourceRef: event.id,
+        parentId: event.parentId,
+        createdAtMs,
+        kind: "update",
+        metadataChanged: event.metadataChanged !== false,
+        contentChanged: event.contentUpdated !== false,
+      });
+    }
+    input.repository.insertNodeEvents(rows);
+  }
+
+  function appendNodeEventsFromDiff(
+    target: NodeEventInsertRow[],
+    inputDiff: {
+      sourceRef: string;
+      parentId: string | null;
+      createdAtMs: number;
+      kind: "add" | "update" | "delete";
+      metadataChanged?: boolean;
+      contentChanged?: boolean;
+      expandAddToUpdates?: boolean;
+      node?: VfsNode | null;
+    },
+  ): void {
+    const makeRow = (
+      type: NodeEventInsertRow["type"],
+    ): NodeEventInsertRow => ({
+      sourceRef: inputDiff.sourceRef,
+      mountId: input.mount.mountId,
+      parentId: inputDiff.parentId,
+      type,
+      node: inputDiff.node ?? null,
+      createdAtMs: inputDiff.createdAtMs,
+    });
+
+    if (inputDiff.kind === "delete") {
+      target.push(makeRow("delete"));
+      return;
+    }
+    if (inputDiff.kind === "add") {
+      target.push(makeRow("add"));
+      if (inputDiff.expandAddToUpdates) {
+        target.push(makeRow("update_metadata"));
+        target.push(makeRow("update_content"));
+      }
+      return;
+    }
+    if (inputDiff.metadataChanged) {
+      target.push(makeRow("update_metadata"));
+    }
+    if (inputDiff.contentChanged) {
+      target.push(makeRow("update_content"));
+    }
   }
 }
 
@@ -534,12 +779,16 @@ function resolveLocalHashRoot(mount: VfsMount): string | null {
   return isAbsolute(raw) ? raw : resolve(raw);
 }
 
-async function computeLocalFileBlake3(root: string, sourceRef: string): Promise<string> {
+async function computeLocalFileBlake3(
+  root: string,
+  sourceRef: string,
+): Promise<string> {
   const normalized = sourceRef
     .split("/")
     .filter((part) => part.length > 0)
     .join("/");
-  const absPath = normalized.length === 0 ? root : resolve(root, ...normalized.split("/"));
+  const absPath =
+    normalized.length === 0 ? root : resolve(root, ...normalized.split("/"));
   const rel = relative(root, absPath);
   if (rel.startsWith("..") || rel.includes(`..${sep}`)) {
     throw new Error(`sourceRef escapes local root: "${sourceRef}"`);
@@ -550,7 +799,7 @@ async function computeLocalFileBlake3(root: string, sourceRef: string): Promise<
 
 async function downloadWithResume(input: {
   provider: VfsProviderAdapter;
-  item: ListChildrenItem;
+  item: VfsNode;
   finalPath: string;
   partPath: string;
   startOffset: number;
@@ -564,7 +813,9 @@ async function downloadWithResume(input: {
         id: input.item.nodeId || input.item.sourceRef,
         sourceRef: input.item.sourceRef,
         offset: startOffset > 0 ? startOffset : undefined,
-      } as unknown as Parameters<NonNullable<typeof input.provider.createReadStream>>[0]);
+      } as unknown as Parameters<
+        NonNullable<typeof input.provider.createReadStream>
+      >[0]);
       const writer = createWriteStream(input.partPath, {
         flags: startOffset > 0 ? "a" : "w",
       });

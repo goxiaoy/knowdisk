@@ -32,17 +32,18 @@ export type VfsPageCacheRow = {
 };
 
 export type VfsNodeEventRow = {
-  id: number;
-  nodeId: string;
+  id: string;
+  sourceRef: string;
   mountId: string;
   parentId: string | null;
   type: "add" | "update_metadata" | "update_content" | "delete";
+  node: VfsNode | null;
   createdAtMs: number;
 };
 
 export type VfsRepository = {
   close: () => void;
-  subscribeNodeChanges: (listener: (changes: VfsNodeChange[]) => void) => () => void;
+  subscribeNodeChanges: (listener: () => void) => () => void;
 
   upsertNodeMountExt: (row: VfsNodeMountExtRow) => void;
   listNodeMountExts: () => VfsNodeMountExtRow[];
@@ -60,10 +61,6 @@ export type VfsRepository = {
   deletePageCacheByMountId: (mountId: string) => void;
   insertNodeEvents: (rows: Array<Omit<VfsNodeEventRow, "id">>) => void;
   listNodeEvents: (limit?: number) => VfsNodeEventRow[];
-  deleteNodeEventsByIds: (ids: number[]) => void;
-};
-
-export type VfsNodeChange = {
-  prev: VfsNode | null;
-  next: VfsNode;
+  listNodeEventsByMountId: (mountId: string, limit?: number) => VfsNodeEventRow[];
+  deleteNodeEventsByIds: (ids: string[]) => void;
 };

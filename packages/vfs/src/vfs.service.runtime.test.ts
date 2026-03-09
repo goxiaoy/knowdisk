@@ -259,41 +259,20 @@ describe("vfs service runtime", () => {
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
-    const mountNode = ctx.repo
-      .listNodesByMountId(mount.mountId)
-      .find((node) => node.kind === "mount");
-    expect(mountNode).toBeDefined();
-
-    ctx.repo.upsertNodes([
+    ctx.repo.insertNodeEvents([
       {
-        nodeId: "file-1",
+        sourceRef: "file-1",
         mountId: mount.mountId,
-        parentId: mountNode!.nodeId,
-        name: "old.txt",
-        kind: "file",
-        size: 1,
-        mtimeMs: 1,
-        sourceRef: "old.txt",
-        providerVersion: "v1",
-        deletedAtMs: null,
+        parentId: null,
+        type: "update_metadata",
         createdAtMs: 1,
-        updatedAtMs: 1,
       },
-    ]);
-    ctx.repo.upsertNodes([
       {
-        nodeId: "file-1",
+        sourceRef: "file-1",
         mountId: mount.mountId,
-        parentId: mountNode!.nodeId,
-        name: "new.txt",
-        kind: "file",
-        size: 2,
-        mtimeMs: 2,
-        sourceRef: "old.txt",
-        providerVersion: "v2",
-        deletedAtMs: null,
-        createdAtMs: 1,
-        updatedAtMs: 2,
+        parentId: null,
+        type: "update_content",
+        createdAtMs: 2,
       },
     ]);
 
@@ -335,42 +314,27 @@ describe("vfs service runtime", () => {
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
-    const mountNode = ctx.repo
-      .listNodesByMountId(mount.mountId)
-      .find((node) => node.kind === "mount");
-    expect(mountNode).toBeDefined();
-
-    ctx.repo.upsertNodes([
+    ctx.repo.insertNodeEvents([
       {
-        nodeId: "local-file-1",
+        sourceRef: "local-file-1",
         mountId: mount.mountId,
-        parentId: mountNode!.nodeId,
-        name: "a.txt",
-        kind: "file",
-        size: 1,
-        mtimeMs: 1,
-        sourceRef: "a.txt",
-        providerVersion: "v1",
-        deletedAtMs: null,
+        parentId: null,
+        type: "add",
         createdAtMs: 1,
-        updatedAtMs: 1,
       },
-    ]);
-    await Bun.sleep(30);
-    ctx.repo.upsertNodes([
       {
-        nodeId: "local-file-1",
+        sourceRef: "local-file-1",
         mountId: mount.mountId,
-        parentId: mountNode!.nodeId,
-        name: "a.txt",
-        kind: "file",
-        size: 2,
-        mtimeMs: 2,
-        sourceRef: "a.txt",
-        providerVersion: "v2",
-        deletedAtMs: null,
-        createdAtMs: 1,
-        updatedAtMs: 2,
+        parentId: null,
+        type: "update_metadata",
+        createdAtMs: 2,
+      },
+      {
+        sourceRef: "local-file-1",
+        mountId: mount.mountId,
+        parentId: null,
+        type: "update_content",
+        createdAtMs: 3,
       },
     ]);
 
@@ -429,44 +393,13 @@ describe("vfs service runtime", () => {
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
-    const mountNode = ctx.repo
-      .listNodesByMountId(mount.mountId)
-      .find((node) => node.kind === "mount");
-    expect(mountNode).toBeDefined();
-
-    ctx.repo.upsertNodes([
+    ctx.repo.insertNodeEvents([
       {
-        nodeId: "debounce-file-1",
+        sourceRef: "debounce-file-1",
         mountId: mount.mountId,
-        parentId: mountNode!.nodeId,
-        name: "a.txt",
-        kind: "file",
-        size: 1,
-        mtimeMs: 1,
-        sourceRef: "a.txt",
-        providerVersion: "v1",
-        deletedAtMs: null,
+        parentId: null,
+        type: "update_content",
         createdAtMs: 1,
-        updatedAtMs: 1,
-      },
-    ]);
-    await Bun.sleep(40);
-    events.length = 0;
-
-    ctx.repo.upsertNodes([
-      {
-        nodeId: "debounce-file-1",
-        mountId: mount.mountId,
-        parentId: mountNode!.nodeId,
-        name: "a.txt",
-        kind: "file",
-        size: 2,
-        mtimeMs: 2,
-        sourceRef: "a.txt",
-        providerVersion: "v2",
-        deletedAtMs: null,
-        createdAtMs: 1,
-        updatedAtMs: 2,
       },
     ]);
     await Bun.sleep(70);

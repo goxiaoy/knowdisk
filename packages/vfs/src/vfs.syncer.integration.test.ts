@@ -6,7 +6,7 @@ import { join, relative } from "node:path";
 import pino from "pino";
 import { createHuggingFaceVfsProvider } from "./provider/huggingface";
 import { createLocalVfsProvider } from "./provider/local";
-import { walkProvider } from "./vfs.provider.walk";
+import { walk } from "./vfs.provider.walk";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsSyncer } from "./vfs.syncer";
 import type { VfsMount } from "./vfs.types";
@@ -78,10 +78,9 @@ describe("vfs syncer integration", () => {
 
         const remote = new Map(
           (
-            await walkProvider({
+            await walk({
               provider,
               mount,
-              getMetadata: provider.getMetadata,
             })
           ).map((entry) => [entry.sourceRef, entry]),
         );
