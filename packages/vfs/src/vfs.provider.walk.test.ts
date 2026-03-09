@@ -1,39 +1,51 @@
 import { describe, expect, test } from "bun:test";
 import { walk } from "./vfs.provider.walk";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
+import type { VfsNode } from "./vfs.types";
+
+function node(
+  input: Partial<VfsNode> & Pick<VfsNode, "sourceRef" | "name" | "kind">,
+): VfsNode {
+  return {
+    nodeId: input.nodeId ?? input.sourceRef,
+    mountId: input.mountId ?? "m1",
+    parentId: input.parentId ?? null,
+    name: input.name,
+    kind: input.kind,
+    size: input.size ?? null,
+    mtimeMs: input.mtimeMs ?? null,
+    sourceRef: input.sourceRef,
+    providerVersion: input.providerVersion ?? null,
+    deletedAtMs: input.deletedAtMs ?? null,
+    createdAtMs: input.createdAtMs ?? 0,
+    updatedAtMs: input.updatedAtMs ?? 0,
+  };
+}
+
 describe("vfs provider walk helper", () => {
   test("walkProvider traverses all nested children", async () => {
-    const provider: Pick<VfsProviderAdapter, "listChildren" | "getMetadata"> = {
+    const provider: VfsProviderAdapter = {
+      type: "test",
+      capabilities: { watch: false },
       async listChildren(input) {
         if (input.parentId === null) {
           return {
             items: [
-              {
-                sourceRef: "a.txt",
-                parentSourceRef: null,
-                name: "a.txt",
-                kind: "file",
-                size: 1,
-              },
-              {
-                sourceRef: "sub",
-                parentSourceRef: null,
-                name: "sub",
-                kind: "folder",
-              },
+              node({ sourceRef: "a.txt", name: "a.txt", kind: "file", size: 1 }),
+              node({ sourceRef: "sub", name: "sub", kind: "folder" }),
             ],
           };
         }
         if (input.parentId === "sub") {
           return {
             items: [
-              {
+              node({
                 sourceRef: "sub/b.txt",
-                parentSourceRef: "sub",
+                parentId: "sub",
                 name: "b.txt",
                 kind: "file",
                 size: 2,
-              },
+              }),
             ],
           };
         }
@@ -49,18 +61,12 @@ describe("vfs provider walk helper", () => {
   });
 
   test("walkProvider supports callback style", async () => {
-    const provider: Pick<VfsProviderAdapter, "listChildren" | "getMetadata"> = {
+    const provider: VfsProviderAdapter = {
+      type: "test",
+      capabilities: { watch: false },
       async listChildren() {
         return {
-          items: [
-            {
-              sourceRef: "x.txt",
-              parentSourceRef: null,
-              name: "x.txt",
-              kind: "file",
-              size: 1,
-            },
-          ],
+          items: [node({ sourceRef: "x.txt", name: "x.txt", kind: "file", size: 1 })],
         };
       },
       async getMetadata() {
@@ -81,32 +87,32 @@ describe("vfs provider walk helper", () => {
   });
 
   test("walkProvider enriches required fields via getMetadata", async () => {
-    const provider: Pick<VfsProviderAdapter, "listChildren" | "getMetadata"> = {
+    const provider: VfsProviderAdapter = {
+      type: "test",
+      capabilities: { watch: false },
       async listChildren() {
         return {
           items: [
-            {
+            node({
               sourceRef: "a.txt",
-              parentSourceRef: null,
               name: "a.txt",
               kind: "file",
               size: 2,
               mtimeMs: null,
               providerVersion: null,
-            },
+            }),
           ],
         };
       },
       async getMetadata() {
-        return {
+        return node({
           sourceRef: "a.txt",
-          parentSourceRef: null,
           name: "a.txt",
           kind: "file",
           size: 2,
           mtimeMs: 123,
           providerVersion: null,
-        };
+        });
       },
     };
 
@@ -118,32 +124,32 @@ describe("vfs provider walk helper", () => {
   });
 
   test("walkProvider enriches providerVersion when requiredFields includes providerVersion", async () => {
-    const provider: Pick<VfsProviderAdapter, "listChildren" | "getMetadata"> = {
+    const provider: VfsProviderAdapter = {
+      type: "test",
+      capabilities: { watch: false },
       async listChildren() {
         return {
           items: [
-            {
+            node({
               sourceRef: "a.txt",
-              parentSourceRef: null,
               name: "a.txt",
               kind: "file",
               size: 2,
               mtimeMs: 123,
               providerVersion: null,
-            },
+            }),
           ],
         };
       },
       async getMetadata() {
-        return {
+        return node({
           sourceRef: "a.txt",
-          parentSourceRef: null,
           name: "a.txt",
           kind: "file",
           size: 2,
           mtimeMs: 123,
           providerVersion: "pv1",
-        };
+        });
       },
     };
 
@@ -155,20 +161,21 @@ describe("vfs provider walk helper", () => {
   });
 
   test("walkProvider uses provider node id when enriching providerVersion", async () => {
-    const provider: Pick<VfsProviderAdapter, "listChildren" | "getMetadata"> = {
+    const provider: VfsProviderAdapter = {
+      type: "test",
+      capabilities: { watch: false },
       async listChildren() {
         return {
           items: [
-            {
+            node({
               nodeId: "provider-file-id",
               sourceRef: "a.txt",
-              parentSourceRef: null,
               name: "a.txt",
               kind: "file",
               size: 2,
               mtimeMs: 123,
               providerVersion: null,
-            },
+            }),
           ],
         };
       },
@@ -176,15 +183,14 @@ describe("vfs provider walk helper", () => {
         if (input.id !== "provider-file-id") {
           return null;
         }
-        return {
+        return node({
           sourceRef: "a.txt",
-          parentSourceRef: null,
           name: "a.txt",
           kind: "file",
           size: 2,
           mtimeMs: 123,
           providerVersion: "pv-node-id",
-        };
+        });
       },
     };
 
@@ -198,37 +204,34 @@ describe("vfs provider walk helper", () => {
   test("walkProvider prefers getVersion for providerVersion-only enrichment", async () => {
     const metadataCalls: string[] = [];
     const versionCalls: string[] = [];
-    const provider: Pick<
-      VfsProviderAdapter,
-      "listChildren" | "getMetadata" | "getVersion"
-    > = {
+    const provider: VfsProviderAdapter = {
+      type: "test",
+      capabilities: { watch: false },
       async listChildren() {
         return {
           items: [
-            {
+            node({
               nodeId: "provider-file-id",
               sourceRef: "a.txt",
-              parentSourceRef: null,
               name: "a.txt",
               kind: "file",
               size: 2,
               mtimeMs: 123,
               providerVersion: null,
-            },
+            }),
           ],
         };
       },
       async getMetadata(input) {
         metadataCalls.push(input.id);
-        return {
+        return node({
           sourceRef: "a.txt",
-          parentSourceRef: null,
           name: "a.txt",
           kind: "file",
           size: 2,
           mtimeMs: 123,
           providerVersion: "pv-from-metadata",
-        };
+        });
       },
       async getVersion(input) {
         versionCalls.push(input.id);
@@ -237,7 +240,7 @@ describe("vfs provider walk helper", () => {
     };
 
     const entries = await walk({
-      provider: provider as VfsProviderAdapter,
+      provider,
       requiredFields: ["providerVersion"],
     });
     expect(entries[0]?.providerVersion).toBe("pv-from-version");
@@ -246,47 +249,34 @@ describe("vfs provider walk helper", () => {
   });
 
   test("walkProvider traverses children by provider node id instead of sourceRef", async () => {
-    const provider: Pick<VfsProviderAdapter, "listChildren" | "getMetadata"> = {
+    const provider: VfsProviderAdapter = {
+      type: "test",
+      capabilities: { watch: false },
       async listChildren(input) {
         if (input.parentId === null) {
           return {
             items: [
-              {
+              node({
                 nodeId: "folder-id",
                 sourceRef: "dir",
-                parentSourceRef: null,
                 name: "dir",
                 kind: "folder",
-                size: null,
-                mtimeMs: null,
-                providerVersion: null,
-                mountId: "m1",
-                parentId: null,
-                deletedAtMs: null,
-                createdAtMs: 0,
-                updatedAtMs: 0,
-              },
+              }),
             ],
           };
         }
         if (input.parentId === "folder-id") {
           return {
             items: [
-              {
+              node({
                 nodeId: "child-id",
                 sourceRef: "dir/file.txt",
-                parentSourceRef: "dir",
+                parentId: "folder-id",
                 name: "file.txt",
                 kind: "file",
                 size: 1,
                 mtimeMs: 1,
-                providerVersion: null,
-                mountId: "m1",
-                parentId: "folder-id",
-                deletedAtMs: null,
-                createdAtMs: 0,
-                updatedAtMs: 0,
-              },
+              }),
             ],
           };
         }

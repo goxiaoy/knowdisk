@@ -8,7 +8,6 @@ import {
   createVfsRepository,
   createVfsService,
   type VfsMount,
-  type VfsNode,
   type VfsProviderAdapter,
 } from "../src";
 
@@ -176,7 +175,7 @@ export async function createVfsExampleApp(input?: {
       }
     }
     return mounts.map((mount) => statuses.get(mount.mountId)!);
-  }
+  };
 
   const listeners = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const encoder = new TextEncoder();
@@ -185,20 +184,20 @@ export async function createVfsExampleApp(input?: {
       `event: ${event.type}\ndata: ${JSON.stringify(event.payload)}\n\n`,
     );
     for (const listener of listeners) {
-      try {
-        listener.enqueue(chunk);
-      } catch {
-        listeners.delete(listener);
-      }
+      listener.enqueue(chunk);
     }
   };
-  const watchHandle = await vfs.watch({
-    onEvent(event) {
-      sendEvent({
-        type: "vfs-change",
-        payload: event,
-      });
-    },
+  const stopNodeChangesSub = vfs.subscribeNodeChanges((row) => {
+    sendEvent({
+      type: "vfs-change",
+      payload: {
+        type: row.deletedAtMs === null ? "update" : "delete",
+        id: row.nodeId,
+        parentId: row.parentId,
+        contentUpdated: null,
+        metadataChanged: true,
+      },
+    });
   });
 
   if (input?.startSyncOnBoot !== false) {
@@ -301,13 +300,22 @@ export async function createVfsExampleApp(input?: {
 
       if (url.pathname === "/api/create" && request.method === "POST") {
         try {
-          const body = await request.json() as {
+          const body = (await request.json()) as {
             parentNodeId?: string;
             name?: string;
             kind?: "file" | "folder";
           };
           if (!body.parentNodeId) {
-            return Response.json({ error: "parentNodeId is required" }, { status: 400 });
+            return Response.json(
+              { error: "parentNodeId is required" },
+              { status: 400 },
+            );
+          }
+          if (!vfs.create) {
+            return Response.json(
+              { error: "create is not supported" },
+              { status: 400 },
+            );
           }
           const created = await vfs.create({
             parentId: body.parentNodeId,
@@ -316,19 +324,29 @@ export async function createVfsExampleApp(input?: {
           });
           return Response.json({ node: created });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           return Response.json({ error: message }, { status: 400 });
         }
       }
 
       if (url.pathname === "/api/rename" && request.method === "POST") {
         try {
-          const body = await request.json() as {
+          const body = (await request.json()) as {
             nodeId?: string;
             name?: string;
           };
           if (!body.nodeId || !body.name) {
-            return Response.json({ error: "nodeId and name are required" }, { status: 400 });
+            return Response.json(
+              { error: "nodeId and name are required" },
+              { status: 400 },
+            );
+          }
+          if (!vfs.rename) {
+            return Response.json(
+              { error: "rename is not supported" },
+              { status: 400 },
+            );
           }
           const renamed = await vfs.rename({
             id: body.nodeId,
@@ -336,25 +354,36 @@ export async function createVfsExampleApp(input?: {
           });
           return Response.json({ node: renamed });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           return Response.json({ error: message }, { status: 400 });
         }
       }
 
       if (url.pathname === "/api/delete" && request.method === "POST") {
         try {
-          const body = await request.json() as {
+          const body = (await request.json()) as {
             nodeId?: string;
           };
           if (!body.nodeId) {
-            return Response.json({ error: "nodeId is required" }, { status: 400 });
+            return Response.json(
+              { error: "nodeId is required" },
+              { status: 400 },
+            );
+          }
+          if (!vfs.delete) {
+            return Response.json(
+              { error: "delete is not supported" },
+              { status: 400 },
+            );
           }
           await vfs.delete({
             id: body.nodeId,
           });
           return Response.json({ ok: true });
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           return Response.json({ error: message }, { status: 400 });
         }
       }
@@ -399,7 +428,7 @@ export async function createVfsExampleApp(input?: {
     baseUrl: `http://127.0.0.1:${server.port}`,
     mounts: listMountedNodes(),
     async stop() {
-      await watchHandle.close();
+      stopNodeChangesSub();
       await vfs.close();
       repository.close();
       server.stop(true);
@@ -422,7 +451,16 @@ function writeBootstrapFiles(testdataDir: string) {
 }
 
 function renderHtml(input: {
-  mounts: Array<VfsMount & { mountNodeId: string }>;
+  mounts: Array<
+    VfsMount & {
+      mountNodeId: string;
+      operations: {
+        create: boolean;
+        rename: boolean;
+        delete: boolean;
+      };
+    }
+  >;
   statuses: MountStatus[];
 }): string {
   return `<!doctype html>
@@ -499,11 +537,13 @@ function renderHtml(input: {
     </section>
   </div>
   <script>
-    let mounts = ${JSON.stringify(input.mounts.map((item) => ({
-      mountId: item.mountId,
-      mountNodeId: item.mountNodeId,
-      operations: item.operations,
-    })))};
+    let mounts = ${JSON.stringify(
+      input.mounts.map((item) => ({
+        mountId: item.mountId,
+        mountNodeId: item.mountNodeId,
+        operations: item.operations,
+      })),
+    )};
     let statuses = ${JSON.stringify(input.statuses)};
     let selectedPath = mounts[0]?.mountNodeId || "";
     let selectedMountId = mounts[0]?.mountId || "";

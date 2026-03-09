@@ -83,7 +83,7 @@ export function walk(
       throw error;
     });
 }
-async function enrichMetadataIfNeeded(
+export async function enrichMetadataIfNeeded(
   item: VfsNode,
   provider: VfsProviderAdapter,
   requiredFields: VfsNodeRequiredField[],

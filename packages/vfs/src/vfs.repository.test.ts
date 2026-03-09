@@ -243,6 +243,9 @@ describe("vfs repository", () => {
 
   test("insert/list/delete node events refreshes id on conflict and deletes by id", () => {
     const { dir, repo } = makeRepo();
+    expect("listNodeEvents" in repo).toBe(false);
+    expect("subscribeNodeChanges" in repo).toBe(true);
+    expect("subscribeNodeEventsQueued" in repo).toBe(true);
     repo.insertNodeEvents([
       {
         sourceRef: "s1",
@@ -266,7 +269,7 @@ describe("vfs repository", () => {
         createdAtMs: 1,
       },
     ]);
-    const addIdBefore = repo.listNodeEvents()[0]?.id;
+    const addIdBefore = repo.listNodeEventsByMountId("m1")[0]?.id;
     expect(addIdBefore).toEqual(expect.any(String));
     repo.insertNodeEvents([
       {
@@ -311,7 +314,7 @@ describe("vfs repository", () => {
         createdAtMs: 10,
       },
     ]);
-    const events = repo.listNodeEvents();
+    const events = repo.listNodeEventsByMountId("m1");
     expect(events).toHaveLength(3);
     expect(events.every((item) => typeof item.id === "string" && item.id.length > 0)).toBe(true);
     expect(events.map((item) => item.sourceRef)).toEqual(["s1", "s1", "s1"]);
@@ -354,7 +357,7 @@ describe("vfs repository", () => {
         createdAtMs: 4,
       },
     ]);
-    const withDelete = repo.listNodeEvents();
+    const withDelete = repo.listNodeEventsByMountId("m1");
     expect(withDelete).toHaveLength(4);
     expect(new Set(withDelete.map((item) => item.id)).size).toBe(4);
     expect(withDelete.map((item) => item.type)).toEqual([
@@ -365,7 +368,7 @@ describe("vfs repository", () => {
     ]);
 
     repo.deleteNodeEventsByIds([withDelete[0]!.id, withDelete[2]!.id]);
-    const remained = repo.listNodeEvents();
+    const remained = repo.listNodeEventsByMountId("m1");
     expect(remained).toEqual([
       {
         id: withDelete[1]!.id,
@@ -400,6 +403,86 @@ describe("vfs repository", () => {
       },
     ]);
 
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("subscribeNodeEventsQueued receives queued row", () => {
+    const { dir, repo } = makeRepo();
+    const rows: VfsNodeEventRow[] = [];
+    const unsubscribe = repo.subscribeNodeEventsQueued((row) => {
+      rows.push(row);
+    });
+
+    repo.insertNodeEvents([
+      {
+        sourceRef: "s1",
+        mountId: "m1",
+        parentId: "p1",
+        type: "add",
+        node: null,
+        createdAtMs: 1,
+      },
+    ]);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      id: expect.any(String),
+      sourceRef: "s1",
+      mountId: "m1",
+      parentId: "p1",
+      type: "add",
+      node: null,
+      createdAtMs: 1,
+    });
+
+    unsubscribe();
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("subscribeNodeChanges receives upserted row", () => {
+    const { dir, repo } = makeRepo();
+    const rows = [];
+    const unsubscribe = repo.subscribeNodeChanges((row) => {
+      rows.push(row);
+    });
+
+    repo.upsertNodes([
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: "p1",
+        name: "a.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "s1",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    expect(rows).toEqual([
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: "p1",
+        name: "a.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "s1",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    unsubscribe();
     repo.close();
     rmSync(dir, { recursive: true, force: true });
   });

@@ -45,9 +45,7 @@ export type VfsChangeEvent = {
 };
 
 export type VfsService = VfsOperationCore & {
-  watch: (input: {
-    onEvent: (event: VfsChangeEvent) => void;
-  }) => Promise<{ close: () => Promise<void> }>;
+  subscribeNodeChanges: (listener: (row: VfsNode) => void) => () => void;
   start: () => Promise<void>;
   close: () => Promise<void>;
   mount: (config: VfsMountConfig) => Promise<VfsMount>;

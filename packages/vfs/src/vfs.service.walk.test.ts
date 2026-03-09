@@ -243,12 +243,14 @@ describe("vfs service walkChildren", () => {
     expect(first.items).toHaveLength(1);
     expect(called).toBe(1);
 
-    const deletedAtMs = 5_000;
-    ctx.repo.upsertNodes([
+    ctx.repo.insertNodeEvents([
       {
-        ...first.items[0]!,
-        deletedAtMs,
-        updatedAtMs: deletedAtMs,
+        sourceRef: first.items[0]!.sourceRef,
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        type: "delete",
+        node: null,
+        createdAtMs: 5_000,
       },
     ]);
 

@@ -1,19 +1,13 @@
 import { existsSync, createWriteStream, rmSync, statSync } from "node:fs";
-import { mkdir, readFile, rename } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { blake3 } from "hash-wasm";
+import { mkdir, rename } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import pino, { type Logger } from "pino";
-import { walk } from "./vfs.provider.walk";
+import { enrichMetadataIfNeeded, walk } from "./vfs.provider.walk";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsNodeEventRow, VfsRepository } from "./vfs.repository.types";
 import type { VfsChangeEvent } from "./vfs.service.types";
-import {
-  complete,
-  type VfsMount,
-  type VfsNode,
-  type VfsNodeRequiredField,
-} from "./vfs.types";
+import { MetadataAllField, type VfsMount, type VfsNode } from "./vfs.types";
 
 export type VfsSyncerEvent =
   | {
@@ -55,7 +49,6 @@ export function createVfsSyncer(input: {
   provider: VfsProviderAdapter;
   repository: VfsRepository;
   contentRootParent: string;
-  requiredFields?: VfsNodeRequiredField[];
   nowMs?: () => number;
   logger?: Logger;
 }): VfsSyncer {
@@ -74,6 +67,7 @@ export function createVfsSyncer(input: {
   let nodeEventsRunPromise: Promise<void> | null = null;
   let nodeEventsWakeTimer: ReturnType<typeof setTimeout> | null = null;
   let nodeEventsImmediateRequested = false;
+  let nodeEventsSubscribed = false;
   const NODE_EVENTS_BATCH = 200;
   const NODE_EVENTS_IDLE_MS = 1200;
   const emit = (event: VfsSyncerEvent) => {
@@ -93,8 +87,7 @@ export function createVfsSyncer(input: {
   };
 
   const itemSourceRef = (item: VfsNode): string => item.sourceRef;
-  const itemProviderId = (item: VfsNode): string =>
-    item.nodeId || item.sourceRef;
+
   const sourceRefParent = (sourceRef: string): string | null => {
     const parts = sourceRef.split("/").filter((part) => part.length > 0);
     if (parts.length <= 1) {
@@ -106,72 +99,6 @@ export function createVfsSyncer(input: {
     input.mount.providerType === "local" &&
     (input.mount.providerExtra.syncName === false ||
       input.mount.providerExtra.syncName === "false");
-  const localHashRoot = resolveLocalHashRoot(input.mount);
-  const requiredFields = input.requiredFields ?? ["size", "providerVersion"];
-
-  async function enrichMetadataIfNeeded(
-    item: VfsNode,
-  ): Promise<VfsNode> {
-    if (item.kind !== "file") {
-      return item;
-    }
-    if (complete(item, requiredFields)) {
-      return item;
-    }
-    const fetched = await input.provider.getMetadata({
-      id: itemProviderId(item),
-      sourceRef: itemSourceRef(item),
-    } as unknown as Parameters<
-      NonNullable<typeof input.provider.getMetadata>
-    >[0]);
-    if (!fetched) {
-      return item;
-    }
-    return {
-      ...item,
-      size: fetched.size ?? item.size,
-      mtimeMs: fetched.mtimeMs ?? item.mtimeMs,
-      providerVersion: fetched.providerVersion ?? item.providerVersion,
-    };
-  }
-
-  async function enrichProviderVersionIfNeeded(
-    item: VfsNode,
-  ): Promise<VfsNode> {
-    if (item.kind !== "file") {
-      return item;
-    }
-    if (!requiredFields.includes("providerVersion")) {
-      return item;
-    }
-    if (complete(item, ["providerVersion"])) {
-      return item;
-    }
-    if (input.provider.getVersion) {
-      const fetched = await input.provider.getVersion({
-        id: itemProviderId(item),
-        sourceRef: itemSourceRef(item),
-      } as unknown as Parameters<
-        NonNullable<typeof input.provider.getVersion>
-      >[0]);
-      if (typeof fetched === "string" && fetched.length > 0) {
-        return {
-          ...item,
-          providerVersion: fetched,
-        };
-      }
-    }
-    if (!localHashRoot) {
-      return item;
-    }
-    return {
-      ...item,
-      providerVersion: await computeLocalFileBlake3(
-        localHashRoot,
-        itemSourceRef(item),
-      ),
-    };
-  }
 
   function toNode(item: VfsNode, now: number): VfsNode {
     const nodeId = createVfsNodeId({
@@ -291,7 +218,7 @@ export function createVfsSyncer(input: {
 
       const walkedItems = await walk({
         provider: input.provider,
-        requiredFields,
+        requiredFields: MetadataAllField,
       });
       logger.info(
         { mountId: input.mount.mountId, discoveredCount: walkedItems.length },
@@ -303,10 +230,7 @@ export function createVfsSyncer(input: {
       let updated = 0;
       const eventRows: NodeEventInsertRow[] = [];
       for (const item of walkedItems) {
-        const full = await enrichProviderVersionIfNeeded(
-          await enrichMetadataIfNeeded(item),
-        );
-        const node = toNode(full, now);
+        const node = toNode(item, now);
         const prev = existingByRef.get(node.sourceRef);
         if (prev && preserveDbNameOnSync) {
           node.name = prev.name;
@@ -320,21 +244,6 @@ export function createVfsSyncer(input: {
             kind: "add",
             node,
           });
-          if (
-            input.mount.syncContent &&
-            input.provider.createReadStream &&
-            node.kind === "file"
-          ) {
-            appendNodeEventsFromDiff(eventRows, {
-              sourceRef: node.sourceRef,
-              parentId: node.parentId,
-              createdAtMs: now,
-              kind: "update",
-              metadataChanged: false,
-              contentChanged: true,
-              node,
-            });
-          }
         } else if (
           prev.deletedAtMs !== null ||
           prev.name !== node.name ||
@@ -470,6 +379,8 @@ export function createVfsSyncer(input: {
         stopNodeEventsSub();
         stopNodeEventsSub = null;
       }
+      nodeEventsSubscribed = false;
+      nodeEventsImmediateRequested = false;
       if (nodeEventsWakeTimer) {
         clearTimeout(nodeEventsWakeTimer);
         nodeEventsWakeTimer = null;
@@ -488,7 +399,8 @@ export function createVfsSyncer(input: {
     if (stopNodeEventsSub) {
       return;
     }
-    stopNodeEventsSub = input.repository.subscribeNodeChanges(() => {
+    nodeEventsSubscribed = true;
+    stopNodeEventsSub = input.repository.subscribeNodeEventsQueued(() => {
       if (!nodeEventsRunning) {
         triggerNodeEventsScan(true);
       }
@@ -564,24 +476,29 @@ export function createVfsSyncer(input: {
       }
     } finally {
       nodeEventsRunning = false;
-      if (nodeEventsImmediateRequested) {
+      if (nodeEventsImmediateRequested && nodeEventsSubscribed) {
         nodeEventsImmediateRequested = false;
         triggerNodeEventsScan(false);
-        return;
+      } else if (nodeEventsSubscribed) {
+        scheduleNodeEventsSlowScan();
+      } else {
+        nodeEventsImmediateRequested = false;
       }
-      scheduleNodeEventsSlowScan();
     }
   }
 
-  async function applyNodeEvent(event: {
-    id: string;
-    sourceRef: string;
-    mountId: string;
-    parentId: string | null;
-    type: "add" | "update_metadata" | "update_content" | "delete";
-    node: VfsNode | null;
-    createdAtMs: number;
-  }, options?: { allowContentSync?: boolean }): Promise<void> {
+  async function applyNodeEvent(
+    event: {
+      id: string;
+      sourceRef: string;
+      mountId: string;
+      parentId: string | null;
+      type: "add" | "update_metadata" | "update_content" | "delete";
+      node: VfsNode | null;
+      createdAtMs: number;
+    },
+    options?: { allowContentSync?: boolean },
+  ): Promise<void> {
     logger.info(
       {
         mountId: input.mount.mountId,
@@ -614,19 +531,31 @@ export function createVfsSyncer(input: {
       return;
     }
 
+    //enrich
     let enriched = event.node;
     if (!enriched) {
       const fetched = await input.provider.getMetadata({
         id: event.sourceRef,
-        sourceRef: event.sourceRef,
-      } as unknown as Parameters<
-        NonNullable<typeof input.provider.getMetadata>
-      >[0]);
+      });
       if (fetched) {
-        enriched = await enrichProviderVersionIfNeeded(fetched);
+        enriched = fetched;
       }
     }
+    if (enriched) {
+      //enrich provider version
+      enriched = await enrichMetadataIfNeeded(
+        event.node
+          ? {
+              ...enriched,
+              nodeId: enriched.sourceRef,
+            }
+          : enriched,
+        input.provider,
+        ["providerVersion"],
+      );
+    }
     if (!enriched) {
+      //deleted
       if (!prev || prev.deletedAtMs !== null) {
         return;
       }
@@ -708,7 +637,6 @@ export function createVfsSyncer(input: {
         parentId: event.parentId,
         createdAtMs,
         kind: "add",
-        expandAddToUpdates: true,
       });
     } else if (event.type === "update") {
       appendNodeEventsFromDiff(rows, {
@@ -732,13 +660,10 @@ export function createVfsSyncer(input: {
       kind: "add" | "update" | "delete";
       metadataChanged?: boolean;
       contentChanged?: boolean;
-      expandAddToUpdates?: boolean;
       node?: VfsNode | null;
     },
   ): void {
-    const makeRow = (
-      type: NodeEventInsertRow["type"],
-    ): NodeEventInsertRow => ({
+    const makeRow = (type: NodeEventInsertRow["type"]): NodeEventInsertRow => ({
       sourceRef: inputDiff.sourceRef,
       mountId: input.mount.mountId,
       parentId: inputDiff.parentId,
@@ -753,48 +678,17 @@ export function createVfsSyncer(input: {
     }
     if (inputDiff.kind === "add") {
       target.push(makeRow("add"));
-      if (inputDiff.expandAddToUpdates) {
-        target.push(makeRow("update_metadata"));
-        target.push(makeRow("update_content"));
-      }
+      target.push(makeRow("update_metadata"));
+      target.push(makeRow("update_content"));
       return;
     }
-    if (inputDiff.metadataChanged) {
+    if (inputDiff.metadataChanged !== false) {
       target.push(makeRow("update_metadata"));
     }
-    if (inputDiff.contentChanged) {
+    if (inputDiff.contentChanged !== false) {
       target.push(makeRow("update_content"));
     }
   }
-}
-
-function resolveLocalHashRoot(mount: VfsMount): string | null {
-  if (mount.providerType !== "local") {
-    return null;
-  }
-  const raw = mount.providerExtra.directory;
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    return null;
-  }
-  return isAbsolute(raw) ? raw : resolve(raw);
-}
-
-async function computeLocalFileBlake3(
-  root: string,
-  sourceRef: string,
-): Promise<string> {
-  const normalized = sourceRef
-    .split("/")
-    .filter((part) => part.length > 0)
-    .join("/");
-  const absPath =
-    normalized.length === 0 ? root : resolve(root, ...normalized.split("/"));
-  const rel = relative(root, absPath);
-  if (rel.startsWith("..") || rel.includes(`..${sep}`)) {
-    throw new Error(`sourceRef escapes local root: "${sourceRef}"`);
-  }
-  const content = await readFile(absPath);
-  return blake3(content);
 }
 
 async function downloadWithResume(input: {
@@ -810,7 +704,7 @@ async function downloadWithResume(input: {
   while (true) {
     try {
       const stream = await input.provider.createReadStream!({
-        id: input.item.nodeId || input.item.sourceRef,
+        id: input.item.sourceRef,
         sourceRef: input.item.sourceRef,
         offset: startOffset > 0 ? startOffset : undefined,
       } as unknown as Parameters<

@@ -8,7 +8,7 @@ import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
 import { createVfsSyncer, type VfsSyncer } from "./vfs.syncer";
-import type { VfsChangeEvent, VfsService } from "./vfs.service.types";
+import type { VfsService } from "./vfs.service.types";
 import type {
   VfsMount,
   VfsMountConfig,
@@ -23,98 +23,22 @@ export function createVfsService(deps: {
   contentRootParent?: string;
   nowMs?: () => number;
 }): VfsService {
-  const EVENT_CONTENT_DEBOUNCE_MS = 120;
   const nowMs = deps.nowMs ?? (() => Date.now());
-  let disposed = false;
   let started = false;
   const reconcileTimers = new Map<string, ReturnType<typeof setInterval>>();
   const reconcileRunning = new Set<string>();
-  const listeners = new Set<(event: VfsChangeEvent) => void>();
-  const pendingContentEvents = new Map<string, VfsChangeEvent>();
-  let eventContentFlushTimer: ReturnType<typeof setTimeout> | null = null;
-  let flushingEvents = false;
   const syncers = new Map<
     string,
     { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }
   >();
-  const emitEvents = (events: VfsChangeEvent[]) => {
-    for (const event of events) {
-      for (const listener of listeners) {
-        listener(event);
-      }
-    }
-  };
 
-  const flushNodeEvents = () => {
-    if (disposed) {
-      return;
-    }
-    if (flushingEvents) {
-      return;
-    }
-    flushingEvents = true;
-    try {
-      while (true) {
-        const rows = deps.repository.listNodeEvents(1000);
-        if (rows.length === 0) {
-          break;
-        }
-        deps.repository.deleteNodeEventsByIds(rows.map((row) => row.id));
-        const immediateEvents: VfsChangeEvent[] = [];
-        let hasContentEvents = false;
-        for (const row of rows) {
-          if (row.type === "update_content") {
-            pendingContentEvents.set(row.sourceRef, {
-              type: "update",
-              id: row.sourceRef,
-              parentId: row.parentId,
-              contentUpdated: true,
-              metadataChanged: false,
-            });
-            hasContentEvents = true;
-            continue;
-          }
-          immediateEvents.push({
-            type: row.type === "add" ? "add" : row.type === "delete" ? "delete" : "update",
-            id: row.sourceRef,
-            parentId: row.parentId,
-            contentUpdated: row.type === "add",
-            metadataChanged: row.type !== "delete",
-          });
-        }
-        if (immediateEvents.length > 0) {
-          emitEvents(immediateEvents);
-        }
-        if (hasContentEvents) {
-          if (eventContentFlushTimer) {
-            clearTimeout(eventContentFlushTimer);
-          }
-          eventContentFlushTimer = setTimeout(() => {
-            eventContentFlushTimer = null;
-            const batch = [...pendingContentEvents.values()];
-            pendingContentEvents.clear();
-            emitEvents(batch);
-          }, EVENT_CONTENT_DEBOUNCE_MS);
-        }
-      }
-    } finally {
-      flushingEvents = false;
-    }
-  };
-  const scheduleMetadataFlush = () => {
-    if (disposed) {
-      return;
-    }
-    flushNodeEvents();
-  };
-  deps.repository.subscribeNodeChanges(() => {
-    if (disposed) {
-      return;
-    }
-    scheduleMetadataFlush();
+  deps.repository.subscribeNodeEventsQueued((row) => {
+    deps.repository.deletePageCacheByMountId(row.mountId);
   });
 
-  const mountFromExt = (ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>): VfsMount => {
+  const mountFromExt = (
+    ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>,
+  ): VfsMount => {
     if (!ext) {
       throw new Error("mount config not found");
     }
@@ -130,7 +54,8 @@ export function createVfsService(deps: {
     };
   };
 
-  const isAutoSyncEnabled = (mount: VfsMount): boolean => mount.autoSync !== false;
+  const isAutoSyncEnabled = (mount: VfsMount): boolean =>
+    mount.autoSync !== false;
 
   const ensureSyncer = async (mount: VfsMount): Promise<VfsSyncer> => {
     const existing = syncers.get(mount.mountId);
@@ -138,7 +63,9 @@ export function createVfsService(deps: {
       return existing.syncer;
     }
     if (!deps.contentRootParent) {
-      throw new Error("contentRootParent is required when starting vfs runtime");
+      throw new Error(
+        "contentRootParent is required when starting vfs runtime",
+      );
     }
     const syncer = createVfsSyncer({
       mount,
@@ -179,7 +106,11 @@ export function createVfsService(deps: {
 
   const scheduleReconcile = (mount: VfsMount): void => {
     clearReconcileTimer(mount.mountId);
-    if (!started || !isAutoSyncEnabled(mount) || mount.reconcileIntervalMs <= 0) {
+    if (
+      !started ||
+      !isAutoSyncEnabled(mount) ||
+      mount.reconcileIntervalMs <= 0
+    ) {
       return;
     }
     const timer = setInterval(() => {
@@ -224,13 +155,8 @@ export function createVfsService(deps: {
   };
 
   return {
-    async watch(input) {
-      listeners.add(input.onEvent);
-      return {
-        close: async () => {
-          listeners.delete(input.onEvent);
-        },
-      };
+    subscribeNodeChanges(listener) {
+      return deps.repository.subscribeNodeChanges(listener);
     },
 
     async start() {
@@ -238,7 +164,9 @@ export function createVfsService(deps: {
         return;
       }
       started = true;
-      const mounts = deps.repository.listNodeMountExts().map((ext) => mountFromExt(ext));
+      const mounts = deps.repository
+        .listNodeMountExts()
+        .map((ext) => mountFromExt(ext));
       for (const mount of mounts) {
         if (!isAutoSyncEnabled(mount)) {
           clearReconcileTimer(mount.mountId);
@@ -254,17 +182,6 @@ export function createVfsService(deps: {
     },
 
     async close() {
-      disposed = true;
-      if (eventContentFlushTimer) {
-        clearTimeout(eventContentFlushTimer);
-        eventContentFlushTimer = null;
-      }
-      flushNodeEvents();
-      if (pendingContentEvents.size > 0) {
-        const batch = [...pendingContentEvents.values()];
-        pendingContentEvents.clear();
-        emitEvents(batch);
-      }
       for (const mountId of [...reconcileTimers.keys()]) {
         clearReconcileTimer(mountId);
       }
@@ -345,8 +262,8 @@ export function createVfsService(deps: {
         .map((node) => ({
           ...node,
           deletedAtMs: now,
-            updatedAtMs: now,
-          }));
+          updatedAtMs: now,
+        }));
       if (rows.length > 0) {
         deps.repository.upsertNodes(rows);
         deps.repository.insertNodeEvents(
@@ -355,6 +272,7 @@ export function createVfsService(deps: {
             mountId: row.mountId,
             parentId: row.parentId,
             type: "delete" as const,
+            node: null,
             createdAtMs: now,
           })),
         );
@@ -399,7 +317,14 @@ export function createVfsService(deps: {
       return deps.repository.getNodeById(input.id)?.providerVersion ?? null;
     },
 
+    async getMetadata(input) {
+      return deps.repository.getNodeById(input.id);
+    },
+
     async create(input) {
+      if (input.parentId === null) {
+        throw new Error("Parent node not found: null");
+      }
       const parentNode = deps.repository.getNodeById(input.parentId);
       if (!parentNode) {
         throw new Error(`Parent node not found: ${input.parentId}`);
@@ -414,7 +339,9 @@ export function createVfsService(deps: {
       const mount = mountFromExt(ext);
       const provider = deps.registry.get(mount);
       if (!provider.create) {
-        throw new Error(`Provider "${mount.providerType}" does not support create`);
+        throw new Error(
+          `Provider "${mount.providerType}" does not support create`,
+        );
       }
       const created = await provider.create({
         parentId: parentNode.kind === "mount" ? null : parentNode.sourceRef,
@@ -452,7 +379,9 @@ export function createVfsService(deps: {
       const mount = mountFromExt(ext);
       const provider = deps.registry.get(mount);
       if (!provider.rename) {
-        throw new Error(`Provider "${mount.providerType}" does not support rename`);
+        throw new Error(
+          `Provider "${mount.providerType}" does not support rename`,
+        );
       }
       const renamed = await provider.rename({
         id: node.sourceRef,
@@ -492,7 +421,9 @@ export function createVfsService(deps: {
       const mount = mountFromExt(ext);
       const provider = deps.registry.get(mount);
       if (!provider.delete) {
-        throw new Error(`Provider "${mount.providerType}" does not support delete`);
+        throw new Error(
+          `Provider "${mount.providerType}" does not support delete`,
+        );
       }
       await provider.delete({
         id: node.sourceRef,

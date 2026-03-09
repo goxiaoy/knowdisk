@@ -32,26 +32,31 @@ function setup() {
 }
 
 describe("vfs service runtime", () => {
-  test("watch emits delete for mount/unmount sequence", async () => {
+  test("subscribeNodeChanges exposes repository node updates", async () => {
     const ctx = setup();
-    const events: Array<{ type: string; id: string; parentId: string | null }> = [];
-    const watcher = await ctx.service.watch({
-      onEvent: (event) => events.push(event),
+    const rows = [];
+    const off = ctx.service.subscribeNodeChanges((row) => {
+      rows.push(row);
     });
-    const mount = await ctx.service.mount({
-      providerType: "mock-runtime",
+
+    await ctx.service.mountInternal("mount-1", {
+      providerType: "mock-service-node-changes",
       providerExtra: {},
-      syncMetadata: true,
+      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
 
-    await ctx.service.unmount(mount.mountId);
-    await Bun.sleep(80);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        mountId: "mount-1",
+        kind: "mount",
+        parentId: null,
+      }),
+    );
 
-    expect(events.some((event) => event.type === "delete")).toBe(true);
-    await watcher.close();
-    await ctx.service.close();
+    off();
     ctx.cleanup();
   });
 
@@ -240,181 +245,4 @@ describe("vfs service runtime", () => {
     ctx.cleanup();
   });
 
-  test("watch emits unified update event with contentUpdated/metadataChanged flags", async () => {
-    const ctx = setup();
-    const events: Array<{
-      type: string;
-      id: string;
-      parentId: string | null;
-      contentUpdated?: boolean;
-      metadataChanged?: boolean;
-    }> = [];
-    const watcher = await ctx.service.watch({
-      onEvent: (event) => events.push(event),
-    });
-    const mount = await ctx.service.mount({
-      providerType: "mock-runtime",
-      providerExtra: {},
-      syncMetadata: true,
-      metadataTtlSec: 60,
-      reconcileIntervalMs: 1_000,
-    });
-    ctx.repo.insertNodeEvents([
-      {
-        sourceRef: "file-1",
-        mountId: mount.mountId,
-        parentId: null,
-        type: "update_metadata",
-        createdAtMs: 1,
-      },
-      {
-        sourceRef: "file-1",
-        mountId: mount.mountId,
-        parentId: null,
-        type: "update_content",
-        createdAtMs: 2,
-      },
-    ]);
-
-    await Bun.sleep(180);
-    const updateEvents = events.filter((event) => event.id === "file-1" && event.type === "update");
-    expect(updateEvents.length).toBeGreaterThanOrEqual(2);
-    expect(
-      updateEvents.some(
-        (event) => event.metadataChanged === true && event.contentUpdated === false,
-      ),
-    ).toBe(true);
-    expect(
-      updateEvents.some(
-        (event) => event.metadataChanged === false && event.contentUpdated === true,
-      ),
-    ).toBe(true);
-
-    await watcher.close();
-    await ctx.service.close();
-    ctx.cleanup();
-  });
-
-  test("local mount change semantics: add=true/true and update=true/true", async () => {
-    const ctx = setup();
-    const events: Array<{
-      type: string;
-      id: string;
-      parentId: string | null;
-      contentUpdated: boolean | null;
-      metadataChanged: boolean | null;
-    }> = [];
-    const watcher = await ctx.service.watch({
-      onEvent: (event) => events.push(event),
-    });
-    const mount = await ctx.service.mount({
-      providerType: "local",
-      providerExtra: { directory: ctx.dir },
-      syncMetadata: true,
-      metadataTtlSec: 60,
-      reconcileIntervalMs: 1_000,
-    });
-    ctx.repo.insertNodeEvents([
-      {
-        sourceRef: "local-file-1",
-        mountId: mount.mountId,
-        parentId: null,
-        type: "add",
-        createdAtMs: 1,
-      },
-      {
-        sourceRef: "local-file-1",
-        mountId: mount.mountId,
-        parentId: null,
-        type: "update_metadata",
-        createdAtMs: 2,
-      },
-      {
-        sourceRef: "local-file-1",
-        mountId: mount.mountId,
-        parentId: null,
-        type: "update_content",
-        createdAtMs: 3,
-      },
-    ]);
-
-    await Bun.sleep(180);
-
-    const fileEvents = events.filter((event) => event.id === "local-file-1");
-    expect(fileEvents.length).toBeGreaterThanOrEqual(2);
-    expect(
-      fileEvents.some(
-        (event) => event.type === "add" && event.metadataChanged === true && event.contentUpdated === true,
-      ),
-    ).toBe(true);
-    expect(
-      fileEvents.some(
-        (event) => event.type === "update" && event.metadataChanged === true && event.contentUpdated === false,
-      ),
-    ).toBe(true);
-    expect(
-      fileEvents.some(
-        (event) => event.type === "update" && event.metadataChanged === false && event.contentUpdated === true,
-      ),
-    ).toBe(true);
-    expect(
-      fileEvents.every(
-        (event) =>
-          (event.type === "add" &&
-            event.metadataChanged === true &&
-            event.contentUpdated === true) ||
-          (event.type === "update" &&
-            ((event.metadataChanged === true && event.contentUpdated === false) ||
-              (event.metadataChanged === false && event.contentUpdated === true))),
-      ),
-    ).toBe(true);
-
-    await watcher.close();
-    await ctx.service.close();
-    ctx.cleanup();
-  });
-
-  test("content-only updates are debounced while metadata updates are fast", async () => {
-    const ctx = setup();
-    const events: Array<{
-      type: string;
-      id: string;
-      parentId: string | null;
-      contentUpdated: boolean | null;
-      metadataChanged: boolean | null;
-    }> = [];
-    const watcher = await ctx.service.watch({
-      onEvent: (event) => events.push(event),
-    });
-    const mount = await ctx.service.mount({
-      providerType: "mock-runtime",
-      providerExtra: {},
-      syncMetadata: true,
-      metadataTtlSec: 60,
-      reconcileIntervalMs: 1_000,
-    });
-    ctx.repo.insertNodeEvents([
-      {
-        sourceRef: "debounce-file-1",
-        mountId: mount.mountId,
-        parentId: null,
-        type: "update_content",
-        createdAtMs: 1,
-      },
-    ]);
-    await Bun.sleep(70);
-    expect(events).toEqual([]);
-    await Bun.sleep(90);
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      type: "update",
-      id: "debounce-file-1",
-      metadataChanged: false,
-      contentUpdated: true,
-    });
-
-    await watcher.close();
-    await ctx.service.close();
-    ctx.cleanup();
-  });
 });

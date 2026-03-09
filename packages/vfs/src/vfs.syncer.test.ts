@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createLocalVfsProvider } from "./provider/local";
 import { createVfsNodeId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsSyncer } from "./vfs.syncer";
@@ -123,7 +124,7 @@ describe("vfs syncer", () => {
           };
         },
         async getMetadata(input) {
-          if (input.sourceRef === "a.txt") {
+          if (input.id === "a.txt") {
             return {
               sourceRef: "a.txt",
               parentSourceRef: null,
@@ -166,7 +167,11 @@ describe("vfs syncer", () => {
       expect(legacy?.deletedAtMs).toBe(1000);
       expect(insertedEvents.map((event) => [event.sourceRef, event.type])).toEqual([
         ["a.txt", "add"],
+        ["a.txt", "update_metadata"],
+        ["a.txt", "update_content"],
         ["b.txt", "add"],
+        ["b.txt", "update_metadata"],
+        ["b.txt", "update_content"],
         ["legacy.txt", "delete"],
       ]);
       expect(insertedEvents.find((event) => event.sourceRef === "a.txt")?.node?.size).toBe(5);
@@ -308,7 +313,13 @@ describe("vfs syncer", () => {
 
       await syncer.fullSync();
 
-      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([]);
+      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([
+        expect.objectContaining({
+          sourceRef: "f.txt",
+          mountId: mount.mountId,
+          type: "update_content",
+        }),
+      ]);
       expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
     } finally {
       repo.close();
@@ -435,7 +446,7 @@ describe("vfs syncer", () => {
         },
         async getMetadata(input) {
           metadataCalls += 1;
-          if (input.sourceRef === "f.txt") {
+          if (input.id === "f.txt") {
             return {
               sourceRef: "f.txt",
               parentSourceRef: null,
@@ -696,10 +707,13 @@ describe("vfs syncer", () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-sync-name-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
+      const sourceRoot = join(dir, "source");
+      await mkdir(sourceRoot, { recursive: true });
+      writeFileSync(join(sourceRoot, "a.txt"), "v2");
       const mount = makeMount({
         mountId: "local-sync-name",
         providerType: "local",
-        providerExtra: { syncName: false },
+        providerExtra: { directory: sourceRoot, syncName: false },
       });
       repo.upsertNodes([
         {
@@ -741,32 +755,7 @@ describe("vfs syncer", () => {
         },
       ]);
 
-      const provider: VfsProviderAdapter = {
-        type: "local",
-        capabilities: { watch: false },
-        async listChildren() {
-          return {
-            items: [
-              {
-                sourceRef: "a.txt",
-                parentSourceRef: null,
-                name: "a.txt",
-                kind: "file",
-                size: 2,
-              },
-            ],
-          };
-        },
-        async getMetadata() {
-          return {
-            sourceRef: "a.txt",
-            parentSourceRef: null,
-            name: "a.txt",
-            kind: "file",
-            size: 2,
-          };
-        },
-      };
+      const provider = createLocalVfsProvider(mount);
 
       const syncer = createVfsSyncer({
         mount,
@@ -930,32 +919,7 @@ describe("vfs syncer", () => {
         },
       ]);
 
-      const provider: VfsProviderAdapter = {
-        type: "local",
-        capabilities: { watch: false },
-        async listChildren() {
-          return {
-            items: [
-              {
-                sourceRef: "a.txt",
-                parentSourceRef: null,
-                name: "a.txt",
-                kind: "file",
-                size: 2,
-              },
-            ],
-          };
-        },
-        async getMetadata() {
-          return {
-            sourceRef: "a.txt",
-            parentSourceRef: null,
-            name: "a.txt",
-            kind: "file",
-            size: 2,
-          };
-        },
-      };
+      const provider = createLocalVfsProvider(mount);
 
       const syncer = createVfsSyncer({
         mount,

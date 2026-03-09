@@ -24,6 +24,37 @@ function mockHfProvider(): VfsProviderAdapter {
   };
 }
 
+async function readUntil(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  pattern: string,
+  timeoutMs = 2_000,
+) {
+  const decoder = new TextDecoder();
+  let text = "";
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const readPromise = reader.read();
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out waiting for ${pattern}`)), 50);
+    });
+    try {
+      const { value, done } = await Promise.race([readPromise, timeoutPromise]);
+      if (done) {
+        break;
+      }
+      text += decoder.decode(value, { stream: true });
+      if (text.includes(pattern)) {
+        return text;
+      }
+    } catch (error) {
+      if (Date.now() >= deadline) {
+        throw error;
+      }
+    }
+  }
+  throw new Error(`Timed out waiting for ${pattern}`);
+}
+
 describe("vfs example app", () => {
   test("initializes two mounts and serves state/list/events endpoints", async () => {
     const root = mkdtempSync(join(tmpdir(), "knowdisk-vfs-example-test-"));
@@ -41,6 +72,12 @@ describe("vfs example app", () => {
 
     try {
       const baseUrl = app.baseUrl;
+      const eventsRes = await fetch(`${baseUrl}/api/events`);
+      expect(eventsRes.status).toBe(200);
+      expect(eventsRes.headers.get("content-type")).toContain("text/event-stream");
+      const reader = eventsRes.body!.getReader();
+      await readUntil(reader, "event: init");
+
       const stateRes = await fetch(`${baseUrl}/api/state`);
       expect(stateRes.status).toBe(200);
       const state = await stateRes.json();
@@ -136,6 +173,9 @@ describe("vfs example app", () => {
       expect(createRes.status).toBe(200);
       const created = await createRes.json();
       expect(created.node.name).toBe("created-by-name.txt");
+      const sseText = await readUntil(reader, created.node.nodeId);
+      expect(sseText).toContain("event: vfs-change");
+      expect(sseText).toContain(created.node.nodeId);
 
       const renameRes = await fetch(`${baseUrl}/api/rename`, {
         method: "POST",
@@ -152,11 +192,7 @@ describe("vfs example app", () => {
         body: JSON.stringify({ nodeId: renamed.node.nodeId }),
       });
       expect(deleteRes.status).toBe(200);
-
-      const eventsRes = await fetch(`${baseUrl}/api/events`);
-      expect(eventsRes.status).toBe(200);
-      expect(eventsRes.headers.get("content-type")).toContain("text/event-stream");
-      eventsRes.body?.cancel();
+      await reader.cancel();
     } finally {
       await app.stop();
       rmSync(root, { recursive: true, force: true });
