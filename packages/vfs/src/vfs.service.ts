@@ -159,6 +159,10 @@ export function createVfsService(deps: {
       return deps.repository.subscribeNodeChanges(listener);
     },
 
+    registerNodeEventHooks() {
+      return () => {};
+    },
+
     async start() {
       if (started) {
         return;

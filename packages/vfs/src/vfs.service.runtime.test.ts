@@ -32,6 +32,17 @@ function setup() {
 }
 
 describe("vfs service runtime", () => {
+  test("registerNodeEventHooks exists and returns unsubscribe", () => {
+    const ctx = setup();
+    const off = ctx.service.registerNodeEventHooks({});
+
+    expect(typeof ctx.service.registerNodeEventHooks).toBe("function");
+    expect(typeof off).toBe("function");
+
+    off();
+    ctx.cleanup();
+  });
+
   test("subscribeNodeChanges exposes repository node updates", async () => {
     const ctx = setup();
     const rows = [];

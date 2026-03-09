@@ -5,6 +5,7 @@ import type {
   WalkChildrenInput,
   WalkChildrenOutput,
 } from "./vfs.types";
+import type { VfsNodeEventRow } from "./vfs.repository.types";
 
 export type ListChildrenResult = {
   items: VfsNode[];
@@ -44,8 +45,38 @@ export type VfsChangeEvent = {
   metadataChanged: boolean | null;
 };
 
+export type VfsNodeEventHookContext = {
+  mount: VfsMount;
+  event: VfsNodeEventRow;
+  prevNode: VfsNode | null;
+  nextNode: VfsNode | null;
+};
+
+export type VfsSyncContentHookContext = {
+  mount: VfsMount;
+  event: VfsNodeEventRow;
+  node: VfsNode;
+  finalPath: string;
+  partPath: string;
+  startOffset: number;
+};
+
+export type VfsNodeEventHooks = {
+  before_add?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  after_add?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  before_update_metadata?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  after_update_metadata?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  before_update_content?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  after_update_content?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  before_delete?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  after_delete?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  before_sync_content?: (ctx: VfsSyncContentHookContext) => Promise<void> | void;
+  after_sync_content?: (ctx: VfsSyncContentHookContext) => Promise<void> | void;
+};
+
 export type VfsService = VfsOperationCore & {
   subscribeNodeChanges: (listener: (row: VfsNode) => void) => () => void;
+  registerNodeEventHooks: (hooks: VfsNodeEventHooks) => () => void;
   start: () => Promise<void>;
   close: () => Promise<void>;
   mount: (config: VfsMountConfig) => Promise<VfsMount>;
