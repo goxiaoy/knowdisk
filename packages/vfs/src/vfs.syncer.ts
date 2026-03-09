@@ -48,6 +48,12 @@ export type VfsSyncer = {
   subscribe: (listener: (event: VfsSyncerEvent) => void) => () => void;
 };
 
+class BlockingHookError extends Error {
+  constructor(message: string, readonly causeValue: unknown) {
+    super(message);
+  }
+}
+
 export type VfsSyncerHookRunner = {
   beforeNodeEvent?: (
     hookName: `before_${VfsNodeEventRow["type"]}`,
@@ -151,7 +157,10 @@ export function createVfsSyncer(input: {
 
   async function syncContent(
     items: VfsNode[],
-    options?: { restartSourceRefs?: Set<string> },
+    options?: {
+      restartSourceRefs?: Set<string>;
+      event?: VfsNodeEventRow;
+    },
   ): Promise<void> {
     if (!input.mount.syncContent || !input.provider.createReadStream) {
       return;
@@ -204,6 +213,32 @@ export function createVfsSyncer(input: {
         }
       }
 
+      const syncContentEvent =
+        options?.event ??
+        ({
+          id: "",
+          sourceRef,
+          mountId: input.mount.mountId,
+          parentId: item.parentId,
+          type: "update_content",
+          node: item,
+          createdAtMs: nowMs(),
+        } satisfies VfsNodeEventRow);
+      const syncContentCtx: VfsSyncContentHookContext = {
+        mount: input.mount,
+        event: syncContentEvent,
+        node: item,
+        finalPath,
+        partPath,
+        startOffset,
+      };
+
+      try {
+        await input.hooks?.beforeSyncContent?.(syncContentCtx);
+      } catch (error) {
+        throw new BlockingHookError("before_sync_content failed", error);
+      }
+
       await downloadWithResume({
         provider: input.provider,
         item,
@@ -222,6 +257,21 @@ export function createVfsSyncer(input: {
           });
         },
       });
+      try {
+        await input.hooks?.afterSyncContent?.(syncContentCtx);
+      } catch (error) {
+        logger.warn(
+          {
+            mountId: input.mount.mountId,
+            sourceRef,
+            eventType: syncContentEvent.type,
+            hookName: "after_sync_content",
+            stage: "after",
+            error: String(error),
+          },
+          "syncer content hook failed",
+        );
+      }
     }
   }
 
@@ -480,25 +530,57 @@ export function createVfsSyncer(input: {
             event.sourceRef,
           );
           try {
-            await input.hooks?.beforeNodeEvent?.(`before_${event.type}`, {
-              mount: input.mount,
-              event,
-              prevNode,
-              nextNode: null,
-            });
+            try {
+              await input.hooks?.beforeNodeEvent?.(`before_${event.type}`, {
+                mount: input.mount,
+                event,
+                prevNode,
+                nextNode: null,
+              });
+            } catch (error) {
+              throw new BlockingHookError(`before_${event.type} failed`, error);
+            }
             await applyNodeEvent(event, {
               allowContentSync: options?.allowContentSync,
             });
-            await input.hooks?.afterNodeEvent?.(`after_${event.type}`, {
-              mount: input.mount,
-              event,
-              prevNode,
-              nextNode: input.repository.listNodesByMountIdAndSourceRef(
-                input.mount.mountId,
-                event.sourceRef,
-              ),
-            });
+            try {
+              await input.hooks?.afterNodeEvent?.(`after_${event.type}`, {
+                mount: input.mount,
+                event,
+                prevNode,
+                nextNode: input.repository.listNodesByMountIdAndSourceRef(
+                  input.mount.mountId,
+                  event.sourceRef,
+                ),
+              });
+            } catch (error) {
+              logger.warn(
+                {
+                  mountId: input.mount.mountId,
+                  sourceRef: event.sourceRef,
+                  eventType: event.type,
+                  hookName: `after_${event.type}`,
+                  stage: "after",
+                  error: String(error),
+                },
+                "syncer event hook failed",
+              );
+            }
           } catch (error) {
+            if (error instanceof BlockingHookError) {
+              logger.warn(
+                {
+                  mountId: input.mount.mountId,
+                  sourceRef: event.sourceRef,
+                  eventType: event.type,
+                  hookName: `before_${event.type}`,
+                  stage: "before",
+                  error: String(error.causeValue ?? error),
+                },
+                "syncer nodeEvents handler blocked by hook",
+              );
+              return;
+            }
             logger.warn(
               {
                 mountId: input.mount.mountId,
@@ -507,6 +589,8 @@ export function createVfsSyncer(input: {
               },
               "syncer nodeEvents handler failed",
             );
+            input.repository.deleteNodeEventsByIds([event.id]);
+            continue;
           }
           input.repository.deleteNodeEventsByIds([event.id]);
         }
@@ -655,7 +739,7 @@ export function createVfsSyncer(input: {
     if (prev && prev.providerVersion !== node.providerVersion) {
       restartSourceRefs.add(enriched.sourceRef);
     }
-    await syncContent([enriched], { restartSourceRefs });
+    await syncContent([enriched], { restartSourceRefs, event });
   }
 
   async function handleWatchEvent(event: VfsChangeEvent): Promise<void> {

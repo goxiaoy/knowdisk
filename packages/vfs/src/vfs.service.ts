@@ -74,6 +74,16 @@ export function createVfsService(deps: {
         await hooks[hookName]?.(ctx);
       }
     },
+    async beforeSyncContent(ctx) {
+      for (const hooks of nodeEventHooks.values()) {
+        await hooks.before_sync_content?.(ctx);
+      }
+    },
+    async afterSyncContent(ctx) {
+      for (const hooks of nodeEventHooks.values()) {
+        await hooks.after_sync_content?.(ctx);
+      }
+    },
   };
 
   const ensureSyncer = async (mount: VfsMount): Promise<VfsSyncer> => {

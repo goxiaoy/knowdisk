@@ -11,13 +11,19 @@ import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsMount } from "./vfs.types";
 
 function createMockLogger() {
-  const records: Array<{ level: "info" | "warn" | "error" | "debug"; msg: string }> = [];
+  const records: Array<{
+    level: "info" | "warn" | "error" | "debug";
+    obj: unknown;
+    msg: string;
+  }> = [];
   return {
     logger: {
-      info: (_obj: unknown, msg?: string) => records.push({ level: "info", msg: msg ?? "" }),
-      warn: (_obj: unknown, msg?: string) => records.push({ level: "warn", msg: msg ?? "" }),
-      error: (_obj: unknown, msg?: string) => records.push({ level: "error", msg: msg ?? "" }),
-      debug: (_obj: unknown, msg?: string) => records.push({ level: "debug", msg: msg ?? "" }),
+      info: (obj: unknown, msg?: string) => records.push({ level: "info", obj, msg: msg ?? "" }),
+      warn: (obj: unknown, msg?: string) => records.push({ level: "warn", obj, msg: msg ?? "" }),
+      error: (obj: unknown, msg?: string) =>
+        records.push({ level: "error", obj, msg: msg ?? "" }),
+      debug: (obj: unknown, msg?: string) =>
+        records.push({ level: "debug", obj, msg: msg ?? "" }),
     },
     records,
   };
@@ -321,6 +327,533 @@ describe("vfs syncer", () => {
         }),
       ]);
       expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("before_add hook failure keeps event queued", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-before-add-hook-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount();
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: false },
+        async listChildren() {
+          return {
+            items: [
+              {
+                sourceRef: "f.txt",
+                parentSourceRef: null,
+                name: "f.txt",
+                kind: "file",
+                size: 3,
+              },
+            ],
+          };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "f.txt",
+            parentSourceRef: null,
+            name: "f.txt",
+            kind: "file",
+            size: 3,
+          };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        hooks: {
+          async beforeNodeEvent(hookName) {
+            if (hookName === "before_add") {
+              throw new Error("blocked");
+            }
+          },
+        },
+        nowMs: () => 3000,
+      });
+
+      await syncer.fullSync();
+
+      expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")).toBeNull();
+      expect(repo.listNodeEventsByMountId(mount.mountId).map((event) => event.type)).toEqual([
+        "add",
+        "update_content",
+        "update_metadata",
+      ]);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("after_add hook failure still deletes the add event", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-after-add-hook-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount();
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: false },
+        async listChildren() {
+          return {
+            items: [
+              {
+                sourceRef: "f.txt",
+                parentSourceRef: null,
+                name: "f.txt",
+                kind: "file",
+                size: 3,
+              },
+            ],
+          };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "f.txt",
+            parentSourceRef: null,
+            name: "f.txt",
+            kind: "file",
+            size: 3,
+          };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        hooks: {
+          async afterNodeEvent(hookName) {
+            if (hookName === "after_add") {
+              throw new Error("post-fail");
+            }
+          },
+        },
+        nowMs: () => 3000,
+      });
+
+      await syncer.fullSync();
+
+      expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
+      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([
+        expect.objectContaining({ sourceRef: "f.txt", type: "update_content" }),
+      ]);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("before_sync_content hook failure keeps update_content queued", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-before-sync-content-hook-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount({ syncContent: true });
+      const contentParent = join(dir, "content");
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: true },
+        async listChildren() {
+          return { items: [] };
+        },
+        async getMetadata(input) {
+          return {
+            sourceRef: input.id,
+            parentSourceRef: null,
+            name: input.id,
+            kind: "file",
+            size: 6,
+          };
+        },
+        async createReadStream() {
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("abcdef"));
+              controller.close();
+            },
+          });
+        },
+        async watch() {
+          return {
+            close: async () => {},
+          };
+        },
+      };
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      repo.insertNodeEvents([
+        {
+          sourceRef: "f.txt",
+          mountId: mount.mountId,
+          parentId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          type: "update_content",
+          node: null,
+          createdAtMs: 2,
+        },
+      ]);
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: contentParent,
+        hooks: {
+          async beforeSyncContent() {
+            throw new Error("stop-content");
+          },
+        },
+        nowMs: () => 3000,
+      });
+
+      await syncer.startWatching();
+      const drained = await waitUntil(
+        () => repo.listNodeEventsByMountId(mount.mountId).length === 1,
+        500,
+      );
+      await syncer.stopWatching();
+
+      expect(drained).toBe(true);
+      expect(() => readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toThrow();
+      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([
+        expect.objectContaining({ sourceRef: "f.txt", type: "update_content" }),
+      ]);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("after_sync_content hook failure still finalizes file and deletes event", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-after-sync-content-hook-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount({ syncContent: true });
+      const contentParent = join(dir, "content");
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: true },
+        async listChildren() {
+          return { items: [] };
+        },
+        async getMetadata(input) {
+          return {
+            sourceRef: input.id,
+            parentSourceRef: null,
+            name: input.id,
+            kind: "file",
+            size: 6,
+          };
+        },
+        async createReadStream() {
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("abcdef"));
+              controller.close();
+            },
+          });
+        },
+        async watch() {
+          return {
+            close: async () => {},
+          };
+        },
+      };
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      repo.insertNodeEvents([
+        {
+          sourceRef: "f.txt",
+          mountId: mount.mountId,
+          parentId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          type: "update_content",
+          node: null,
+          createdAtMs: 2,
+        },
+      ]);
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: contentParent,
+        hooks: {
+          async afterSyncContent() {
+            throw new Error("after-content");
+          },
+        },
+        nowMs: () => 3000,
+      });
+
+      await syncer.startWatching();
+      const drained = await waitUntil(
+        () => repo.listNodeEventsByMountId(mount.mountId).length === 0,
+        500,
+      );
+      await syncer.stopWatching();
+
+      expect(drained).toBe(true);
+      expect(readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toBe("abcdef");
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("logs structured fields for blocked before hook failures", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-before-hook-log-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount();
+      const mock = createMockLogger();
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: false },
+        async listChildren() {
+          return {
+            items: [
+              {
+                sourceRef: "f.txt",
+                parentSourceRef: null,
+                name: "f.txt",
+                kind: "file",
+                size: 3,
+              },
+            ],
+          };
+        },
+        async getMetadata() {
+          return {
+            sourceRef: "f.txt",
+            parentSourceRef: null,
+            name: "f.txt",
+            kind: "file",
+            size: 3,
+          };
+        },
+      };
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        hooks: {
+          async beforeNodeEvent(hookName) {
+            if (hookName === "before_add") {
+              throw new Error("blocked");
+            }
+          },
+        },
+        logger: mock.logger as never,
+        nowMs: () => 3000,
+      });
+
+      await syncer.fullSync();
+
+      expect(mock.records).toContainEqual(
+        expect.objectContaining({
+          level: "warn",
+          msg: "syncer nodeEvents handler blocked by hook",
+          obj: expect.objectContaining({
+            mountId: mount.mountId,
+            sourceRef: "f.txt",
+            eventType: "add",
+            hookName: "before_add",
+            stage: "before",
+            error: "Error: blocked",
+          }),
+        }),
+      );
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("logs structured fields for content hook failures", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-content-hook-log-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount({ syncContent: true });
+      const contentParent = join(dir, "content");
+      const mock = createMockLogger();
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: true },
+        async listChildren() {
+          return { items: [] };
+        },
+        async getMetadata(input) {
+          return {
+            sourceRef: input.id,
+            parentSourceRef: null,
+            name: input.id,
+            kind: "file",
+            size: 6,
+          };
+        },
+        async createReadStream() {
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("abcdef"));
+              controller.close();
+            },
+          });
+        },
+        async watch() {
+          return {
+            close: async () => {},
+          };
+        },
+      };
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      repo.insertNodeEvents([
+        {
+          sourceRef: "f.txt",
+          mountId: mount.mountId,
+          parentId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          type: "update_content",
+          node: null,
+          createdAtMs: 2,
+        },
+      ]);
+
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: contentParent,
+        hooks: {
+          async afterSyncContent() {
+            throw new Error("after-content");
+          },
+        },
+        logger: mock.logger as never,
+        nowMs: () => 3000,
+      });
+
+      await syncer.startWatching();
+      const drained = await waitUntil(
+        () => repo.listNodeEventsByMountId(mount.mountId).length === 0,
+        500,
+      );
+      await syncer.stopWatching();
+
+      expect(drained).toBe(true);
+      expect(mock.records).toContainEqual(
+        expect.objectContaining({
+          level: "warn",
+          msg: "syncer content hook failed",
+          obj: expect.objectContaining({
+            mountId: mount.mountId,
+            sourceRef: "f.txt",
+            eventType: "update_content",
+            hookName: "after_sync_content",
+            stage: "after",
+            error: "Error: after-content",
+          }),
+        }),
+      );
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });
