@@ -244,6 +244,30 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         .all(mountId) as VfsNode[];
     },
 
+    listNodesByMountIdAndSourceRef(mountId: string, sourceRef: string) {
+      return db
+        .query(
+          `SELECT
+            node_id AS nodeId,
+            mount_id AS mountId,
+            parent_id AS parentId,
+            name,
+            kind,
+            size,
+            mtime_ms AS mtimeMs,
+            source_ref AS sourceRef,
+            provider_version AS providerVersion,
+            deleted_at_ms AS deletedAtMs,
+            created_at_ms AS createdAtMs,
+            updated_at_ms AS updatedAtMs
+          FROM vfs_nodes
+          WHERE mount_id = ?
+            AND source_ref = ?
+          LIMIT 1`,
+        )
+        .get(mountId, sourceRef) as VfsNode | null;
+    },
+
     getNodeById(nodeId: string) {
       return db
         .query(

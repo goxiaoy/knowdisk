@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { VFS_TYPES_READY } from "./vfs.types";
+import { complete, VFS_TYPES_READY } from "./vfs.types";
 import type { VfsCursor, VfsMountConfig, VfsNode } from "./vfs.types";
 
 describe("vfs types", () => {
@@ -36,5 +36,34 @@ describe("vfs types", () => {
   it("supports cursor mode encoding boundary", () => {
     const cursor: VfsCursor = { mode: "local", token: "abc" };
     expect(cursor.mode).toBe("local");
+  });
+
+  it("complete checks required metadata fields", () => {
+    const node: VfsNode = {
+      nodeId: "n1",
+      mountId: "m1",
+      parentId: null,
+      name: "doc.md",
+      kind: "file",
+      size: 10,
+      mtimeMs: null,
+      sourceRef: "provider-id",
+      providerVersion: "rev-1",
+      deletedAtMs: null,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    };
+    expect(complete(node, ["size"])).toBe(true);
+    expect(complete(node, ["size", "providerVersion"])).toBe(true);
+    expect(complete(node, ["size", "mtimeMs"])).toBe(false);
+    expect(
+      complete(
+        {
+          ...node,
+          size: 0,
+        },
+        ["size"],
+      ),
+    ).toBe(false);
   });
 });

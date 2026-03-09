@@ -6,8 +6,8 @@ import pino, { type Logger } from "pino";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsRepository } from "./vfs.repository.types";
-import type { ListChildrenItem } from "./vfs.service.types";
-import type { VfsMount, VfsNode } from "./vfs.types";
+import type { ListChildrenItem, VfsChangeEvent } from "./vfs.service.types";
+import { complete, type VfsMount, type VfsNode, type VfsNodeRequiredField } from "./vfs.types";
 
 export type VfsSyncerEvent =
   | {
@@ -49,6 +49,7 @@ export function createVfsSyncer(input: {
   provider: VfsProviderAdapter;
   repository: VfsRepository;
   contentRootParent: string;
+  requiredFields?: VfsNodeRequiredField[];
   nowMs?: () => number;
   logger?: Logger;
 }): VfsSyncer {
@@ -91,6 +92,7 @@ export function createVfsSyncer(input: {
     (input.mount.providerExtra.syncName === false ||
       input.mount.providerExtra.syncName === "false");
   const localHashRoot = resolveLocalHashRoot(input.mount);
+  const requiredFields = input.requiredFields ?? ["size", "providerVersion"];
 
   async function walkAllFiles(): Promise<Map<string, ListChildrenItem>> {
     const discovered = new Map<string, ListChildrenItem>();
@@ -126,7 +128,7 @@ export function createVfsSyncer(input: {
     if (item.kind !== "file") {
       return item;
     }
-    if ((item.size ?? 0) > 0) {
+    if (complete(item, requiredFields)) {
       return item;
     }
     if (!input.provider.getMetadata) {
@@ -148,7 +150,28 @@ export function createVfsSyncer(input: {
   }
 
   async function enrichProviderVersionIfNeeded(item: ListChildrenItem): Promise<ListChildrenItem> {
-    if (item.kind !== "file" || !localHashRoot) {
+    if (item.kind !== "file") {
+      return item;
+    }
+    if (!requiredFields.includes("providerVersion")) {
+      return item;
+    }
+    if (complete(item, ["providerVersion"])) {
+      return item;
+    }
+    if (input.provider.getVersion) {
+      const fetched = await input.provider.getVersion({
+        id: itemProviderId(item),
+        sourceRef: itemSourceRef(item),
+      } as unknown as Parameters<NonNullable<typeof input.provider.getVersion>>[0]);
+      if (typeof fetched === "string" && fetched.length > 0) {
+        return {
+          ...item,
+          providerVersion: fetched,
+        };
+      }
+    }
+    if (!localHashRoot) {
       return item;
     }
     return {
@@ -370,18 +393,10 @@ export function createVfsSyncer(input: {
       logger.info({ mountId: input.mount.mountId }, "syncer watch started");
       const active = await input.provider.watch({
         onEvent: (event) => {
-          const normalizedEvent = {
-            type: event.type,
-            id: (event as { id?: string; sourceRef?: string }).id ?? (event as { sourceRef?: string }).sourceRef ?? "",
-            parentId:
-              (event as { parentId?: string | null; parentSourceRef?: string | null }).parentId ??
-              (event as { parentSourceRef?: string | null }).parentSourceRef ??
-              null,
-          } as const;
           watchQueue = watchQueue
             .then(async () => {
               emit({ type: "status", payload: { isSyncing: true, phase: "metadata" } });
-              await handleWatchEvent(normalizedEvent);
+              await handleWatchEvent(event);
               emit({ type: "status", payload: { isSyncing: false, phase: "idle" } });
             })
             .catch(() => {
@@ -410,11 +425,7 @@ export function createVfsSyncer(input: {
     },
   };
 
-  async function handleWatchEvent(event: {
-    type: "add" | "update_metadata" | "update_content" | "delete";
-    id: string;
-    parentId: string | null;
-  }): Promise<void> {
+  async function handleWatchEvent(event: VfsChangeEvent): Promise<void> {
     logger.info(
       {
         mountId: input.mount.mountId,
@@ -424,8 +435,7 @@ export function createVfsSyncer(input: {
       "syncer watch event received",
     );
     const now = nowMs();
-    const all = input.repository.listNodesByMountId(input.mount.mountId);
-    const prev = all.find((node) => node.sourceRef === event.id) ?? null;
+    const prev = input.repository.listNodesByMountIdAndSourceRef(input.mount.mountId, event.id);
 
     if (event.type === "delete") {
       if (!prev || prev.deletedAtMs !== null) {
@@ -494,7 +504,7 @@ export function createVfsSyncer(input: {
       input.mount.syncContent &&
       input.provider.createReadStream &&
       enriched.kind === "file" &&
-      (event.type === "update_content" ||
+      ((event.type === "update" && event.contentUpdated === true) ||
         !prev ||
         prev.deletedAtMs !== null ||
         prev.size !== node.size ||

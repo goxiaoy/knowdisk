@@ -1,5 +1,6 @@
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { ListChildrenItem } from "./vfs.service.types";
+import { complete, type VfsNodeRequiredField } from "./vfs.types";
 
 export type WalkProviderEntry = ListChildrenItem & {
   path: string;
@@ -10,6 +11,7 @@ export type WalkProviderInput = {
   parentId?: string | null;
   limit?: number;
   getMetadata?: VfsProviderAdapter["getMetadata"];
+  requiredFields?: VfsNodeRequiredField[];
 };
 
 export type WalkProviderCallback = (
@@ -25,6 +27,7 @@ export function walk(
     const out: WalkProviderEntry[] = [];
     const queue: Array<string | null> = [input.parentId ?? null];
     const limit = input.limit ?? 200;
+    const requiredFields = input.requiredFields ?? ["size"];
     while (queue.length > 0) {
       const parentId = queue.shift() ?? null;
       let cursor: string | undefined;
@@ -35,7 +38,11 @@ export function walk(
           cursor,
         });
         for (const item of page.items) {
-          const normalized = await enrichMetadataIfNeeded(item, input.getMetadata);
+          const normalized = await enrichMetadataIfNeeded(
+            item,
+            input.getMetadata,
+            requiredFields,
+          );
           out.push({
             ...normalized,
             path: normalized.sourceRef,
@@ -70,8 +77,9 @@ export const walkProvider = walk;
 async function enrichMetadataIfNeeded(
   item: ListChildrenItem,
   getMetadata: VfsProviderAdapter["getMetadata"] | undefined,
+  requiredFields: VfsNodeRequiredField[],
 ): Promise<ListChildrenItem> {
-  if (item.kind !== "file" || (item.size ?? 0) > 0 || !getMetadata) {
+  if (item.kind !== "file" || complete(item, requiredFields) || !getMetadata) {
     return item;
   }
   const metadata = await getMetadata({ id: item.sourceRef });

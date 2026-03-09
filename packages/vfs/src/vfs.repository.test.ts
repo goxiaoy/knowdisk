@@ -156,6 +156,46 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("listNodesByMountIdAndSourceRef returns matched node", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertNodes([
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: null,
+        name: "a.md",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "s1",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      {
+        nodeId: "n2",
+        mountId: "m2",
+        parentId: null,
+        name: "a.md",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "s1",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    expect(repo.listNodesByMountIdAndSourceRef("m1", "s1")?.nodeId).toBe("n1");
+    expect(repo.listNodesByMountIdAndSourceRef("m1", "missing")).toBeNull();
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("save/get page cache with ttl checks", () => {
     const { dir, repo } = makeRepo();
     repo.upsertPageCache({

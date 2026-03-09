@@ -165,10 +165,9 @@ describe("vfs syncer integration", () => {
       rmSync(join(sourceRoot, "docs", "b.txt"), { force: true });
 
       const settled = await waitUntil(() => {
-        const nodes = repo.listNodesByMountId(mount.mountId);
-        const c = nodes.find((n) => n.sourceRef === "newdir/c.txt");
-        const a = nodes.find((n) => n.sourceRef === "a.txt");
-        const b = nodes.find((n) => n.sourceRef === "docs/b.txt");
+        const c = repo.listNodesByMountIdAndSourceRef(mount.mountId, "newdir/c.txt");
+        const a = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+        const b = repo.listNodesByMountIdAndSourceRef(mount.mountId, "docs/b.txt");
         return (
           c?.deletedAtMs === null &&
           a?.deletedAtMs === null &&

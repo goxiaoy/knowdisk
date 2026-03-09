@@ -8,6 +8,5 @@ export * from "./vfs.provider.walk";
 export * from "./vfs.node-id";
 export * from "./vfs.cursor";
 export * from "./vfs.service";
-export * from "./vfs.sync.scheduler";
 export * from "./vfs.syncer";
 export * from "./provider";

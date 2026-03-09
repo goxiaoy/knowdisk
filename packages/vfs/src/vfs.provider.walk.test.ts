@@ -88,4 +88,44 @@ describe("vfs provider walk helper", () => {
     });
     expect(callbackResult).toEqual(["x.txt"]);
   });
+
+  test("walkProvider enriches required fields via getMetadata", async () => {
+    const mount = makeMount();
+    const provider: Pick<VfsProviderAdapter, "listChildren" | "getMetadata"> = {
+      async listChildren() {
+        return {
+          items: [
+            {
+              sourceRef: "a.txt",
+              parentSourceRef: null,
+              name: "a.txt",
+              kind: "file",
+              size: 2,
+              mtimeMs: null,
+              providerVersion: null,
+            },
+          ],
+        };
+      },
+      async getMetadata() {
+        return {
+          sourceRef: "a.txt",
+          parentSourceRef: null,
+          name: "a.txt",
+          kind: "file",
+          size: 2,
+          mtimeMs: 123,
+          providerVersion: null,
+        };
+      },
+    };
+
+    const entries = await walkProvider({
+      provider,
+      mount,
+      getMetadata: provider.getMetadata,
+      requiredFields: ["size", "mtimeMs"],
+    });
+    expect(entries[0]?.mtimeMs).toBe(123);
+  });
 });
