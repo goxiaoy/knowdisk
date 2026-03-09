@@ -7,8 +7,12 @@ import {
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
-import { createVfsSyncer, type VfsSyncer } from "./vfs.syncer";
-import type { VfsService } from "./vfs.service.types";
+import {
+  createVfsSyncer,
+  type VfsSyncer,
+  type VfsSyncerHookRunner,
+} from "./vfs.syncer";
+import type { VfsNodeEventHooks, VfsService } from "./vfs.service.types";
 import type {
   VfsMount,
   VfsMountConfig,
@@ -27,10 +31,12 @@ export function createVfsService(deps: {
   let started = false;
   const reconcileTimers = new Map<string, ReturnType<typeof setInterval>>();
   const reconcileRunning = new Set<string>();
+  const nodeEventHooks = new Map<number, VfsNodeEventHooks>();
   const syncers = new Map<
     string,
     { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }
   >();
+  let nextHookRegistrationId = 1;
 
   deps.repository.subscribeNodeEventsQueued((row) => {
     deps.repository.deletePageCacheByMountId(row.mountId);
@@ -57,6 +63,19 @@ export function createVfsService(deps: {
   const isAutoSyncEnabled = (mount: VfsMount): boolean =>
     mount.autoSync !== false;
 
+  const hooksRunner: VfsSyncerHookRunner = {
+    async beforeNodeEvent(hookName, ctx) {
+      for (const hooks of nodeEventHooks.values()) {
+        await hooks[hookName]?.(ctx);
+      }
+    },
+    async afterNodeEvent(hookName, ctx) {
+      for (const hooks of nodeEventHooks.values()) {
+        await hooks[hookName]?.(ctx);
+      }
+    },
+  };
+
   const ensureSyncer = async (mount: VfsMount): Promise<VfsSyncer> => {
     const existing = syncers.get(mount.mountId);
     if (existing) {
@@ -72,6 +91,7 @@ export function createVfsService(deps: {
       provider: deps.registry.get(mount),
       repository: deps.repository,
       contentRootParent: deps.contentRootParent,
+      hooks: hooksRunner,
       nowMs,
     });
     const stopSub = syncer.subscribe(() => {});
@@ -159,8 +179,13 @@ export function createVfsService(deps: {
       return deps.repository.subscribeNodeChanges(listener);
     },
 
-    registerNodeEventHooks() {
-      return () => {};
+    registerNodeEventHooks(hooks) {
+      const id = nextHookRegistrationId;
+      nextHookRegistrationId += 1;
+      nodeEventHooks.set(id, hooks);
+      return () => {
+        nodeEventHooks.delete(id);
+      };
     },
 
     async start() {

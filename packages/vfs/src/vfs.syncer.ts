@@ -6,7 +6,11 @@ import { enrichMetadataIfNeeded, walk } from "./vfs.provider.walk";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsNodeEventRow, VfsRepository } from "./vfs.repository.types";
-import type { VfsChangeEvent } from "./vfs.service.types";
+import type {
+  VfsChangeEvent,
+  VfsNodeEventHookContext,
+  VfsSyncContentHookContext,
+} from "./vfs.service.types";
 import { MetadataAllField, type VfsMount, type VfsNode } from "./vfs.types";
 
 export type VfsSyncerEvent =
@@ -44,11 +48,25 @@ export type VfsSyncer = {
   subscribe: (listener: (event: VfsSyncerEvent) => void) => () => void;
 };
 
+export type VfsSyncerHookRunner = {
+  beforeNodeEvent?: (
+    hookName: `before_${VfsNodeEventRow["type"]}`,
+    ctx: VfsNodeEventHookContext,
+  ) => Promise<void>;
+  afterNodeEvent?: (
+    hookName: `after_${VfsNodeEventRow["type"]}`,
+    ctx: VfsNodeEventHookContext,
+  ) => Promise<void>;
+  beforeSyncContent?: (ctx: VfsSyncContentHookContext) => Promise<void>;
+  afterSyncContent?: (ctx: VfsSyncContentHookContext) => Promise<void>;
+};
+
 export function createVfsSyncer(input: {
   mount: VfsMount;
   provider: VfsProviderAdapter;
   repository: VfsRepository;
   contentRootParent: string;
+  hooks?: VfsSyncerHookRunner;
   nowMs?: () => number;
   logger?: Logger;
 }): VfsSyncer {
@@ -457,9 +475,28 @@ export function createVfsSyncer(input: {
           break;
         }
         for (const event of rows) {
+          const prevNode = input.repository.listNodesByMountIdAndSourceRef(
+            input.mount.mountId,
+            event.sourceRef,
+          );
           try {
+            await input.hooks?.beforeNodeEvent?.(`before_${event.type}`, {
+              mount: input.mount,
+              event,
+              prevNode,
+              nextNode: null,
+            });
             await applyNodeEvent(event, {
               allowContentSync: options?.allowContentSync,
+            });
+            await input.hooks?.afterNodeEvent?.(`after_${event.type}`, {
+              mount: input.mount,
+              event,
+              prevNode,
+              nextNode: input.repository.listNodesByMountIdAndSourceRef(
+                input.mount.mountId,
+                event.sourceRef,
+              ),
             });
           } catch (error) {
             logger.warn(

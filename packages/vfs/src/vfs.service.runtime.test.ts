@@ -43,6 +43,94 @@ describe("vfs service runtime", () => {
     ctx.cleanup();
   });
 
+  test("registerNodeEventHooks runs in order and applies to newly created syncers", async () => {
+    const ctx = setup();
+    const filesByMountId = new Map<string, string[]>();
+    const calls: string[] = [];
+    ctx.registry.register("mock-hook-runtime", (_container, mount) => ({
+      type: "mock-hook-runtime",
+      capabilities: { watch: false },
+      async listChildren() {
+        return {
+          items: (filesByMountId.get(mount.mountId) ?? []).map((sourceRef) => ({
+            nodeId: sourceRef,
+            mountId: mount.mountId,
+            parentId: null,
+            name: sourceRef,
+            kind: "file" as const,
+            size: 1,
+            mtimeMs: 1,
+            sourceRef,
+            providerVersion: null,
+            deletedAtMs: null,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          })),
+        };
+      },
+      async getMetadata(input) {
+        return {
+          nodeId: input.id,
+          mountId: mount.mountId,
+          parentId: null,
+          name: input.id,
+          kind: "file" as const,
+          size: 1,
+          mtimeMs: 1,
+          sourceRef: input.id,
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        };
+      },
+    }));
+
+    const offA = ctx.service.registerNodeEventHooks({
+      before_add(ctx) {
+        calls.push(`a:${ctx.mount.mountId}:${ctx.event.sourceRef}`);
+      },
+    });
+    const offB = ctx.service.registerNodeEventHooks({
+      before_add(ctx) {
+        calls.push(`b:${ctx.mount.mountId}:${ctx.event.sourceRef}`);
+      },
+    });
+
+    const mount1 = await ctx.service.mount({
+      providerType: "mock-hook-runtime",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+    filesByMountId.set(mount1.mountId, ["a.txt"]);
+    await ctx.service.triggerReconcile(mount1.mountId);
+
+    expect(calls).toEqual([`a:${mount1.mountId}:a.txt`, `b:${mount1.mountId}:a.txt`]);
+
+    offB();
+
+    const mount2 = await ctx.service.mount({
+      providerType: "mock-hook-runtime",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+    filesByMountId.set(mount2.mountId, ["b.txt"]);
+    await ctx.service.triggerReconcile(mount2.mountId);
+
+    expect(calls).toEqual([
+      `a:${mount1.mountId}:a.txt`,
+      `b:${mount1.mountId}:a.txt`,
+      `a:${mount2.mountId}:b.txt`,
+    ]);
+
+    offA();
+    ctx.cleanup();
+  });
+
   test("subscribeNodeChanges exposes repository node updates", async () => {
     const ctx = setup();
     const rows = [];
