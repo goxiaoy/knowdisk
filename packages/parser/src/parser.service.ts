@@ -2,6 +2,7 @@ import { join } from "node:path";
 import type { VfsNode } from "@knowdisk/vfs";
 import { defaultMarkdownConverter } from "./converter";
 import { readCachedMarkdown, writeCachedMarkdown } from "./parser.cache";
+import { splitMarkdownIntoSections } from "./section-splitter";
 import type {
   CreateParserServiceInput,
   ParseCachePaths,
@@ -53,7 +54,7 @@ export function createParserService(
         parserVersion: "0.0.0",
         converterId: converter.id,
         converterVersion: converter.version,
-        sections: [],
+        sections: splitMarkdownIntoSections(markdown),
       };
     },
     getCachePaths(cacheInput) {

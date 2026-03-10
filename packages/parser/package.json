@@ -6,7 +6,10 @@
   "dependencies": {
     "@knowdisk/vfs": "workspace:*",
     "markitdown-ts": "^0.0.10",
-    "pino": "^10.3.1"
+    "mdast-util-to-string": "^4.0.0",
+    "pino": "^10.3.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
   },
   "exports": {
     ".": "./src/index.ts"
