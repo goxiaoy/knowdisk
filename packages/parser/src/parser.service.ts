@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { VfsNode } from "@knowdisk/vfs";
+import { defaultMarkdownConverter } from "./converter";
 import { readCachedMarkdown, writeCachedMarkdown } from "./parser.cache";
 import type {
   CreateParserServiceInput,
@@ -12,6 +13,7 @@ export function createParserService(
   input: CreateParserServiceInput,
 ): ParserService {
   const basePath = input.basePath.trim();
+  const converter = input.converter ?? defaultMarkdownConverter;
   const mountIdsByNodeId = new Map<string, string>();
   if (!basePath) {
     throw new Error("basePath is required");
@@ -26,21 +28,31 @@ export function createParserService(
       mountIdsByNodeId.set(node.nodeId, node.mountId);
       const cachePaths = getCachePaths(basePath, parseInput.nodeId, node.mountId);
       const cached = await readCachedMarkdown(cachePaths);
+      const cacheHit =
+        cached &&
+        cached.manifest.providerVersion === node.providerVersion &&
+        node.providerVersion !== null;
+      const rebuilt =
+        cacheHit ? null : await rebuildMarkdown(input, cachePaths, node, converter);
       const markdown =
-        cached && cached.manifest.providerVersion === node.providerVersion && node.providerVersion !== null
+        cacheHit
           ? cached.markdown
-          : await rebuildMarkdown(input, cachePaths, node);
+          : rebuilt?.markdown ?? "";
+      const title =
+        cached && cached.manifest.providerVersion === node.providerVersion && node.providerVersion !== null
+          ? cached.manifest.title
+          : rebuilt?.title ?? null;
 
       return {
         node,
         sourceUri: toSourceUri(node),
         providerVersion: node.providerVersion,
-        title: null,
+        title,
         markdown,
         parserId: "parser",
         parserVersion: "0.0.0",
-        converterId: "buffer",
-        converterVersion: "0.0.0",
+        converterId: converter.id,
+        converterVersion: converter.version,
         sections: [],
       };
     },
@@ -106,26 +118,31 @@ async function rebuildMarkdown(
   input: CreateParserServiceInput,
   cachePaths: ParseCachePaths,
   node: VfsNode,
-): Promise<string> {
+  converter: CreateParserServiceInput["converter"] extends infer T ? NonNullable<T> : never,
+): Promise<{ markdown: string; title: string | null }> {
   const buffer = await readNodeBuffer(input, node.nodeId);
-  const markdown = buffer.toString("utf8");
+  const result = await converter.convert({ buffer, node });
   await writeCachedMarkdown(cachePaths, {
-    markdown,
-    manifest: createManifest(node),
+    markdown: result.markdown,
+    manifest: createManifest(node, converter, result.title),
   });
-  return markdown;
+  return result;
 }
 
-function createManifest(node: VfsNode): ParseManifest {
+function createManifest(
+  node: VfsNode,
+  converter: { id: string; version: string },
+  title: string | null,
+): ParseManifest {
   return {
     nodeId: node.nodeId,
     mountId: node.mountId,
     providerVersion: node.providerVersion,
     parserId: "parser",
     parserVersion: "0.0.0",
-    converterId: "buffer",
-    converterVersion: "0.0.0",
-    title: null,
+    converterId: converter.id,
+    converterVersion: converter.version,
+    title,
     createdAt: new Date().toISOString(),
   };
 }

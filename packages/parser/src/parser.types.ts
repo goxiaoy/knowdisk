@@ -86,10 +86,25 @@ export type CreateParserServiceInput = {
   vfs: VfsOperationCore;
   basePath: string;
   logger: Logger;
+  converter?: MarkdownConverter;
 };
 
 export type ParserService = {
   parseNode: (input: { nodeId: string }) => AsyncIterable<ParseChunk>;
   materializeNode: (input: { nodeId: string }) => Promise<ParseDocument>;
   getCachePaths: (input: { nodeId: string }) => ParseCachePaths;
+};
+
+export type MarkdownConverterResult = {
+  title: string | null;
+  markdown: string;
+};
+
+export type MarkdownConverter = {
+  id: string;
+  version: string;
+  convert: (input: {
+    buffer: Buffer;
+    node: VfsNode;
+  }) => Promise<MarkdownConverterResult>;
 };

@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@knowdisk/vfs": "workspace:*",
+    "markitdown-ts": "^0.0.10",
+    "pino": "^10.3.1"
+  },
   "exports": {
     ".": "./src/index.ts"
   }
