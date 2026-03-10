@@ -215,6 +215,7 @@ Monorepo 说明：
 - 当前仓库使用 Bun workspace（`packages/*`）。
 - VFS 核心已拆分到 `packages/vfs`，应用侧通过 `@knowdisk/vfs` 依赖。
 - Parser 流水线已拆分到 `packages/parser`，负责从 VFS 读取字节流、转换成 markdown、用 `remark` 切 section，并在本地 `basePath` 下缓存解析产物后输出 `ParseChunk` 流。
+- parser hook 示例可通过 `bun run --cwd packages/parser example` 运行。
 
 ```bash
 bun install

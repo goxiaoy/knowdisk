@@ -215,6 +215,7 @@ Monorepo note:
 - This repo uses Bun workspace packages under `packages/*`.
 - VFS core is extracted to `packages/vfs` and consumed by app/runtime via `@knowdisk/vfs`.
 - Parser pipeline is extracted to `packages/parser`, which reads file bytes from VFS, converts them to markdown, sections them with `remark`, and emits `ParseChunk` streams while caching artifacts under a local `basePath`.
+- Run the parser hook example with `bun run --cwd packages/parser example`.
 
 ```bash
 bun install
