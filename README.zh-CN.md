@@ -139,7 +139,7 @@ Know Disk 在 `packages/vfs` 提供可挂载的 VFS 层，用于多 provider 元
   - `mode=remote`：token 编码 provider 游标。
 - 边界约束：
   - VFS 只负责挂载、节点树、分页与 reconcile 触发。
-  - 内容渲染/分块（包括 markdown）不在 VFS 层内实现。
+  - 内容渲染/分块（包括 markdown）不在 VFS 层内实现，这部分现在放在 `packages/parser`。
 
 ## 3. 运行时架构
 
@@ -214,6 +214,7 @@ Monorepo 说明：
 
 - 当前仓库使用 Bun workspace（`packages/*`）。
 - VFS 核心已拆分到 `packages/vfs`，应用侧通过 `@knowdisk/vfs` 依赖。
+- Parser 流水线已拆分到 `packages/parser`，负责从 VFS 读取字节流、转换成 markdown、用 `remark` 切 section，并在本地 `basePath` 下缓存解析产物后输出 `ParseChunk` 流。
 
 ```bash
 bun install

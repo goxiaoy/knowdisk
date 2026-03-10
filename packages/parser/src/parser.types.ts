@@ -87,6 +87,7 @@ export type CreateParserServiceInput = {
   basePath: string;
   logger: Logger;
   converter?: MarkdownConverter;
+  textSplitter?: TextSplitter;
 };
 
 export type ParserService = {
@@ -107,4 +108,13 @@ export type MarkdownConverter = {
     buffer: Buffer;
     node: VfsNode;
   }) => Promise<MarkdownConverterResult>;
+};
+
+export type TextSplitter = {
+  id: string;
+  version: string;
+  splitText: (input: {
+    text: string;
+    sectionPath: string[];
+  }) => Promise<string[]>;
 };

@@ -33,6 +33,14 @@ export async function writeCachedMarkdown(
   ]);
 }
 
+export async function writeParseError(
+  paths: ParseCachePaths,
+  input: { code: string; message: string; createdAt: string },
+): Promise<void> {
+  await mkdir(paths.dir, { recursive: true });
+  await writeFile(paths.errorPath, JSON.stringify(input, null, 2), "utf8");
+}
+
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
   return (
     typeof error === "object" &&

@@ -139,7 +139,7 @@ Know Disk includes a mountable VFS layer under `packages/vfs` for multi-provider
   - `mode=remote`: token encodes provider cursor.
 - Boundary:
   - VFS owns mount/node tree/pagination/reconcile trigger only.
-  - Content rendering/chunking (including markdown) is intentionally outside the VFS layer.
+  - Content rendering/chunking (including markdown) is intentionally outside the VFS layer and now lives in `packages/parser`.
 
 ## 3. Runtime Architecture
 
@@ -214,6 +214,7 @@ Monorepo note:
 
 - This repo uses Bun workspace packages under `packages/*`.
 - VFS core is extracted to `packages/vfs` and consumed by app/runtime via `@knowdisk/vfs`.
+- Parser pipeline is extracted to `packages/parser`, which reads file bytes from VFS, converts them to markdown, sections them with `remark`, and emits `ParseChunk` streams while caching artifacts under a local `basePath`.
 
 ```bash
 bun install

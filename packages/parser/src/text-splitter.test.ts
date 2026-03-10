@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -6,35 +6,55 @@ import type { Logger } from "pino";
 import type { VfsNode, VfsOperationCore } from "@knowdisk/vfs";
 import { createParserService } from "@knowdisk/parser";
 
-describe("parser package", () => {
-  test("exports createParserService", () => {
-    expect(typeof createParserService).toBe("function");
-  });
+const tempDirs: string[] = [];
 
-  test("supports package-root end-to-end parsing", async () => {
-    const basePath = await mkdtemp(join(tmpdir(), "parser-package-"));
-    try {
-      const service = createParserService({
-        vfs: createVfsStub({
-          node: createNode({ nodeId: "file-1", name: "guide.md" }),
-          streamText: "# Guide\n\nHello from package root",
-        }),
-        basePath,
-        logger: createLoggerStub(),
-      });
+afterEach(async () => {
+  await Promise.all(
+    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  );
+});
 
-      const chunks = [];
-      for await (const chunk of service.parseNode({ nodeId: "file-1" })) {
-        chunks.push(chunk);
-      }
+describe("text splitting", () => {
+  test("parseNode emits chunks with section metadata", async () => {
+    const basePath = await createTempDir();
+    const service = createParserService({
+      vfs: createVfsStub({
+        node: createNode({ nodeId: "file-1", name: "guide.md" }),
+        streamText: "# Intro\n\nAlpha Beta Gamma",
+      }),
+      basePath,
+      logger: createLoggerStub(),
+      textSplitter: {
+        id: "stub-splitter",
+        version: "1.0.0",
+        async splitText() {
+          return ["# Intro", "Alpha Beta", "Gamma"];
+        },
+      },
+    });
 
-      expect(chunks.length).toBeGreaterThan(0);
-      expect(chunks[0]?.source.nodeId).toBe("file-1");
-    } finally {
-      await rm(basePath, { recursive: true, force: true });
+    const chunks = [];
+    for await (const chunk of service.parseNode({ nodeId: "file-1" })) {
+      chunks.push(chunk);
     }
+
+    expect(chunks).toHaveLength(3);
+    expect(chunks.map((chunk) => chunk.text)).toEqual([
+      "# Intro",
+      "Alpha Beta",
+      "Gamma",
+    ]);
+    expect(chunks.every((chunk) => chunk.sectionPath[0] === "Intro")).toBe(true);
+    expect(chunks.every((chunk) => chunk.heading === "Intro")).toBe(true);
+    expect(chunks.every((chunk) => chunk.status === "ok")).toBe(true);
   });
 });
+
+async function createTempDir() {
+  const dir = await mkdtemp(join(tmpdir(), "parser-splitter-"));
+  tempDirs.push(dir);
+  return dir;
+}
 
 function createVfsStub(input: {
   node: VfsNode;
