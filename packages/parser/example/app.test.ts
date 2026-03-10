@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
@@ -23,6 +23,9 @@ describe("parser example", () => {
       expect(typeof app.stop).toBe("function");
       expect(app.paths.dbPath).toBe(join(runtimeRoot, "vfs.db"));
       expect(app.paths.parserCacheDir).toBe(join(runtimeRoot, "parser-cache"));
+      expect(app.paths.parserChunksDir).toBe(
+        join(runtimeRoot, "parser-chunks"),
+      );
       expect(app.paths.contentDir).toBe(join(runtimeRoot, "content"));
 
       await app.stop();
@@ -77,7 +80,9 @@ describe("parser example", () => {
       expect(
         chunks.some(
           (line) =>
-            line.includes("status=ok") && line.includes("Hello Parser"),
+            line.includes("[CHUNK]") &&
+            line.includes("status=ok") &&
+            !line.includes("heading=null"),
         ),
       ).toBe(true);
       expect(
@@ -110,13 +115,62 @@ describe("parser example", () => {
     });
 
     try {
-      await runParserExample({
+      const app = await runParserExample({
         runtimeRoot,
         stream,
       });
 
+      expect(typeof app.stop).toBe("function");
+      await app.waitForIdle();
       expect(chunks.some((line) => line.includes("[PARSE]"))).toBe(true);
       expect(chunks.some((line) => line.includes("[CHUNK]"))).toBe(true);
+
+      await app.stop();
+    } finally {
+      await rm(runtimeRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("writes parse chunks into parser-chunks and replaces previous node output", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "parser-example-"));
+    try {
+      const app = await createParserExampleApp({
+        runtimeRoot,
+      });
+
+      await app.waitForIdle();
+
+      const outputFiles = await readdir(app.paths.parserChunksDir);
+      expect(outputFiles.length).toBeGreaterThan(0);
+
+      const helloNode = app.repository.listNodesByMountIdAndSourceRef(
+        app.mounts[0]!.mountId,
+        "hello.md",
+      );
+      if (!helloNode) {
+        throw new Error("expected hello.md node");
+      }
+
+      const outputPath = join(
+        app.paths.parserChunksDir,
+        `${helloNode.nodeId}.json`,
+      );
+      const initialOutput = JSON.parse(await readFile(outputPath, "utf8"));
+      expect(initialOutput.nodeId).toBe(helloNode.nodeId);
+      expect(initialOutput.sourceRef).toBe("hello.md");
+      expect(Array.isArray(initialOutput.chunks)).toBe(true);
+      expect(initialOutput.chunks.length).toBeGreaterThan(0);
+
+      await writeFile(outputPath, '{"stale":true}', "utf8");
+      await app.parseNodeToFile(helloNode.nodeId);
+
+      const refreshedOutput = JSON.parse(await readFile(outputPath, "utf8"));
+      expect(refreshedOutput.stale).toBeUndefined();
+      expect(refreshedOutput.nodeId).toBe(helloNode.nodeId);
+      expect(refreshedOutput.sourceRef).toBe("hello.md");
+      expect(refreshedOutput.chunks.some((chunk: { status: string }) => chunk.status === "ok")).toBe(true);
+
+      await app.stop();
     } finally {
       await rm(runtimeRoot, { recursive: true, force: true });
     }

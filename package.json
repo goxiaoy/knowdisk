@@ -15,7 +15,8 @@
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"test": "bun test",
-		"vfs:example": "bun run --cwd packages/vfs example"
+		"vfs:example": "bun run --cwd packages/vfs example",
+		"parser:example": "bun run --cwd packages/parser example"
 	},
 	"dependencies": {
 		"@knowdisk/parser": "workspace:*",

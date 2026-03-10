@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { container as rootContainer } from "tsyringe";
@@ -19,14 +19,16 @@ export async function createParserExampleApp(input?: {
   stream?: NodeJS.WritableStream;
 }) {
   const runtimeRoot =
-    input?.runtimeRoot ?? join(process.cwd(), ".parser-example-runtime");
+    input?.runtimeRoot ?? join(process.cwd(), ".parser-example");
   const paths = {
     dbPath: join(runtimeRoot, "vfs.db"),
     parserCacheDir: join(runtimeRoot, "parser-cache"),
+    parserChunksDir: join(runtimeRoot, "parser-chunks"),
     contentDir: join(runtimeRoot, "content"),
   };
 
   await mkdir(paths.parserCacheDir, { recursive: true });
+  await mkdir(paths.parserChunksDir, { recursive: true });
   await mkdir(paths.contentDir, { recursive: true });
 
   const exampleLogger = createParserExampleLogger({ stream: input?.stream });
@@ -47,6 +49,43 @@ export async function createParserExampleApp(input?: {
     logger: exampleLogger.logger,
   });
 
+  const writeChunksForNode = async (input: {
+    nodeId: string;
+    sourceRef: string;
+    providerVersion: string | null;
+  }) => {
+    const outputPath = join(paths.parserChunksDir, `${input.nodeId}.json`);
+    const chunks: ParseChunk[] = [];
+
+    exampleLogger.writeLine(
+      `[PARSE] sourceRef=${input.sourceRef} nodeId=${input.nodeId} providerVersion=${input.providerVersion ?? "null"}`,
+    );
+    for await (const chunk of parser.parseNode({
+      nodeId: input.nodeId,
+    })) {
+      chunks.push(chunk);
+      exampleLogger.writeLine(formatChunk(chunk));
+      lastActivityAt = Date.now();
+    }
+
+    await writeFile(outputPath, "", "utf8");
+    await writeFile(
+      outputPath,
+      JSON.stringify(
+        {
+          nodeId: input.nodeId,
+          sourceRef: input.sourceRef,
+          providerVersion: input.providerVersion,
+          parsedAt: new Date().toISOString(),
+          chunks,
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+  };
+
   let pendingParses = 0;
   let lastActivityAt = Date.now();
   const offHooks = vfs.registerNodeEventHooks({
@@ -57,15 +96,11 @@ export async function createParserExampleApp(input?: {
       pendingParses += 1;
       lastActivityAt = Date.now();
       try {
-        exampleLogger.writeLine(
-          `[PARSE] sourceRef=${ctx.nextNode.sourceRef} nodeId=${ctx.nextNode.nodeId} providerVersion=${ctx.nextNode.providerVersion ?? "null"}`,
-        );
-        for await (const chunk of parser.parseNode({
+        await writeChunksForNode({
           nodeId: ctx.nextNode.nodeId,
-        })) {
-          exampleLogger.writeLine(formatChunk(chunk));
-          lastActivityAt = Date.now();
-        }
+          sourceRef: ctx.nextNode.sourceRef,
+          providerVersion: ctx.nextNode.providerVersion,
+        });
       } finally {
         pendingParses -= 1;
         lastActivityAt = Date.now();
@@ -93,7 +128,29 @@ export async function createParserExampleApp(input?: {
     dataDir,
     mounts: [mount],
     vfs,
+    repository,
     logger: exampleLogger.logger,
+    async parseNodeToFile(nodeId: string) {
+      const node = repository.getNodeById(nodeId);
+      if (!node) {
+        throw new Error(`node not found: ${nodeId}`);
+      }
+      if (node.kind !== "file") {
+        throw new Error(`node is not a file: ${nodeId}`);
+      }
+      pendingParses += 1;
+      lastActivityAt = Date.now();
+      try {
+        await writeChunksForNode({
+          nodeId: node.nodeId,
+          sourceRef: node.sourceRef,
+          providerVersion: node.providerVersion,
+        });
+      } finally {
+        pendingParses -= 1;
+        lastActivityAt = Date.now();
+      }
+    },
     async waitForIdle() {
       const deadline = Date.now() + 10_000;
       while (Date.now() < deadline) {
@@ -120,11 +177,7 @@ export async function runParserExample(input?: {
     runtimeRoot: input?.runtimeRoot,
     stream: input?.stream,
   });
-  try {
-    await app.waitForIdle();
-  } finally {
-    await app.stop();
-  }
+  return app;
 }
 
 function formatChunk(chunk: ParseChunk): string {

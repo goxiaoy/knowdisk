@@ -39,5 +39,6 @@ Thumbs.db
 # Local worktrees
 .worktrees/
 
-# VFS example runtime
+# example runtime
 .vfs-example/
+.parser-example/
