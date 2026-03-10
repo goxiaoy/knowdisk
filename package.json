@@ -18,6 +18,7 @@
 		"vfs:example": "bun run --cwd packages/vfs example"
 	},
 	"dependencies": {
+		"@knowdisk/parser": "workspace:*",
 		"@knowdisk/vfs": "workspace:*",
 		"@huggingface/transformers": "^3.8.1",
 		"@modelcontextprotocol/sdk": "^1.26.0",
