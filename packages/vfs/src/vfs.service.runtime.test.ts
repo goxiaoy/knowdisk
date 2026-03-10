@@ -87,12 +87,12 @@ describe("vfs service runtime", () => {
     }));
 
     const offA = ctx.service.registerNodeEventHooks({
-      before_add(ctx) {
+      beforeAdd(ctx) {
         calls.push(`a:${ctx.mount.mountId}:${ctx.event.sourceRef}`);
       },
     });
     const offB = ctx.service.registerNodeEventHooks({
-      before_add(ctx) {
+      beforeAdd(ctx) {
         calls.push(`b:${ctx.mount.mountId}:${ctx.event.sourceRef}`);
       },
     });

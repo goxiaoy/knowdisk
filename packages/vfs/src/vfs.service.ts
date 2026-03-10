@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
+import { join } from "node:path";
 import {
   decodeVfsCursorToken,
   encodeVfsLocalCursorToken,
@@ -74,16 +75,6 @@ export function createVfsService(deps: {
     async afterNodeEvent(hookName, ctx) {
       for (const hooks of nodeEventHooks.values()) {
         await hooks[hookName]?.(ctx);
-      }
-    },
-    async beforeSyncContent(ctx) {
-      for (const hooks of nodeEventHooks.values()) {
-        await hooks.before_sync_content?.(ctx);
-      }
-    },
-    async afterSyncContent(ctx) {
-      for (const hooks of nodeEventHooks.values()) {
-        await hooks.after_sync_content?.(ctx);
       }
     },
   };
@@ -350,9 +341,47 @@ export function createVfsService(deps: {
     },
 
     async createReadStream(input) {
-      throw new Error(
-        `VfsService createReadStream is not supported: ${input.id}`,
-      );
+      const node = deps.repository.getNodeById(input.id);
+      if (!node) {
+        throw new Error(`Node not found: ${input.id}`);
+      }
+      if (node.kind !== "file") {
+        throw new Error(`Node is not a file: ${input.id}`);
+      }
+      const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
+      if (!ext) {
+        throw new Error(`Mount config not found: ${node.mountId}`);
+      }
+      const mount = mountFromExt(ext);
+      if (mount.syncContent) {
+        if (!deps.contentRootParent) {
+          throw new Error("contentRootParent is required for syncContent reads");
+        }
+        const localPath = join(
+          deps.contentRootParent,
+          mount.mountId,
+          ...node.sourceRef.split("/"),
+        );
+        const file = Bun.file(localPath);
+        if (input.offset !== undefined || input.length !== undefined) {
+          const start = input.offset ?? 0;
+          const end =
+            input.length === undefined ? undefined : start + input.length;
+          return file.slice(start, end).stream();
+        }
+        return file.stream();
+      }
+      const provider = deps.registry.get(mount);
+      if (!provider.createReadStream) {
+        throw new Error(
+          `Provider "${mount.providerType}" does not support createReadStream`,
+        );
+      }
+      return provider.createReadStream({
+        id: node.sourceRef,
+        offset: input.offset,
+        length: input.length,
+      });
     },
 
     async getVersion(input) {

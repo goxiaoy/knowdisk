@@ -94,7 +94,7 @@ export async function createVfsExampleApp(input?: {
     syncMetadata: false,
     syncContent: true,
     metadataTtlSec: 60,
-    reconcileIntervalMs: 60_000,
+    reconcileIntervalMs: 600_000,
   });
   const localMount = await vfs.mountInternal("local-testdata", {
     providerType: "local",
@@ -102,7 +102,7 @@ export async function createVfsExampleApp(input?: {
     syncMetadata: true,
     syncContent: true,
     metadataTtlSec: 30,
-    reconcileIntervalMs: 10_000,
+    reconcileIntervalMs: 600_000,
   });
   void hfMount;
   void localMount;

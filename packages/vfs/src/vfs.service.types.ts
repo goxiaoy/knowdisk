@@ -52,26 +52,15 @@ export type VfsNodeEventHookContext = {
   nextNode: VfsNode | null;
 };
 
-export type VfsSyncContentHookContext = {
-  mount: VfsMount;
-  event: VfsNodeEventRow;
-  node: VfsNode;
-  finalPath: string;
-  partPath: string;
-  startOffset: number;
-};
-
 export type VfsNodeEventHooks = {
-  before_add?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  after_add?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  before_update_metadata?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  after_update_metadata?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  before_update_content?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  after_update_content?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  before_delete?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  after_delete?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
-  before_sync_content?: (ctx: VfsSyncContentHookContext) => Promise<void> | void;
-  after_sync_content?: (ctx: VfsSyncContentHookContext) => Promise<void> | void;
+  beforeAdd?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  afterAdd?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  beforeUpdateMetadata?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  afterUpdateMetadata?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  beforeUpdateContent?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  afterUpdateContent?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  beforeDelete?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
+  afterDelete?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
 };
 
 export type VfsService = VfsOperationCore & {

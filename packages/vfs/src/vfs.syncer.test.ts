@@ -333,7 +333,7 @@ describe("vfs syncer", () => {
     }
   });
 
-  test("before_add hook failure keeps event queued", async () => {
+  test("beforeAdd hook failure keeps event queued", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-before-add-hook-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
@@ -388,7 +388,7 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         hooks: {
           async beforeNodeEvent(hookName) {
-            if (hookName === "before_add") {
+            if (hookName === "beforeAdd") {
               throw new Error("blocked");
             }
           },
@@ -410,7 +410,7 @@ describe("vfs syncer", () => {
     }
   });
 
-  test("after_add hook failure still deletes the add event", async () => {
+  test("afterAdd hook failure still deletes the add event", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-after-add-hook-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
@@ -465,7 +465,7 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         hooks: {
           async afterNodeEvent(hookName) {
-            if (hookName === "after_add") {
+            if (hookName === "afterAdd") {
               throw new Error("post-fail");
             }
           },
@@ -485,8 +485,8 @@ describe("vfs syncer", () => {
     }
   });
 
-  test("before_sync_content hook failure keeps update_content queued", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-before-sync-content-hook-"));
+  test("beforeUpdateContent hook failure keeps update_content queued", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-before-update-content-hook-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
       const mount = makeMount({ syncContent: true });
@@ -553,7 +553,10 @@ describe("vfs syncer", () => {
         repository: repo,
         contentRootParent: contentParent,
         hooks: {
-          async beforeSyncContent() {
+          async beforeNodeEvent(hookName) {
+            if (hookName !== "beforeUpdateContent") {
+              return;
+            }
             throw new Error("stop-content");
           },
         },
@@ -578,8 +581,8 @@ describe("vfs syncer", () => {
     }
   });
 
-  test("after_sync_content hook failure still finalizes file and deletes event", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-after-sync-content-hook-"));
+  test("afterUpdateContent hook failure still finalizes file and deletes event", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-after-update-content-hook-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
       const mount = makeMount({ syncContent: true });
@@ -646,8 +649,11 @@ describe("vfs syncer", () => {
         repository: repo,
         contentRootParent: contentParent,
         hooks: {
-          async afterSyncContent() {
-            throw new Error("after-content");
+          async afterNodeEvent(hookName) {
+            if (hookName !== "afterUpdateContent") {
+              return;
+            }
+            throw new Error("after-update-content");
           },
         },
         nowMs: () => 3000,
@@ -724,7 +730,7 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         hooks: {
           async beforeNodeEvent(hookName) {
-            if (hookName === "before_add") {
+            if (hookName === "beforeAdd") {
               throw new Error("blocked");
             }
           },
@@ -743,7 +749,7 @@ describe("vfs syncer", () => {
             mountId: mount.mountId,
             sourceRef: "f.txt",
             eventType: "add",
-            hookName: "before_add",
+            hookName: "beforeAdd",
             stage: "before",
             error: "Error: blocked",
           }),
@@ -755,8 +761,8 @@ describe("vfs syncer", () => {
     }
   });
 
-  test("logs structured fields for content hook failures", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-content-hook-log-"));
+  test("logs structured fields for afterUpdateContent hook failures", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-after-update-content-log-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
       const mount = makeMount({ syncContent: true });
@@ -824,8 +830,11 @@ describe("vfs syncer", () => {
         repository: repo,
         contentRootParent: contentParent,
         hooks: {
-          async afterSyncContent() {
-            throw new Error("after-content");
+          async afterNodeEvent(hookName) {
+            if (hookName !== "afterUpdateContent") {
+              return;
+            }
+            throw new Error("after-update-content");
           },
         },
         logger: mock.logger as never,
@@ -843,14 +852,14 @@ describe("vfs syncer", () => {
       expect(mock.records).toContainEqual(
         expect.objectContaining({
           level: "warn",
-          msg: "syncer content hook failed",
+          msg: "syncer event hook failed",
           obj: expect.objectContaining({
             mountId: mount.mountId,
             sourceRef: "f.txt",
             eventType: "update_content",
-            hookName: "after_sync_content",
+            hookName: "afterUpdateContent",
             stage: "after",
-            error: "Error: after-content",
+            error: "Error: after-update-content",
           }),
         }),
       );

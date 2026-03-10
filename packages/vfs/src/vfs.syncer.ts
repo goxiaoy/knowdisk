@@ -9,7 +9,6 @@ import type { VfsNodeEventRow, VfsRepository } from "./vfs.repository.types";
 import type {
   VfsChangeEvent,
   VfsNodeEventHookContext,
-  VfsSyncContentHookContext,
 } from "./vfs.service.types";
 import { MetadataAllField, type VfsMount, type VfsNode } from "./vfs.types";
 
@@ -54,18 +53,46 @@ class BlockingHookError extends Error {
   }
 }
 
+type VfsNodeEventHookName =
+  | "beforeAdd"
+  | "afterAdd"
+  | "beforeUpdateMetadata"
+  | "afterUpdateMetadata"
+  | "beforeUpdateContent"
+  | "afterUpdateContent"
+  | "beforeDelete"
+  | "afterDelete";
+
 export type VfsSyncerHookRunner = {
-  beforeNodeEvent?: (
-    hookName: `before_${VfsNodeEventRow["type"]}`,
-    ctx: VfsNodeEventHookContext,
-  ) => Promise<void>;
-  afterNodeEvent?: (
-    hookName: `after_${VfsNodeEventRow["type"]}`,
-    ctx: VfsNodeEventHookContext,
-  ) => Promise<void>;
-  beforeSyncContent?: (ctx: VfsSyncContentHookContext) => Promise<void>;
-  afterSyncContent?: (ctx: VfsSyncContentHookContext) => Promise<void>;
+  beforeNodeEvent?: (hookName: VfsNodeEventHookName, ctx: VfsNodeEventHookContext) => Promise<void>;
+  afterNodeEvent?: (hookName: VfsNodeEventHookName, ctx: VfsNodeEventHookContext) => Promise<void>;
 };
+
+function toBeforeHookName(type: VfsNodeEventRow["type"]): VfsNodeEventHookName {
+  switch (type) {
+    case "add":
+      return "beforeAdd";
+    case "update_metadata":
+      return "beforeUpdateMetadata";
+    case "update_content":
+      return "beforeUpdateContent";
+    case "delete":
+      return "beforeDelete";
+  }
+}
+
+function toAfterHookName(type: VfsNodeEventRow["type"]): VfsNodeEventHookName {
+  switch (type) {
+    case "add":
+      return "afterAdd";
+    case "update_metadata":
+      return "afterUpdateMetadata";
+    case "update_content":
+      return "afterUpdateContent";
+    case "delete":
+      return "afterDelete";
+  }
+}
 
 export function createVfsSyncer(input: {
   mount: VfsMount;
@@ -159,7 +186,6 @@ export function createVfsSyncer(input: {
     items: VfsNode[],
     options?: {
       restartSourceRefs?: Set<string>;
-      event?: VfsNodeEventRow;
     },
   ): Promise<void> {
     if (!input.mount.syncContent || !input.provider.createReadStream) {
@@ -213,32 +239,6 @@ export function createVfsSyncer(input: {
         }
       }
 
-      const syncContentEvent =
-        options?.event ??
-        ({
-          id: "",
-          sourceRef,
-          mountId: input.mount.mountId,
-          parentId: item.parentId,
-          type: "update_content",
-          node: item,
-          createdAtMs: nowMs(),
-        } satisfies VfsNodeEventRow);
-      const syncContentCtx: VfsSyncContentHookContext = {
-        mount: input.mount,
-        event: syncContentEvent,
-        node: item,
-        finalPath,
-        partPath,
-        startOffset,
-      };
-
-      try {
-        await input.hooks?.beforeSyncContent?.(syncContentCtx);
-      } catch (error) {
-        throw new BlockingHookError("before_sync_content failed", error);
-      }
-
       await downloadWithResume({
         provider: input.provider,
         item,
@@ -257,21 +257,6 @@ export function createVfsSyncer(input: {
           });
         },
       });
-      try {
-        await input.hooks?.afterSyncContent?.(syncContentCtx);
-      } catch (error) {
-        logger.warn(
-          {
-            mountId: input.mount.mountId,
-            sourceRef,
-            eventType: syncContentEvent.type,
-            hookName: "after_sync_content",
-            stage: "after",
-            error: String(error),
-          },
-          "syncer content hook failed",
-        );
-      }
     }
   }
 
@@ -529,22 +514,24 @@ export function createVfsSyncer(input: {
             input.mount.mountId,
             event.sourceRef,
           );
+          const beforeHookName = toBeforeHookName(event.type);
+          const afterHookName = toAfterHookName(event.type);
           try {
             try {
-              await input.hooks?.beforeNodeEvent?.(`before_${event.type}`, {
+              await input.hooks?.beforeNodeEvent?.(beforeHookName, {
                 mount: input.mount,
                 event,
                 prevNode,
                 nextNode: null,
               });
             } catch (error) {
-              throw new BlockingHookError(`before_${event.type} failed`, error);
+              throw new BlockingHookError(`${beforeHookName} failed`, error);
             }
             await applyNodeEvent(event, {
               allowContentSync: options?.allowContentSync,
             });
             try {
-              await input.hooks?.afterNodeEvent?.(`after_${event.type}`, {
+              await input.hooks?.afterNodeEvent?.(afterHookName, {
                 mount: input.mount,
                 event,
                 prevNode,
@@ -559,7 +546,7 @@ export function createVfsSyncer(input: {
                   mountId: input.mount.mountId,
                   sourceRef: event.sourceRef,
                   eventType: event.type,
-                  hookName: `after_${event.type}`,
+                  hookName: afterHookName,
                   stage: "after",
                   error: String(error),
                 },
@@ -573,7 +560,7 @@ export function createVfsSyncer(input: {
                   mountId: input.mount.mountId,
                   sourceRef: event.sourceRef,
                   eventType: event.type,
-                  hookName: `before_${event.type}`,
+                  hookName: beforeHookName,
                   stage: "before",
                   error: String(error.causeValue ?? error),
                 },
@@ -739,7 +726,7 @@ export function createVfsSyncer(input: {
     if (prev && prev.providerVersion !== node.providerVersion) {
       restartSourceRefs.add(enriched.sourceRef);
     }
-    await syncContent([enriched], { restartSourceRefs, event });
+    await syncContent([enriched], { restartSourceRefs });
   }
 
   async function handleWatchEvent(event: VfsChangeEvent): Promise<void> {

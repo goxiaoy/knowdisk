@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
@@ -277,6 +277,135 @@ describe("vfs integration", () => {
     expect(calls[0]?.id).toBeNull();
     expect(calls[0]?.name).toBe("custom-name.txt");
 
+    ctx.cleanup();
+  });
+
+  test("service createReadStream reads from local content when syncContent is enabled", async () => {
+    const ctx = setup();
+    const contentRootParent = join(ctx.dir, "content");
+    mkdirSync(contentRootParent, { recursive: true });
+    const service = createVfsService({
+      repository: ctx.repo,
+      registry: ctx.registry,
+      nowMs: () => 1_000,
+      contentRootParent,
+    });
+    const mount = await ctx.service.mount({
+      providerType: "mock",
+      providerExtra: {},
+      syncMetadata: true,
+      syncContent: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "content-node",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "a.txt",
+        kind: "file",
+        size: 5,
+        mtimeMs: 1,
+        sourceRef: "a.txt",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    mkdirSync(join(contentRootParent, mount.mountId), { recursive: true });
+    writeFileSync(join(contentRootParent, mount.mountId, "a.txt"), "hello", {
+      encoding: "utf8",
+    });
+
+    const stream = await service.createReadStream?.({ id: "content-node" });
+    const text = await new Response(stream).text();
+
+    expect(text).toBe("hello");
+    ctx.cleanup();
+  });
+
+  test("service createReadStream delegates to provider when syncContent is disabled", async () => {
+    const ctx = setup();
+    const service = createVfsService({
+      repository: ctx.repo,
+      registry: ctx.registry,
+      nowMs: () => 1_000,
+      contentRootParent: join(ctx.dir, "content"),
+    });
+    let calls = 0;
+    ctx.registry.register("mock-stream", () => ({
+      type: "mock-stream",
+      capabilities: { watch: false },
+      async listChildren() {
+        return { items: [] };
+      },
+      async getMetadata(input) {
+        return {
+          nodeId: input.id,
+          mountId: "ignored",
+          parentId: null,
+          name: input.id,
+          kind: "file",
+          size: 5,
+          mtimeMs: 1,
+          sourceRef: input.id,
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 0,
+          updatedAtMs: 0,
+        };
+      },
+      async createReadStream(input) {
+        calls += 1;
+        return new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(`${input.id}:${input.offset ?? 0}`));
+            controller.close();
+          },
+        });
+      },
+    }));
+    const mount = await ctx.service.mount({
+      providerType: "mock-stream",
+      providerExtra: {},
+      syncMetadata: true,
+      syncContent: false,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
+    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    expect(mountNode).toBeDefined();
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "remote-stream-node",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "a.txt",
+        kind: "file",
+        size: 5,
+        mtimeMs: 1,
+        sourceRef: "a.txt",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    const stream = await service.createReadStream?.({
+      id: "remote-stream-node",
+      offset: 2,
+    });
+    const text = await new Response(stream).text();
+
+    expect(text).toBe("a.txt:2");
+    expect(calls).toBe(1);
     ctx.cleanup();
   });
 });
