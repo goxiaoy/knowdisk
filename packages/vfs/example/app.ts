@@ -3,6 +3,7 @@ import { rmSync } from "node:fs";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
+import { createExampleLogger } from "./logger";
 import {
   createVfsProviderRegistry,
   createVfsRepository,
@@ -67,11 +68,12 @@ export async function createVfsExampleApp(input?: {
   mkdirSync(contentDir, { recursive: true });
   const dbPath = join(rootDir, "vfs.db");
   writeBootstrapFiles(testdataDir);
+  const logger = createExampleLogger();
 
   const repository = createVfsRepository({ dbPath });
-  const registry = createVfsProviderRegistry(
-    rootContainer.createChildContainer(),
-  );
+  const exampleContainer = rootContainer.createChildContainer();
+  exampleContainer.register("logger", { useValue: logger });
+  const registry = createVfsProviderRegistry(exampleContainer);
   if (input?.providerOverrides) {
     for (const [providerType, factory] of Object.entries(
       input.providerOverrides,
@@ -83,6 +85,7 @@ export async function createVfsExampleApp(input?: {
     repository,
     registry,
     contentRootParent: contentDir,
+    logger,
   });
 
   const hfMount = await vfs.mountInternal("hf-tiny-random-bert", {

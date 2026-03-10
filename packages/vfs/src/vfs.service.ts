@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Logger } from "pino";
 import {
   decodeVfsCursorToken,
   encodeVfsLocalCursorToken,
@@ -26,6 +27,7 @@ export function createVfsService(deps: {
   registry: VfsProviderRegistry;
   contentRootParent?: string;
   nowMs?: () => number;
+  logger?: Logger;
 }): VfsService {
   const nowMs = deps.nowMs ?? (() => Date.now());
   let started = false;
@@ -102,6 +104,7 @@ export function createVfsService(deps: {
       repository: deps.repository,
       contentRootParent: deps.contentRootParent,
       hooks: hooksRunner,
+      logger: deps.logger,
       nowMs,
     });
     const stopSub = syncer.subscribe(() => {});
