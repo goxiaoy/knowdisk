@@ -70,6 +70,18 @@ export type ParseCachePaths = {
   errorPath: string;
 };
 
+export type ParseManifest = {
+  nodeId: string;
+  mountId: string;
+  providerVersion: string | null;
+  parserId: string;
+  parserVersion: string;
+  converterId: string;
+  converterVersion: string;
+  title: string | null;
+  createdAt: string;
+};
+
 export type CreateParserServiceInput = {
   vfs: VfsOperationCore;
   basePath: string;

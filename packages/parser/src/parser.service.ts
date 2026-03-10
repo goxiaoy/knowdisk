@@ -1,11 +1,18 @@
 import { join } from "node:path";
 import type { VfsNode } from "@knowdisk/vfs";
-import type { CreateParserServiceInput, ParserService } from "./parser.types";
+import { readCachedMarkdown, writeCachedMarkdown } from "./parser.cache";
+import type {
+  CreateParserServiceInput,
+  ParseCachePaths,
+  ParseManifest,
+  ParserService,
+} from "./parser.types";
 
 export function createParserService(
   input: CreateParserServiceInput,
 ): ParserService {
   const basePath = input.basePath.trim();
+  const mountIdsByNodeId = new Map<string, string>();
   if (!basePath) {
     throw new Error("basePath is required");
   }
@@ -16,8 +23,13 @@ export function createParserService(
     },
     async materializeNode(parseInput) {
       const node = await getNodeOrThrow(input, parseInput.nodeId);
-      const buffer = await readNodeBuffer(input, parseInput.nodeId);
-      const markdown = buffer.toString("utf8");
+      mountIdsByNodeId.set(node.nodeId, node.mountId);
+      const cachePaths = getCachePaths(basePath, parseInput.nodeId, node.mountId);
+      const cached = await readCachedMarkdown(cachePaths);
+      const markdown =
+        cached && cached.manifest.providerVersion === node.providerVersion && node.providerVersion !== null
+          ? cached.markdown
+          : await rebuildMarkdown(input, cachePaths, node);
 
       return {
         node,
@@ -33,12 +45,11 @@ export function createParserService(
       };
     },
     getCachePaths(cacheInput) {
-      return {
-        dir: join(basePath, cacheInput.nodeId),
-        markdownPath: join(basePath, cacheInput.nodeId, "document.md"),
-        manifestPath: join(basePath, cacheInput.nodeId, "manifest.json"),
-        errorPath: join(basePath, cacheInput.nodeId, "error.json"),
-      };
+      return getCachePaths(
+        basePath,
+        cacheInput.nodeId,
+        mountIdsByNodeId.get(cacheInput.nodeId),
+      );
     },
   };
 }
@@ -75,4 +86,46 @@ async function readNodeBuffer(
 
 function toSourceUri(node: VfsNode): string {
   return `vfs://${node.mountId}/${node.nodeId}/${encodeURIComponent(node.name)}`;
+}
+
+function getCachePaths(
+  basePath: string,
+  nodeId: string,
+  mountId?: string,
+): ParseCachePaths {
+  const dir = mountId ? join(basePath, mountId, nodeId) : join(basePath, nodeId);
+  return {
+    dir,
+    markdownPath: join(dir, "document.md"),
+    manifestPath: join(dir, "manifest.json"),
+    errorPath: join(dir, "error.json"),
+  };
+}
+
+async function rebuildMarkdown(
+  input: CreateParserServiceInput,
+  cachePaths: ParseCachePaths,
+  node: VfsNode,
+): Promise<string> {
+  const buffer = await readNodeBuffer(input, node.nodeId);
+  const markdown = buffer.toString("utf8");
+  await writeCachedMarkdown(cachePaths, {
+    markdown,
+    manifest: createManifest(node),
+  });
+  return markdown;
+}
+
+function createManifest(node: VfsNode): ParseManifest {
+  return {
+    nodeId: node.nodeId,
+    mountId: node.mountId,
+    providerVersion: node.providerVersion,
+    parserId: "parser",
+    parserVersion: "0.0.0",
+    converterId: "buffer",
+    converterVersion: "0.0.0",
+    title: null,
+    createdAt: new Date().toISOString(),
+  };
 }
