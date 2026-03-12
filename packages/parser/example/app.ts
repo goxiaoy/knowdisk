@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { container as rootContainer } from "tsyringe";
@@ -17,6 +17,7 @@ export async function createParserExampleApp(input?: {
   runtimeRoot?: string;
   startSyncOnBoot?: boolean;
   stream?: NodeJS.WritableStream;
+  dataDir?: string;
 }) {
   const runtimeRoot =
     input?.runtimeRoot ?? join(process.cwd(), ".parser-example");
@@ -32,7 +33,7 @@ export async function createParserExampleApp(input?: {
   await mkdir(paths.contentDir, { recursive: true });
 
   const exampleLogger = createParserExampleLogger({ stream: input?.stream });
-  const dataDir = join(exampleDir, "data");
+  const dataDir = input?.dataDir ?? join(exampleDir, "data");
   const repository = createVfsRepository({ dbPath: paths.dbPath });
   const container = rootContainer.createChildContainer();
   container.register("logger", { useValue: exampleLogger.logger });
@@ -48,6 +49,11 @@ export async function createParserExampleApp(input?: {
     basePath: paths.parserCacheDir,
     logger: exampleLogger.logger,
   });
+
+  const clearNodeArtifacts = async (nodeId: string) => {
+    await parser.clear({ nodeId });
+    await rm(join(paths.parserChunksDir, `${nodeId}.json`), { force: true });
+  };
 
   const writeChunksForNode = async (input: {
     nodeId: string;
@@ -106,6 +112,14 @@ export async function createParserExampleApp(input?: {
         lastActivityAt = Date.now();
       }
     },
+    async afterDelete(ctx) {
+      if (ctx.prevNode?.kind !== "file") {
+        return;
+      }
+      lastActivityAt = Date.now();
+      await clearNodeArtifacts(ctx.prevNode.nodeId);
+      lastActivityAt = Date.now();
+    },
   });
 
   const mount = await vfs.mountInternal("parser-example-local", {
@@ -127,6 +141,7 @@ export async function createParserExampleApp(input?: {
     paths,
     dataDir,
     mounts: [mount],
+    parser,
     vfs,
     repository,
     logger: exampleLogger.logger,

@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { VfsNode } from "@knowdisk/vfs";
 import { defaultMarkdownConverter } from "./converter";
@@ -21,7 +22,6 @@ export function createParserService(
   const basePath = input.basePath.trim();
   const converter = input.converter ?? defaultMarkdownConverter;
   const textSplitter = input.textSplitter ?? defaultTextSplitter;
-  const mountIdsByNodeId = new Map<string, string>();
   if (!basePath) {
     throw new Error("basePath is required");
   }
@@ -68,7 +68,6 @@ export function createParserService(
                 nodeId: document.node.nodeId,
                 mountId: document.node.mountId,
                 sourceRef: document.node.sourceRef,
-                sourceUri: document.sourceUri,
                 name: document.node.name,
                 kind: "file",
                 size: document.node.size,
@@ -98,8 +97,7 @@ export function createParserService(
     },
     async materializeNode(parseInput) {
       const node = await getNodeOrThrow(input, parseInput.nodeId);
-      mountIdsByNodeId.set(node.nodeId, node.mountId);
-      const cachePaths = getCachePaths(basePath, parseInput.nodeId, node.mountId);
+      const cachePaths = getCachePaths(basePath, parseInput.nodeId);
       const cached = await readCachedMarkdown(cachePaths);
       const cacheHit =
         cached &&
@@ -118,7 +116,6 @@ export function createParserService(
 
       return {
         node,
-        sourceUri: toSourceUri(node),
         providerVersion: node.providerVersion,
         title,
         markdown,
@@ -130,11 +127,13 @@ export function createParserService(
       };
     },
     getCachePaths(cacheInput) {
-      return getCachePaths(
-        basePath,
-        cacheInput.nodeId,
-        mountIdsByNodeId.get(cacheInput.nodeId),
-      );
+      return getCachePaths(basePath, cacheInput.nodeId);
+    },
+    async clear(clearInput) {
+      await rm(getCachePaths(basePath, clearInput.nodeId).dir, {
+        recursive: true,
+        force: true,
+      });
     },
   };
 }
@@ -165,16 +164,8 @@ async function readNodeBuffer(
   return Buffer.from(arrayBuffer);
 }
 
-function toSourceUri(node: VfsNode): string {
-  return `vfs://${node.mountId}/${node.nodeId}/${encodeURIComponent(node.name)}`;
-}
-
-function getCachePaths(
-  basePath: string,
-  nodeId: string,
-  mountId?: string,
-): ParseCachePaths {
-  const dir = mountId ? join(basePath, mountId, nodeId) : join(basePath, nodeId);
+function getCachePaths(basePath: string, nodeId: string): ParseCachePaths {
+  const dir = join(basePath, nodeId);
   return {
     dir,
     markdownPath: join(dir, "document.md"),
@@ -243,14 +234,13 @@ function createSkippedChunk(node: VfsNode, code: string, message: string) {
     charStart: null,
     charEnd: null,
     tokenEstimate: null,
-    source: {
-      nodeId: node.nodeId,
-      mountId: node.mountId,
-      sourceRef: node.sourceRef,
-      sourceUri: toSourceUri(node),
-      name: node.name,
-      kind: "file" as const,
-      size: node.size,
+      source: {
+        nodeId: node.nodeId,
+        mountId: node.mountId,
+        sourceRef: node.sourceRef,
+        name: node.name,
+        kind: "file" as const,
+        size: node.size,
       mtimeMs: node.mtimeMs,
       providerVersion: node.providerVersion,
     },

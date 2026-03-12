@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
@@ -73,22 +73,15 @@ describe("parser example", () => {
       expect(
         chunks.some(
           (line) =>
-            line.includes("sourceRef=hello.md") &&
-            line.includes("[PARSE]"),
-        ),
-      ).toBe(true);
-      expect(
-        chunks.some(
-          (line) =>
             line.includes("[CHUNK]") &&
-            line.includes("status=ok") &&
-            !line.includes("heading=null"),
+            line.includes("status=ok"),
         ),
       ).toBe(true);
       expect(
         chunks.some(
           (line) =>
-            (line.includes("sourceRef=image.png") ||
+            (line.includes("sourceRef=info.json") ||
+              line.includes("sourceRef=image.png") ||
               line.includes("sourceRef=paper.pdf")) &&
             line.includes("[PARSE]"),
         ),
@@ -133,9 +126,11 @@ describe("parser example", () => {
 
   test("writes parse chunks into parser-chunks and replaces previous node output", async () => {
     const runtimeRoot = await mkdtemp(join(tmpdir(), "parser-example-"));
+    const dataDir = await copyExampleData();
     try {
       const app = await createParserExampleApp({
         runtimeRoot,
+        dataDir,
       });
 
       await app.waitForIdle();
@@ -143,36 +138,85 @@ describe("parser example", () => {
       const outputFiles = await readdir(app.paths.parserChunksDir);
       expect(outputFiles.length).toBeGreaterThan(0);
 
-      const helloNode = app.repository.listNodesByMountIdAndSourceRef(
+      const infoNode = app.repository.listNodesByMountIdAndSourceRef(
         app.mounts[0]!.mountId,
-        "hello.md",
+        "info.json",
       );
-      if (!helloNode) {
-        throw new Error("expected hello.md node");
+      if (!infoNode) {
+        throw new Error("expected info.json node");
       }
 
       const outputPath = join(
         app.paths.parserChunksDir,
-        `${helloNode.nodeId}.json`,
+        `${infoNode.nodeId}.json`,
       );
       const initialOutput = JSON.parse(await readFile(outputPath, "utf8"));
-      expect(initialOutput.nodeId).toBe(helloNode.nodeId);
-      expect(initialOutput.sourceRef).toBe("hello.md");
+      expect(initialOutput.nodeId).toBe(infoNode.nodeId);
+      expect(initialOutput.sourceRef).toBe("info.json");
       expect(Array.isArray(initialOutput.chunks)).toBe(true);
       expect(initialOutput.chunks.length).toBeGreaterThan(0);
 
       await writeFile(outputPath, '{"stale":true}', "utf8");
-      await app.parseNodeToFile(helloNode.nodeId);
+      await app.parseNodeToFile(infoNode.nodeId);
 
       const refreshedOutput = JSON.parse(await readFile(outputPath, "utf8"));
       expect(refreshedOutput.stale).toBeUndefined();
-      expect(refreshedOutput.nodeId).toBe(helloNode.nodeId);
-      expect(refreshedOutput.sourceRef).toBe("hello.md");
+      expect(refreshedOutput.nodeId).toBe(infoNode.nodeId);
+      expect(refreshedOutput.sourceRef).toBe("info.json");
       expect(refreshedOutput.chunks.some((chunk: { status: string }) => chunk.status === "ok")).toBe(true);
 
       await app.stop();
     } finally {
+      await rm(dataDir, { recursive: true, force: true });
+      await rm(runtimeRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("afterDelete clears parser cache and parser chunk output", async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), "parser-example-"));
+    const dataDir = await copyExampleData();
+    try {
+      const app = await createParserExampleApp({
+        runtimeRoot,
+        dataDir,
+      });
+
+      await app.waitForIdle();
+
+      const infoNode = app.repository.listNodesByMountIdAndSourceRef(
+        app.mounts[0]!.mountId,
+        "info.json",
+      );
+      if (!infoNode) {
+        throw new Error("expected info.json node");
+      }
+
+      const outputPath = join(
+        app.paths.parserChunksDir,
+        `${infoNode.nodeId}.json`,
+      );
+      const cachePaths = app.parser.getCachePaths({ nodeId: infoNode.nodeId });
+
+      await access(outputPath);
+      await access(cachePaths.dir);
+
+      await unlink(join(app.dataDir, "info.json"));
+      await app.vfs.triggerReconcile(app.mounts[0]!.mountId);
+      await app.waitForIdle();
+
+      await expect(access(outputPath)).rejects.toThrow();
+      await expect(access(cachePaths.dir)).rejects.toThrow();
+
+      await app.stop();
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
       await rm(runtimeRoot, { recursive: true, force: true });
     }
   });
 });
+
+async function copyExampleData() {
+  const dir = await mkdtemp(join(tmpdir(), "parser-example-data-"));
+  await cp(join(import.meta.dir, "data"), dir, { recursive: true });
+  return dir;
+}

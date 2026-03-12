@@ -19,7 +19,6 @@ export type ParseChunk = {
     nodeId: string;
     mountId: string;
     sourceRef: string;
-    sourceUri: string;
     name: string;
     kind: "file";
     size: number | null;
@@ -52,7 +51,6 @@ export type ParseSection = {
 
 export type ParseDocument = {
   node: VfsNode;
-  sourceUri: string;
   providerVersion: string | null;
   title: string | null;
   markdown: string;
@@ -94,6 +92,7 @@ export type ParserService = {
   parseNode: (input: { nodeId: string }) => AsyncIterable<ParseChunk>;
   materializeNode: (input: { nodeId: string }) => Promise<ParseDocument>;
   getCachePaths: (input: { nodeId: string }) => ParseCachePaths;
+  clear: (input: { nodeId: string }) => Promise<void>;
 };
 
 export type MarkdownConverterResult = {

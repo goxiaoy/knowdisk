@@ -47,6 +47,7 @@ describe("text splitting", () => {
     expect(chunks.every((chunk) => chunk.sectionPath[0] === "Intro")).toBe(true);
     expect(chunks.every((chunk) => chunk.heading === "Intro")).toBe(true);
     expect(chunks.every((chunk) => chunk.status === "ok")).toBe(true);
+    expect(chunks.every((chunk) => "sourceUri" in chunk.source === false)).toBe(true);
   });
 });
 

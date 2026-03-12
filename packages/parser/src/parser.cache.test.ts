@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Logger } from "pino";
@@ -15,7 +15,7 @@ afterEach(async () => {
 });
 
 describe("parser markdown cache", () => {
-  test("writes markdown and manifest under mount and node cache paths", async () => {
+  test("writes markdown and manifest under node cache paths", async () => {
     const basePath = await createTempDir();
     const vfs = createCountingVfs({
       node: createNode({ nodeId: "file-1", mountId: "mount-a", providerVersion: "v1" }),
@@ -31,7 +31,7 @@ describe("parser markdown cache", () => {
     const cachePaths = service.getCachePaths({ nodeId: "file-1" });
 
     expect(document.markdown).toBe("cached text");
-    expect(cachePaths.dir).toBe(join(basePath, "mount-a", "file-1"));
+    expect(cachePaths.dir).toBe(join(basePath, "file-1"));
     expect(await readFile(cachePaths.markdownPath, "utf8")).toBe("cached text");
     expect(JSON.parse(await readFile(cachePaths.manifestPath, "utf8"))).toMatchObject({
       nodeId: "file-1",
@@ -39,6 +39,26 @@ describe("parser markdown cache", () => {
       providerVersion: "v1",
     });
     expect(vfs.readCount).toBe(1);
+  });
+
+  test("clear removes cached markdown for a node", async () => {
+    const basePath = await createTempDir();
+    const vfs = createCountingVfs({
+      node: createNode({ nodeId: "file-clear", mountId: "mount-a", providerVersion: "v1" }),
+      streamText: "cached text",
+    });
+    const service = createParserService({
+      vfs,
+      basePath,
+      logger: createLoggerStub(),
+    });
+
+    await service.materializeNode({ nodeId: "file-clear" });
+    const cachePaths = service.getCachePaths({ nodeId: "file-clear" });
+
+    await service.clear({ nodeId: "file-clear" });
+
+    await expect(access(cachePaths.dir)).rejects.toThrow();
   });
 
   test("reuses cached markdown when providerVersion matches", async () => {

@@ -44,6 +44,7 @@ describe("parser vfs read stage", () => {
 
     expect(document.markdown).toBe("hello parser");
     expect(document.node.nodeId).toBe("file-1");
+    expect("sourceUri" in document).toBe(false);
   });
 });
 
