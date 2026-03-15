@@ -35,6 +35,17 @@ export function createModelService(
   const emitter = new EventEmitter();
   let status: ModelDownloadStatus = EMPTY_STATUS;
 
+  function emit() {
+    emitter.emit("change", status);
+  }
+
+  function updateStatus(
+    updater: (current: ModelDownloadStatus) => ModelDownloadStatus,
+  ) {
+    status = updater(status);
+    emit();
+  }
+
   function getStatus() {
     return {
       getSnapshot: () => status,
@@ -56,7 +67,17 @@ export function createModelService(
       throw new Error("Not implemented");
     },
     async retryNow() {
-      throw new Error("Not implemented");
+      updateStatus((current) => ({
+        ...current,
+        phase: "running",
+        lastStartedAt: new Date().toISOString(),
+      }));
+      updateStatus((current) => ({
+        ...current,
+        phase: "completed",
+        lastFinishedAt: new Date().toISOString(),
+      }));
+      return { ok: true };
     },
     async redownloadEmbeddingModel() {
       throw new Error("Not implemented");
