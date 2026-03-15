@@ -4,6 +4,7 @@ import type {
   LocalEmbeddingExtractor,
   LocalRerankerRuntime,
   ModelDownloadStatus,
+  ModelDownloadTask,
   ModelService,
 } from "./model.service.types";
 
@@ -30,7 +31,7 @@ const EMPTY_STATUS: ModelDownloadStatus = {
 };
 
 export function createModelService(
-  _input: CreateModelServiceInput,
+  input: CreateModelServiceInput,
 ): ModelService {
   const emitter = new EventEmitter();
   let status: ModelDownloadStatus = EMPTY_STATUS;
@@ -58,8 +59,56 @@ export function createModelService(
     };
   }
 
+  function buildTasks(): ModelDownloadStatus["tasks"] {
+    const embedding =
+      input.config.embedding.provider === "local" && input.config.embedding.local
+        ? {
+            id: "embedding-local",
+            model: input.config.embedding.local.model,
+            provider: "local",
+            state: "verifying",
+            progressPct: 0,
+            downloadedBytes: 0,
+            totalBytes: 0,
+            error: "",
+          }
+        : null;
+    const reranker =
+      input.config.reranker.enabled &&
+      input.config.reranker.provider === "local" &&
+      input.config.reranker.local
+        ? {
+            id: "reranker-local",
+            model: input.config.reranker.local.model,
+            provider: "local",
+            state: "verifying",
+            progressPct: 0,
+            downloadedBytes: 0,
+            totalBytes: 0,
+            error: "",
+          }
+        : null;
+
+    return {
+      embedding: embedding as ModelDownloadTask | null,
+      reranker: reranker as ModelDownloadTask | null,
+    };
+  }
+
   return {
-    async ensureRequiredModels() {},
+    async ensureRequiredModels() {
+      updateStatus((current) => ({
+        ...current,
+        phase: "verifying",
+        lastStartedAt: new Date().toISOString(),
+        tasks: buildTasks(),
+      }));
+      updateStatus((current) => ({
+        ...current,
+        phase: "completed",
+        lastFinishedAt: new Date().toISOString(),
+      }));
+    },
     async getLocalEmbeddingExtractor(): Promise<LocalEmbeddingExtractor> {
       throw new Error("Not implemented");
     },
