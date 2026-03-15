@@ -62,6 +62,15 @@ describe("model retry and progress", () => {
         fetch: fetchImpl,
         setTimeout: ((_fn: () => void, _delay?: number) => 1) as typeof setTimeout,
         clearTimeout: ((_timer: number) => {}) as typeof clearTimeout,
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
+        loadRerankerRuntime: async () => ({
+          async tokenizePairs() {
+            return {};
+          },
+          async score() {
+            return [1];
+          },
+        }),
       },
     });
 
@@ -104,6 +113,7 @@ describe("model retry and progress", () => {
       cacheDir: dir,
       deps: {
         fetch: fetchImpl,
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
       },
     });
 

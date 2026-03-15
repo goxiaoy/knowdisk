@@ -36,6 +36,36 @@ function createFetchStub() {
 }
 
 describe("model runtime acquisition", () => {
+  it("verifies local runtimes after model download completes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "knowdisk-model-verify-"));
+    tempDirs.push(dir);
+    const embeddingLoader = mock(async () => async () => ({ data: [1] }));
+    const rerankerLoader = mock(async () => ({
+      async tokenizePairs() {
+        return {};
+      },
+      async score() {
+        return [1];
+      },
+    }));
+
+    const service = createModelService({
+      logger: createLoggerService({ level: "silent" }),
+      config: createDefaultCoreConfig(),
+      cacheDir: dir,
+      deps: {
+        fetch: createFetchStub(),
+        loadEmbeddingExtractor: embeddingLoader,
+        loadRerankerRuntime: rerankerLoader,
+      },
+    });
+
+    await service.ensureRequiredModels();
+
+    expect(embeddingLoader).toHaveBeenCalledTimes(1);
+    expect(rerankerLoader).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects embedding runtime when embedding provider is not local", async () => {
     const config = createDefaultCoreConfig();
     config.embedding.provider = "openai";

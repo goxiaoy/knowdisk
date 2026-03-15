@@ -46,6 +46,15 @@ describe("model redownload APIs", () => {
       cacheDir: dir,
       deps: {
         fetch: createFetchStub(),
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
+        loadRerankerRuntime: async () => ({
+          async tokenizePairs() {
+            return {};
+          },
+          async score() {
+            return [1];
+          },
+        }),
       },
     });
 
@@ -69,6 +78,15 @@ describe("model redownload APIs", () => {
       cacheDir: dir,
       deps: {
         fetch: createFetchStub(),
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
+        loadRerankerRuntime: async () => ({
+          async tokenizePairs() {
+            return {};
+          },
+          async score() {
+            return [1];
+          },
+        }),
       },
     });
 

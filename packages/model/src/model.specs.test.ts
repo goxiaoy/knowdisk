@@ -34,6 +34,15 @@ describe("local model task selection", () => {
       cacheDir: "build/models",
       deps: {
         fetch: fetchImpl,
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
+        loadRerankerRuntime: async () => ({
+          async tokenizePairs() {
+            return {};
+          },
+          async score() {
+            return [1];
+          },
+        }),
       },
     });
 

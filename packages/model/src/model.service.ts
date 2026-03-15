@@ -93,6 +93,8 @@ export function createModelService(input: CreateModelServiceInput): ModelService
   let lastScope: LocalTaskKind | "all" | null = null;
   const embeddingRuntimeGuards = new Map<string, Promise<LocalEmbeddingExtractor>>();
   const rerankerRuntimeGuards = new Map<string, Promise<LocalRerankerRuntime>>();
+  const embeddingVerifyGuards = new Map<string, Promise<LocalEmbeddingExtractor>>();
+  const rerankerVerifyGuards = new Map<string, Promise<LocalRerankerRuntime>>();
 
   function emit() {
     emitter.emit("change", status);
@@ -320,6 +322,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
           await downloadFile(spec, file, totalBytes, downloadedState);
         }
         await writeManifest(spec, files.map((file) => file.path));
+        await verifyModelIntegrity(spec);
         updateTask(spec.id, (task) => ({
           ...task,
           state: "ready",
@@ -398,7 +401,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     }
   }
 
-  async function defaultLoadEmbeddingExtractor(spec: LocalTaskSpec) {
+  async function configureTransformersEnv(spec: LocalTaskSpec) {
     const transformers = await import("@huggingface/transformers");
     const env = (transformers as { env?: { allowRemoteModels?: boolean; remoteHost?: string; localModelPath?: string; cacheDir?: string } }).env;
     if (env) {
@@ -407,6 +410,11 @@ export function createModelService(input: CreateModelServiceInput): ModelService
       env.localModelPath = join(input.cacheDir, spec.kind);
       env.cacheDir = join(input.cacheDir, spec.kind);
     }
+  }
+
+  async function defaultLoadEmbeddingExtractor(spec: LocalTaskSpec) {
+    await configureTransformersEnv(spec);
+    const transformers = await import("@huggingface/transformers");
     return (transformers as unknown as {
       pipeline: (
         task: "feature-extraction",
@@ -419,14 +427,8 @@ export function createModelService(input: CreateModelServiceInput): ModelService
   }
 
   async function defaultLoadRerankerRuntime(spec: LocalTaskSpec) {
+    await configureTransformersEnv(spec);
     const transformers = await import("@huggingface/transformers");
-    const env = (transformers as { env?: { allowRemoteModels?: boolean; remoteHost?: string; localModelPath?: string; cacheDir?: string } }).env;
-    if (env) {
-      env.allowRemoteModels = false;
-      env.remoteHost = `${spec.hfEndpoint}/`;
-      env.localModelPath = join(input.cacheDir, spec.kind);
-      env.cacheDir = join(input.cacheDir, spec.kind);
-    }
     const tokenizer = await (transformers as unknown as {
       AutoTokenizer: {
         from_pretrained: (
@@ -464,6 +466,43 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     } satisfies LocalRerankerRuntime;
   }
 
+  async function verifyModelIntegrity(spec: LocalTaskSpec) {
+    if (spec.kind === "embedding") {
+      const key = `${spec.kind}:${spec.model}`;
+      const existing = embeddingVerifyGuards.get(key);
+      if (existing) {
+        await existing;
+        return;
+      }
+      const pending = input.deps?.loadEmbeddingExtractor
+        ? input.deps.loadEmbeddingExtractor(
+            spec.model,
+            join(input.cacheDir, spec.kind),
+            spec.hfEndpoint,
+          )
+        : defaultLoadEmbeddingExtractor(spec);
+      embeddingVerifyGuards.set(key, pending);
+      await pending;
+      return;
+    }
+
+    const key = `${spec.kind}:${spec.model}`;
+    const existing = rerankerVerifyGuards.get(key);
+    if (existing) {
+      await existing;
+      return;
+    }
+    const pending = input.deps?.loadRerankerRuntime
+      ? input.deps.loadRerankerRuntime(
+          spec.model,
+          join(input.cacheDir, spec.kind),
+          spec.hfEndpoint,
+        )
+      : defaultLoadRerankerRuntime(spec);
+    rerankerVerifyGuards.set(key, pending);
+    await pending;
+  }
+
   return {
     async ensureRequiredModels() {
       await ensureScope("all");
@@ -478,8 +517,17 @@ export function createModelService(input: CreateModelServiceInput): ModelService
       if (existing) {
         return existing;
       }
+      const verified = embeddingVerifyGuards.get(key);
+      if (verified) {
+        embeddingRuntimeGuards.set(key, verified);
+        return verified;
+      }
       const pending = (async () => {
         await ensureModelFiles(spec);
+        const postVerify = embeddingVerifyGuards.get(key);
+        if (postVerify) {
+          return postVerify;
+        }
         return (input.deps?.loadEmbeddingExtractor ?? defaultLoadEmbeddingExtractor)(spec.model, join(input.cacheDir, spec.kind), spec.hfEndpoint);
       })();
       embeddingRuntimeGuards.set(key, pending);
@@ -501,8 +549,17 @@ export function createModelService(input: CreateModelServiceInput): ModelService
       if (existing) {
         return existing;
       }
+      const verified = rerankerVerifyGuards.get(key);
+      if (verified) {
+        rerankerRuntimeGuards.set(key, verified);
+        return verified;
+      }
       const pending = (async () => {
         await ensureModelFiles(spec);
+        const postVerify = rerankerVerifyGuards.get(key);
+        if (postVerify) {
+          return postVerify;
+        }
         return (input.deps?.loadRerankerRuntime ?? defaultLoadRerankerRuntime)(spec.model, join(input.cacheDir, spec.kind), spec.hfEndpoint);
       })();
       rerankerRuntimeGuards.set(key, pending);
