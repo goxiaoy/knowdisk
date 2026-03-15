@@ -30,6 +30,41 @@ const EMPTY_STATUS: ModelDownloadStatus = {
   },
 };
 
+export function selectPreferredRepoFiles(
+  siblings: Array<{ rfilename?: string; size?: number }>,
+): Array<{ path: string; size: number }> {
+  const requiredPaths = new Set([
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "added_tokens.json",
+    "vocab.txt",
+    "vocab.json",
+    "merges.txt",
+    "tokenizer.model",
+    "sentencepiece.bpe.model",
+    "preprocessor_config.json",
+  ]);
+
+  return siblings
+    .filter(
+      (item): item is { rfilename: string; size?: number } =>
+        typeof item.rfilename === "string" &&
+        item.rfilename.length > 0 &&
+        (requiredPaths.has(item.rfilename) ||
+          item.rfilename === "onnx/model.onnx" ||
+          item.rfilename.startsWith("onnx/model.onnx")),
+    )
+    .map((item) => ({
+      path: item.rfilename,
+      size:
+        Number.isFinite(item.size) && (item.size ?? 0) > 0
+          ? Number(item.size)
+          : 0,
+    }));
+}
+
 export function createModelService(
   input: CreateModelServiceInput,
 ): ModelService {
