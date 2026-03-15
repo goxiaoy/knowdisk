@@ -1,0 +1,12 @@
+{
+  "name": "@knowdisk/core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pino": "^10.3.1"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
