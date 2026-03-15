@@ -1,4 +1,5 @@
 export { createDefaultCoreConfig } from "./default-config";
+export { validateCoreConfig } from "./validate-config";
 export type {
   ChatProviderId,
   CoreConfig,
