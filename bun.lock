@@ -42,6 +42,30 @@
         "vite": "^6.0.3",
       },
     },
+    "packages/core": {
+      "name": "@knowdisk/core",
+      "version": "1.0.0",
+      "dependencies": {
+        "pino": "^10.3.1",
+      },
+    },
+    "packages/indexing": {
+      "name": "@knowdisk/indexing",
+      "version": "1.0.0",
+      "dependencies": {
+        "@knowdisk/parser": "workspace:*",
+        "@knowdisk/vfs": "workspace:*",
+        "pino": "^10.3.1",
+      },
+    },
+    "packages/model": {
+      "name": "@knowdisk/model",
+      "version": "1.0.0",
+      "dependencies": {
+        "@knowdisk/core": "workspace:*",
+        "pino": "^10.3.1",
+      },
+    },
     "packages/parser": {
       "name": "@knowdisk/parser",
       "version": "1.0.0",
@@ -275,6 +299,12 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@knowdisk/core": ["@knowdisk/core@workspace:packages/core"],
+
+    "@knowdisk/indexing": ["@knowdisk/indexing@workspace:packages/indexing"],
+
+    "@knowdisk/model": ["@knowdisk/model@workspace:packages/model"],
 
     "@knowdisk/parser": ["@knowdisk/parser@workspace:packages/parser"],
 

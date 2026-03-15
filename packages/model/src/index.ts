@@ -1,6 +1,4 @@
-export function createModelService() {
-  throw new Error("Not implemented");
-}
+export { createModelService } from "./model.service";
 
 export type {
   CreateModelServiceInput,
