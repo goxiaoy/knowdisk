@@ -1,4 +1,5 @@
 import type { ParseChunk } from "@knowdisk/parser";
+import { createHash } from "node:crypto";
 import type {
   CreateIndexingServiceInput,
   IndexingService,
@@ -154,7 +155,9 @@ async function collectValidChunks(
 }
 
 function buildChunkId(nodeId: string, chunkIndex: number): string {
-  return `${nodeId}:${chunkIndex}`;
+  return createHash("sha1")
+    .update(`${nodeId}:${chunkIndex}`)
+    .digest("hex");
 }
 
 function fuseSearchHits(

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import type { ParseChunk } from "@knowdisk/parser";
 import type { VfsNode } from "@knowdisk/vfs";
 import type { CreateIndexingServiceInput, SearchHit } from "./indexing.types";
@@ -21,8 +22,8 @@ describe("indexing service index", () => {
     expect(ctx.vectorReplaceCalls).toHaveLength(1);
     expect(ctx.vectorReplaceCalls[0]?.[0]?.embedding).toEqual([11, 0]);
     expect(ctx.ftsReplaceCalls[0]?.map((row) => row.chunkId)).toEqual([
-      "node-1:0",
-      "node-1:1",
+      buildChunkId("node-1", 0),
+      buildChunkId("node-1", 1),
     ]);
   });
 
@@ -199,6 +200,12 @@ function createLoggerStub() {
     },
     level: "info",
   } as never;
+}
+
+function buildChunkId(nodeId: string, chunkIndex: number): string {
+  return createHash("sha1")
+    .update(`${nodeId}:${chunkIndex}`)
+    .digest("hex");
 }
 
 void ({} as SearchHit);
