@@ -1,0 +1,13 @@
+{
+  "name": "@knowdisk/model",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@knowdisk/core": "workspace:*",
+    "pino": "^10.3.1"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
