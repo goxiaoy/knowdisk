@@ -1,3 +1,4 @@
+export { createDefaultCoreConfig } from "./default-config";
 export type {
   ChatProviderId,
   CoreConfig,
