@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { Database } from "bun:sqlite";
-import type { SearchHit } from "./indexing.types";
+import type { SearchHit } from "../indexing.types";
 import type { FtsChunkRow, FtsRepository } from "./fts.repository.types";
 
 export function createFtsRepository(opts: { dbPath: string }): FtsRepository {

@@ -1,4 +1,4 @@
-import type { SearchHit } from "./indexing.types";
+import type { SearchHit } from "../indexing.types";
 
 export type VectorChunkRow = {
   chunkId: string;

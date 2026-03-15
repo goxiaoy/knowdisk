@@ -1,4 +1,4 @@
 export { createIndexingService } from "./indexing.service";
-export { createEmbeddingRegistry } from "./embedding.registry";
-export { createRerankerRegistry } from "./reranker.registry";
+export { createEmbeddingRegistry } from "./embedding";
+export { createRerankerRegistry } from "./rerank";
 export type * from "./indexing.types";

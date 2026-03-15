@@ -1,5 +1,5 @@
 import type { DependencyContainer } from "tsyringe";
-import type { RerankerFactory, RerankerRegistry } from "./indexing.types";
+import type { RerankerFactory, RerankerRegistry } from "../indexing.types";
 
 export function createRerankerRegistry(
   container: DependencyContainer,

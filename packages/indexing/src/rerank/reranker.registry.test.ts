@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import { container as rootContainer } from "tsyringe";
 import { createRerankerRegistry } from "./reranker.registry";
-import type { RerankerProvider, SearchHit } from "./indexing.types";
+import type { RerankerProvider, SearchHit } from "../indexing.types";
 
 describe("reranker registry", () => {
   test("register/get/listTypes", async () => {

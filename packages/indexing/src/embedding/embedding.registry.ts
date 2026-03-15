@@ -1,5 +1,5 @@
 import type { DependencyContainer } from "tsyringe";
-import type { EmbeddingRegistry, EmbeddingFactory } from "./indexing.types";
+import type { EmbeddingRegistry, EmbeddingFactory } from "../indexing.types";
 
 export function createEmbeddingRegistry(
   container: DependencyContainer,

@@ -12,8 +12,8 @@ import {
   createIndexingService,
   createRerankerRegistry,
 } from "@knowdisk/indexing";
-import { createFtsRepository } from "./fts.repository";
-import { createVectorRepository } from "./vector.repository";
+import { createFtsRepository } from "./fts";
+import { createVectorRepository } from "./vector";
 
 describe("indexing package e2e", () => {
   test("indexing and searching return consistent metadata and debug outputs", async () => {

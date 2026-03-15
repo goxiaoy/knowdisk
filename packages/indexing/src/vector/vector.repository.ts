@@ -9,7 +9,7 @@ import {
   ZVecMetricType,
   ZVecOpen,
 } from "@zvec/zvec";
-import type { SearchHit } from "./indexing.types";
+import type { SearchHit } from "../indexing.types";
 import type { VectorChunkRow, VectorRepository } from "./vector.repository.types";
 
 const VECTOR_FIELD = "embedding";

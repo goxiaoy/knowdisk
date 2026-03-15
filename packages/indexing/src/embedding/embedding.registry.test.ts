@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { describe, expect, test } from "bun:test";
 import { container as rootContainer } from "tsyringe";
 import { createEmbeddingRegistry } from "./embedding.registry";
-import type { EmbeddingProvider } from "./indexing.types";
+import type { EmbeddingProvider } from "../indexing.types";
 
 describe("embedding registry", () => {
   test("register/get/listTypes", async () => {
