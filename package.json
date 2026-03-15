@@ -26,7 +26,10 @@
 		"@zvec/zvec": "^0.2.0",
 		"aws-sdk": "^2.1693.0",
 		"chokidar": "^5.0.0",
+		"class-variance-authority": "^0.7.1",
+		"clsx": "^2.1.1",
 		"electrobun": "1.13.1",
+		"lucide-react": "^0.511.0",
 		"mock-aws-s3": "^4.0.2",
 		"nock": "^14.0.11",
 		"nodejieba": "^3.5.2",
@@ -34,6 +37,7 @@
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1",
 		"reflect-metadata": "^0.2.2",
+		"tailwind-merge": "^3.3.1",
 		"tsyringe": "^4.10.0",
 		"zod": "^4.3.6"
 	},

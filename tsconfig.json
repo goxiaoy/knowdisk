@@ -10,6 +10,11 @@
 		"isolatedModules": true,
 		"moduleDetection": "force",
 		"noEmit": true,
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./src/renderer/*"],
+			"electrobun/bun": ["./src/types/electrobun.d.ts"]
+		},
 		"jsx": "react-jsx",
 		"strict": true,
 		"noUnusedLocals": true,

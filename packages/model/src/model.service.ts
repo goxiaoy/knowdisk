@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { access, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   CreateModelServiceInput,
@@ -7,7 +7,6 @@ import type {
   LocalRerankerRuntime,
   ModelDownloadStatus,
   ModelDownloadTask,
-  ModelDownloadTaskState,
   ModelService,
 } from "./model.service.types";
 

@@ -1,9 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
 	plugins: [react()],
-	root: "src/mainview",
+	resolve: {
+		alias: {
+			"@": fileURLToPath(new URL("./src/renderer", import.meta.url)),
+		},
+	},
+	root: "src/renderer",
 	build: {
 		outDir: "../../dist",
 		emptyOutDir: true,

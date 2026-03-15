@@ -1,7 +1,6 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
-  ZVecCollection,
   ZVecCollectionSchema,
   ZVecCreateAndOpen,
   ZVecDataType,
@@ -10,7 +9,7 @@ import {
   ZVecOpen,
 } from "@zvec/zvec";
 import type { SearchHit } from "../indexing.types";
-import type { VectorChunkRow, VectorRepository } from "./vector.repository.types";
+import type { VectorRepository } from "./vector.repository.types";
 
 const VECTOR_FIELD = "embedding";
 

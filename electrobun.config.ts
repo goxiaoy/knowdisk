@@ -17,8 +17,8 @@ export default {
 		},
 		// Vite builds to dist/, we copy from there
 		copy: {
-			"dist/index.html": "views/mainview/index.html",
-			"dist/assets": "views/mainview/assets",
+			"dist/index.html": "views/app/index.html",
+			"dist/assets": "views/app/assets",
 			"node_modules/@huggingface/transformers": "node_modules/@huggingface/transformers",
 			"node_modules/onnxruntime-node": "node_modules/onnxruntime-node",
 			"node_modules/onnxruntime-web": "node_modules/onnxruntime-web",
