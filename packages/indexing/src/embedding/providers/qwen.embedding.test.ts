@@ -5,6 +5,22 @@ import { container } from "tsyringe";
 import { createQwenEmbeddingProvider } from "./qwen.embedding";
 
 describe("qwen embedding provider", () => {
+  it("throws a clear error when provider config is incomplete", () => {
+    const config = createDefaultCoreConfig();
+    config.providers.qwen = {
+      endpoint: "",
+      apiKey: "",
+      embeddingModel: "",
+    };
+
+    container.clearInstances();
+    container.registerInstance("CoreConfig", config);
+
+    expect(() => createQwenEmbeddingProvider(container)).toThrow(
+      'Qwen embedding provider requires "providers.qwen.endpoint"',
+    );
+  });
+
   it("calls the configured embeddings endpoint and returns the vector", async () => {
     const config = createDefaultCoreConfig();
     config.embedding.provider = "qwen";

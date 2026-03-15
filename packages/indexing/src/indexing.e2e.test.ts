@@ -4,11 +4,13 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createDefaultCoreConfig } from "@knowdisk/core";
 import { container as rootContainer } from "tsyringe";
 import type { ParseChunk } from "@knowdisk/parser";
 import type { VfsNode } from "@knowdisk/vfs";
 import {
   createEmbeddingRegistry,
+  createIndexingServiceFromConfig,
   createIndexingService,
   createRerankerRegistry,
 } from "@knowdisk/indexing";
@@ -102,6 +104,61 @@ describe("indexing package e2e", () => {
     });
     expect(result.reranked[0]?.scores.rerank).toBeNumber();
     expect(result.hybrid[0]?.scores.fused).toBeNumber();
+
+    ftsRepository.close();
+    vectorRepository.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("supports built-in providers through createIndexingServiceFromConfig", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-indexing-builtins-"));
+    const child = rootContainer.createChildContainer();
+    const config = createDefaultCoreConfig();
+
+    child.registerInstance("CoreConfig", config);
+    child.registerInstance("ModelService", {
+      async getLocalEmbeddingExtractor() {
+        return async () => ({ data: [0.2, 0.4] });
+      },
+      async getLocalRerankerRuntime() {
+        return {
+          async tokenizePairs() {
+            return {};
+          },
+          async score() {
+            return [0.9];
+          },
+        };
+      },
+    });
+
+    const ftsRepository = createFtsRepository({
+      dbPath: join(dir, "builtins.db"),
+    });
+    const vectorRepository = createVectorRepository({
+      collectionPath: join(dir, "builtins.zvec"),
+      dimensions: 2,
+    });
+
+    const service = createIndexingServiceFromConfig(child, {
+      logger: createLoggerStub(),
+      ftsRepository,
+      vectorRepository,
+      defaults: { topK: 5 },
+    });
+
+    await service.index({
+      node: createNode(),
+      chunks: createChunks([
+        createChunk({ chunkIndex: 0, text: "local provider hello", title: "Local" }),
+      ]),
+    });
+
+    const result = await service.search("hello");
+
+    expect(result.meta.embeddingProvider).toBe("local");
+    expect(result.meta.rerankerProvider).toBe("local");
+    expect(result.hybrid.length).toBeGreaterThan(0);
 
     ftsRepository.close();
     vectorRepository.close();

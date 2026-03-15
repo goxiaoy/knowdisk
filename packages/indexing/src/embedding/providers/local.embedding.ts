@@ -5,11 +5,7 @@ export function createLocalEmbeddingProvider(
   container: DependencyContainer,
   options?: Record<string, unknown>,
 ): EmbeddingProvider {
-  const modelService = container.resolve<{
-    getLocalEmbeddingExtractor: () => Promise<
-      (text: string, opts: { pooling: "mean"; normalize: true }) => Promise<{ data?: ArrayLike<number> }>
-    >;
-  }>("ModelService");
+  const modelService = resolveModelService(container);
 
   return {
     type: "local",
@@ -24,4 +20,16 @@ export function createLocalEmbeddingProvider(
       return result.data ? Array.from(result.data) : [];
     },
   };
+}
+
+function resolveModelService(container: DependencyContainer) {
+  try {
+    return container.resolve<{
+      getLocalEmbeddingExtractor: () => Promise<
+        (text: string, opts: { pooling: "mean"; normalize: true }) => Promise<{ data?: ArrayLike<number> }>
+      >;
+    }>("ModelService");
+  } catch {
+    throw new Error('Local embedding provider requires "ModelService"');
+  }
 }

@@ -5,6 +5,22 @@ import { container } from "tsyringe";
 import { createOpenAiEmbeddingProvider } from "./openai.embedding";
 
 describe("openai embedding provider", () => {
+  it("throws a clear error when provider config is incomplete", () => {
+    const config = createDefaultCoreConfig();
+    config.providers.openai = {
+      endpoint: "",
+      apiKey: "",
+      embeddingModel: "",
+    };
+
+    container.clearInstances();
+    container.registerInstance("CoreConfig", config);
+
+    expect(() => createOpenAiEmbeddingProvider(container)).toThrow(
+      'OpenAI embedding provider requires "providers.openai.endpoint"',
+    );
+  });
+
   it("calls the configured embeddings endpoint and returns the vector", async () => {
     const config = createDefaultCoreConfig();
     config.embedding.provider = "openai";

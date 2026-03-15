@@ -4,6 +4,14 @@ import { container } from "tsyringe";
 import { createLocalRerankerProvider } from "./local.reranker";
 
 describe("local reranker provider", () => {
+  it("throws a clear error when ModelService is missing", () => {
+    container.clearInstances();
+
+    expect(() => createLocalRerankerProvider(container)).toThrow(
+      'Local reranker provider requires "ModelService"',
+    );
+  });
+
   it("uses ModelService.getLocalRerankerRuntime()", async () => {
     container.clearInstances();
     container.registerInstance("ModelService", {
