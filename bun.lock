@@ -62,6 +62,7 @@
       "name": "@knowdisk/model",
       "version": "1.0.0",
       "dependencies": {
+        "@huggingface/transformers": "^3.8.1",
         "@knowdisk/core": "workspace:*",
         "pino": "^10.3.1",
       },
