@@ -9,11 +9,11 @@ import type { ParseChunk } from "@knowdisk/parser";
 import type { VfsNode } from "@knowdisk/vfs";
 import {
   createEmbeddingRegistry,
-  createFtsRepository,
   createIndexingService,
   createRerankerRegistry,
-  createVectorRepository,
 } from "@knowdisk/indexing";
+import { createFtsRepository } from "./fts.repository";
+import { createVectorRepository } from "./vector.repository";
 
 describe("indexing package e2e", () => {
   test("indexing and searching return consistent metadata and debug outputs", async () => {
@@ -21,6 +21,12 @@ describe("indexing package e2e", () => {
     const child = rootContainer.createChildContainer();
     const embeddingRegistry = createEmbeddingRegistry(child);
     const rerankerRegistry = createRerankerRegistry(child);
+    const ftsRepository = createFtsRepository({
+      dbPath: join(dir, "indexing.db"),
+    });
+    const vectorRepository = createVectorRepository({
+      collectionPath: join(dir, "vectors.zvec"),
+    });
     embeddingRegistry.register("stub-embedding", () => ({
       type: "stub-embedding",
       async embed(text: string) {
@@ -51,12 +57,8 @@ describe("indexing package e2e", () => {
 
     const service = createIndexingService({
       logger: createLoggerStub(),
-      ftsRepository: createFtsRepository({
-        dbPath: join(dir, "indexing.db"),
-      }),
-      vectorRepository: createVectorRepository({
-        collectionPath: join(dir, "vectors.zvec"),
-      }),
+      ftsRepository,
+      vectorRepository,
       embeddingRegistry,
       rerankerRegistry,
       embedding: {
@@ -101,6 +103,8 @@ describe("indexing package e2e", () => {
     expect(result.reranked[0]?.scores.rerank).toBeNumber();
     expect(result.hybrid[0]?.scores.fused).toBeNumber();
 
+    ftsRepository.close();
+    vectorRepository.close();
     rmSync(dir, { recursive: true, force: true });
   });
 });
