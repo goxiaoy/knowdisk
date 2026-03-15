@@ -1,0 +1,14 @@
+{
+  "name": "@knowdisk/indexing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@knowdisk/parser": "workspace:*",
+    "@knowdisk/vfs": "workspace:*",
+    "pino": "^10.3.1"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
