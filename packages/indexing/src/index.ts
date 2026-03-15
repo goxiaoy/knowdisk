@@ -1,9 +1,4 @@
-import type { IndexingService } from "./indexing.types";
-
-export function createIndexingService(): IndexingService {
-  throw new Error("createIndexingService is not implemented");
-}
-
+export { createIndexingService } from "./indexing.service";
 export { createEmbeddingRegistry } from "./embedding.registry";
 export { createRerankerRegistry } from "./reranker.registry";
 export { createFtsRepository } from "./fts.repository";
