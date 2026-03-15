@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@knowdisk/core": "workspace:*",
     "pino": "^10.3.1"
   },
