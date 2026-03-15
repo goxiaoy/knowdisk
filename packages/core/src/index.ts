@@ -1,6 +1,4 @@
-export function createLoggerService() {
-  throw new Error("Not implemented");
-}
+export { createLoggerService } from "./logger";
 
 export function createDefaultCoreConfig() {
   throw new Error("Not implemented");
