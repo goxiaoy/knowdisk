@@ -53,6 +53,8 @@
       "name": "@knowdisk/indexing",
       "version": "1.0.0",
       "dependencies": {
+        "@knowdisk/core": "workspace:*",
+        "@knowdisk/model": "workspace:*",
         "@knowdisk/parser": "workspace:*",
         "@knowdisk/vfs": "workspace:*",
         "pino": "^10.3.1",
