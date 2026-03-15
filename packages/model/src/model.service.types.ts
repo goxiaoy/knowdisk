@@ -69,4 +69,20 @@ export type CreateModelServiceInput = {
   logger: LoggerService;
   config: CoreConfig;
   cacheDir: string;
+  deps?: {
+    fetch?: typeof fetch;
+    setTimeout?: typeof setTimeout;
+    clearTimeout?: typeof clearTimeout;
+    now?: () => string;
+    loadEmbeddingExtractor?: (
+      model: string,
+      cacheDir: string,
+      hfEndpoint: string,
+    ) => Promise<LocalEmbeddingExtractor>;
+    loadRerankerRuntime?: (
+      model: string,
+      cacheDir: string,
+      hfEndpoint: string,
+    ) => Promise<LocalRerankerRuntime>;
+  };
 };

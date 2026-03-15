@@ -4,10 +4,37 @@ import { createModelService } from "./index";
 
 describe("model status store", () => {
   it("notifies listeners when status changes", async () => {
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/models/")) {
+        return new Response(
+          JSON.stringify({
+            siblings: [{ rfilename: "onnx/model.onnx", size: 4 }],
+          }),
+          {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+            },
+          },
+        );
+      }
+      return new Response("test", {
+        status: 200,
+        headers: {
+          "content-length": "4",
+          "content-type": "application/octet-stream",
+        },
+      });
+    };
+
     const service = createModelService({
       logger: createLoggerService({ level: "silent" }),
       config: createDefaultCoreConfig(),
       cacheDir: "build/models",
+      deps: {
+        fetch: fetchImpl,
+      },
     });
 
     const events: string[] = [];
