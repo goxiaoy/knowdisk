@@ -72,7 +72,7 @@ describe("vector repository", () => {
       repo.replaceNodeChunks([
         createRow({ chunkId: "chunk-1", embedding: [1, 0] }),
         createRow({ chunkId: "chunk-2", embedding: [1, 0, 0] }),
-      ]),
+      ])
     ).rejects.toThrow("Mixed embedding dimensions are not supported");
 
     repo.close();

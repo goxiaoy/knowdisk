@@ -45,7 +45,7 @@ export type ModelDownloadStatusStore = {
 
 export type LocalEmbeddingExtractor = (
   text: string,
-  opts: { pooling: "mean"; normalize: true },
+  opts: { pooling: "mean"; normalize: true }
 ) => Promise<{ data?: ArrayLike<number> }>;
 
 export type LocalRerankerInputs = Record<string, unknown>;
@@ -77,12 +77,12 @@ export type CreateModelServiceInput = {
     loadEmbeddingExtractor?: (
       model: string,
       cacheDir: string,
-      hfEndpoint: string,
+      hfEndpoint: string
     ) => Promise<LocalEmbeddingExtractor>;
     loadRerankerRuntime?: (
       model: string,
       cacheDir: string,
-      hfEndpoint: string,
+      hfEndpoint: string
     ) => Promise<LocalRerankerRuntime>;
   };
 };

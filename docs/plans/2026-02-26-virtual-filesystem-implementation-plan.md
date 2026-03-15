@@ -15,6 +15,7 @@
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Create: `src/core/vfs/vfs.types.ts`
 - Create: `src/core/vfs/vfs.service.types.ts`
 - Create: `src/core/vfs/vfs.provider.types.ts`
@@ -64,6 +65,7 @@ Expected: FAIL because files/types do not exist.
 **Step 3: Write minimal implementation**
 
 Add complete interfaces/types for:
+
 - node, mount config, chunk, markdown cache
 - cursor, walk input/output
 - provider capabilities and adapter contract
@@ -86,6 +88,7 @@ git commit -m "feat(vfs): add core interfaces and type contracts"
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Create: `src/core/vfs/vfs.repository.types.ts`
 - Create: `src/core/vfs/vfs.repository.ts`
 - Create: `src/core/vfs/vfs.repository.test.ts`
@@ -93,6 +96,7 @@ git commit -m "feat(vfs): add core interfaces and type contracts"
 **Step 1: Write the failing tests**
 
 Cover these behaviors:
+
 - creates/migrates tables: `vfs_mounts`, `vfs_nodes`, `vfs_chunks`, `vfs_markdown_cache`, `vfs_page_cache`
 - upsert/get mount
 - upsert/get/list node children with stable ordering `(name,node_id)`
@@ -108,6 +112,7 @@ Expected: FAIL (repository absent).
 **Step 3: Write minimal implementation**
 
 Implement `createVfsRepository({ dbPath })` with:
+
 - `migrate(db)`
 - `upsertMount`, `getMountById`
 - `upsertNodes`, `listChildrenPageLocal`
@@ -134,12 +139,14 @@ git commit -m "feat(vfs): add sqlite repository and schema"
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Create: `src/core/vfs/vfs.provider.registry.ts`
 - Create: `src/core/vfs/vfs.provider.registry.test.ts`
 
 **Step 1: Write failing tests**
 
 Test cases:
+
 - register/get adapter by `providerType`
 - expose capability flags from code registry (not DB)
 - throw clear error for unknown provider
@@ -152,6 +159,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Create a registry object:
+
 - `register(adapter)`
 - `get(providerType)`
 - `listTypes()`
@@ -175,12 +183,14 @@ git commit -m "feat(vfs): add provider registry with capability resolution"
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Create: `src/core/vfs/vfs.cursor.ts`
 - Create: `src/core/vfs/vfs.cursor.test.ts`
 
 **Step 1: Write failing tests**
 
 Test cases:
+
 - encode/decode local cursor `{lastName,lastNodeId}`
 - encode/decode remote cursor `{providerCursor}`
 - rejects malformed token
@@ -211,6 +221,7 @@ git commit -m "feat(vfs): add safe cursor codec for local and remote paging"
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Create: `src/core/vfs/vfs.service.ts`
 - Create: `src/core/vfs/vfs.service.walk.test.ts`
 - Modify: `src/bun/app.container.ts`
@@ -218,6 +229,7 @@ git commit -m "feat(vfs): add safe cursor codec for local and remote paging"
 **Step 1: Write failing tests**
 
 Scenarios:
+
 - `syncMetadata=true`: resolve path in local nodes and return local page with local cursor
 - `syncMetadata=false`: call provider `listChildren`, backfill nodes/page cache, return remote cursor
 - `syncMetadata=false` with fresh cached page and same cursor: return cache hit
@@ -230,6 +242,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Implement `walkChildren` only:
+
 - mount resolution by path prefix
 - local path: `listChildrenPageLocal`
 - remote path: provider list + cache backfill
@@ -254,6 +267,7 @@ git commit -m "feat(vfs): implement walkChildren with local/remote cursor paging
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Create: `src/core/vfs/vfs.service.read.test.ts`
 - Modify: `src/core/vfs/vfs.service.ts`
 - Modify: `src/core/parser/parser.registry.ts` (only if adapter path needs parser entrypoint exposure)
@@ -261,6 +275,7 @@ git commit -m "feat(vfs): implement walkChildren with local/remote cursor paging
 **Step 1: Write failing tests**
 
 Scenarios:
+
 - cache hit returns markdown immediately
 - stale by provider version triggers refresh
 - refresh path chooses `exportMarkdown` when supported
@@ -294,6 +309,7 @@ git commit -m "feat(vfs): add markdown cache refresh and chunk pipeline"
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Create: `src/core/vfs/vfs.sync.scheduler.ts`
 - Create: `src/core/vfs/vfs.sync.scheduler.test.ts`
 - Modify: `src/core/config/config.types.ts`
@@ -302,6 +318,7 @@ git commit -m "feat(vfs): add markdown cache refresh and chunk pipeline"
 **Step 1: Write failing tests**
 
 Scenarios:
+
 - watch events are debounced per sourceRef
 - reconcile job runs for reconcile-only providers
 - retries apply backoff (1s/5s/20s)
@@ -315,6 +332,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Add queue/scheduler with:
+
 - event coalescing
 - periodic reconcile timer per mount
 - retry policy with capped attempts
@@ -338,6 +356,7 @@ git commit -m "feat(vfs): add sync scheduler for watch and reconcile providers"
 **Skill refs:** @superpowers:test-driven-development
 
 **Files:**
+
 - Modify: `src/bun/index.ts`
 - Modify: `src/mainview/services/bun.rpc.ts`
 - Create: `src/core/vfs/vfs.integration.test.ts`
@@ -345,6 +364,7 @@ git commit -m "feat(vfs): add sync scheduler for watch and reconcile providers"
 **Step 1: Write failing integration tests**
 
 Scenarios:
+
 - mount local folder and page children from metadata
 - mount remote mock provider and page children via remote cursor
 - read markdown from lazy remote node and verify cache reuse
@@ -357,6 +377,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Expose core RPCs:
+
 - `vfs.mount`
 - `vfs.walkChildren`
 - `vfs.readMarkdown`
@@ -381,6 +402,7 @@ git commit -m "feat(vfs): expose vfs rpc and verify end-to-end integration"
 **Skill refs:** @superpowers:verification-before-completion @superpowers:requesting-code-review
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
 - Modify: `docs/plans/2026-02-26-virtual-filesystem-design.md` (if implementation deviations exist)
@@ -388,6 +410,7 @@ git commit -m "feat(vfs): expose vfs rpc and verify end-to-end integration"
 **Step 1: Run targeted tests**
 
 Run:
+
 - `bun test src/core/vfs`
 - `bun test src/core/indexing`
 
@@ -401,6 +424,7 @@ Expected: PASS, no regressions.
 **Step 3: Update docs**
 
 Document:
+
 - VFS concepts
 - mount config flags (`syncMetadata`, `syncContent`)
 - cursor semantics

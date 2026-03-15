@@ -26,14 +26,17 @@ Scope: Replace Home with chat-first UX similar to Open WebUI/LibreChat style, wi
 ## 3. Approach Options Considered
 
 ### Option A: Direct OpenAI integration without provider abstraction
+
 - Pros: fastest initial delivery.
 - Cons: likely refactor when adding more providers later.
 
 ### Option B (Selected): Lightweight provider abstraction + OpenAI implementation
+
 - Pros: preserves implementation speed while leaving clean extension point for future providers.
 - Cons: modest extra interfaces/boilerplate now.
 
 ### Option C: Chat uses local MCP HTTP loopback to invoke tools
+
 - Pros: protocol symmetry with external MCP clients.
 - Cons: longer runtime path, harder debugging, unnecessary overhead for in-process use.
 
@@ -65,6 +68,7 @@ Extend `AppConfig` with `chat` section:
 ## 5. Persistence Model (SQLite)
 
 ### 5.1 `chat_sessions`
+
 - `id` (uuid primary key)
 - `title`
 - `created_at`
@@ -72,6 +76,7 @@ Extend `AppConfig` with `chat` section:
 - `last_message_at`
 
 ### 5.2 `chat_messages`
+
 - `id` (uuid primary key)
 - `session_id` (foreign key)
 - `role` (`system|user|assistant|tool`)
@@ -83,6 +88,7 @@ Extend `AppConfig` with `chat` section:
 - `created_at`
 
 ### 5.3 `chat_message_citations`
+
 - `id` (uuid primary key)
 - `message_id` (foreign key to assistant message)
 - `source_path`
@@ -99,10 +105,12 @@ Note: No migration/legacy compatibility layer is required for this feature.
 1. User sends message; persist `user` row.
 2. `ChatService` starts streaming OpenAI generation with tool schemas for full retrieval tool set.
 3. If model emits tool calls:
+
 - execute matching retrieval methods in-process
 - persist tool messages as needed
 - append tool result back into model context
 - continue until final assistant text is produced
+
 4. Stream assistant text chunks to UI.
 5. Finalize assistant message (`done` or interrupted completion) and persist full text.
 6. Extract/store citations from retrieval tool outputs into `chat_message_citations`.
@@ -130,6 +138,7 @@ Note: No migration/legacy compatibility layer is required for this feature.
 ### 7.2 Settings
 
 Add `Chat Settings` card:
+
 - provider: OpenAI (single option for now)
 - model: fixed dropdown list
 - api key: masked input
@@ -150,16 +159,19 @@ Add `Chat Settings` card:
 ## 9. Testing Strategy
 
 ### 9.1 Unit
+
 - `ChatService`: stream assembly, tool-call loop, stop path, error path.
 - `ChatRepository`: session/message/citation CRUD + cascade delete behavior.
 - `OpenAIChatProvider`: request mapping, tool schema wiring, response parsing.
 
 ### 9.2 Integration
+
 - RPC flow: create session -> send -> tool call -> assistant done -> citations available.
 - Settings update for chat model/api key affects subsequent chat requests.
 - Session deletion removes messages/citations.
 
 ### 9.3 UI tests
+
 - Chat happy path (new session, send, stream, stop, switch).
 - Citation rendering and expand/collapse.
 - Missing API key guided empty-state.

@@ -1,9 +1,7 @@
 import type { DependencyContainer } from "tsyringe";
 import type { RerankerProvider, SearchHit } from "../../indexing.types";
 
-export function createLocalRerankerProvider(
-  container: DependencyContainer,
-): RerankerProvider {
+export function createLocalRerankerProvider(container: DependencyContainer): RerankerProvider {
   const modelService = resolveModelService(container);
 
   return {
@@ -12,7 +10,7 @@ export function createLocalRerankerProvider(
       const runtime = await modelService.getLocalRerankerRuntime();
       const inputs = await runtime.tokenizePairs(
         query,
-        rows.map((row) => row.text),
+        rows.map((row) => row.text)
       );
       const scores = await runtime.score(inputs);
 

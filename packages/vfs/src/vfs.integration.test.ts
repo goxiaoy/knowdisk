@@ -37,7 +37,9 @@ describe("vfs integration", () => {
       reconcileIntervalMs: 1000,
     });
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
     ctx.repo.upsertNodes([
       {
@@ -178,7 +180,9 @@ describe("vfs integration", () => {
       reconcileIntervalMs: 1000,
     });
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
     ctx.repo.upsertNodes([
       {
@@ -257,7 +261,9 @@ describe("vfs integration", () => {
       reconcileIntervalMs: 1000,
     });
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
 
     const created = await ctx.service.create({
@@ -299,7 +305,9 @@ describe("vfs integration", () => {
       reconcileIntervalMs: 1000,
     });
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
     ctx.repo.upsertNodes([
       {
@@ -379,7 +387,9 @@ describe("vfs integration", () => {
       reconcileIntervalMs: 1000,
     });
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
     ctx.repo.upsertNodes([
       {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { sep } from "node:path";
 import { createDefaultCoreConfig } from "./index";
 
 describe("createDefaultCoreConfig", () => {
@@ -12,5 +13,6 @@ describe("createDefaultCoreConfig", () => {
     expect(config.providers.huggingface?.endpoint).toBe("https://hf-mirror.com");
     expect(config.embedding.provider).toBe("local");
     expect(config.reranker.provider).toBe("local");
+    expect(config.basePath.endsWith(`${sep}.knowdisk`)).toBe(true);
   });
 });

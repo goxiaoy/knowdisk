@@ -26,15 +26,13 @@ describe("vfs repository", () => {
     expect(tables.map((t) => t.name)).toContain("vfs_node_mount_ext");
     expect(tables.map((t) => t.name)).toContain("vfs_nodes");
     expect(tables.map((t) => t.name)).toContain("vfs_page_cache");
-    const mountColumns = db
-      .query("PRAGMA table_info(vfs_node_mount_ext)")
-      .all() as Array<{ name: string }>;
-    const nodeColumns = db
-      .query("PRAGMA table_info(vfs_nodes)")
-      .all() as Array<{ name: string }>;
-    const eventColumns = db
-      .query("PRAGMA table_info(vfs_node_events)")
-      .all() as Array<{ name: string }>;
+    const mountColumns = db.query("PRAGMA table_info(vfs_node_mount_ext)").all() as Array<{
+      name: string;
+    }>;
+    const nodeColumns = db.query("PRAGMA table_info(vfs_nodes)").all() as Array<{ name: string }>;
+    const eventColumns = db.query("PRAGMA table_info(vfs_node_events)").all() as Array<{
+      name: string;
+    }>;
     expect(mountColumns.map((item) => item.name)).toContain("provider_extra");
     expect(mountColumns.map((item) => item.name)).toContain("auto_sync");
     expect(mountColumns.map((item) => item.name)).toContain("sync_content");
@@ -318,11 +316,7 @@ describe("vfs repository", () => {
     expect(events).toHaveLength(3);
     expect(events.every((item) => typeof item.id === "string" && item.id.length > 0)).toBe(true);
     expect(events.map((item) => item.sourceRef)).toEqual(["s1", "s1", "s1"]);
-    expect(events.map((item) => item.type)).toEqual([
-      "update_metadata",
-      "update_content",
-      "add",
-    ]);
+    expect(events.map((item) => item.type)).toEqual(["update_metadata", "update_content", "add"]);
     expect(events[2]?.id).not.toBe(addIdBefore);
     expect(events[2]).toEqual({
       id: events[2]!.id,

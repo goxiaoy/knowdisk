@@ -13,6 +13,7 @@
 ### Task 1: Scaffold the Package
 
 **Files:**
+
 - Create: `packages/indexing/package.json`
 - Create: `packages/indexing/src/index.ts`
 - Create: `packages/indexing/src/indexing.types.ts`
@@ -48,12 +49,14 @@ git commit -m "feat(indexing): scaffold package surface"
 ### Task 2: Define Public Contracts
 
 **Files:**
+
 - Modify: `packages/indexing/src/indexing.types.ts`
 - Test: `packages/indexing/src/indexing.types.test.ts`
 
 **Step 1: Write the failing test**
 
 Add a test covering:
+
 - `SearchResultSet` shape
 - `SearchHit.scores` shape
 - `IndexingService` methods `index`, `delete`, `search`
@@ -67,6 +70,7 @@ Expected: FAIL due to missing or incomplete types.
 **Step 3: Write minimal implementation**
 
 Add exact public types for:
+
 - `IndexingService`
 - `CreateIndexingServiceInput`
 - `EmbeddingProvider`
@@ -93,12 +97,14 @@ git commit -m "feat(indexing): define service and provider contracts"
 ### Task 3: Build Embedding Registry
 
 **Files:**
+
 - Create: `packages/indexing/src/embedding.registry.ts`
 - Test: `packages/indexing/src/embedding.registry.test.ts`
 
 **Step 1: Write the failing test**
 
 Cover:
+
 - register/get/listTypes
 - duplicate type overwrite behavior
 - unknown type throws clear error
@@ -128,12 +134,14 @@ git commit -m "feat(indexing): add embedding registry"
 ### Task 4: Build Reranker Registry
 
 **Files:**
+
 - Create: `packages/indexing/src/reranker.registry.ts`
 - Test: `packages/indexing/src/reranker.registry.test.ts`
 
 **Step 1: Write the failing test**
 
 Cover:
+
 - register/get/listTypes
 - unknown type throws
 - factory returns reranker implementation
@@ -162,6 +170,7 @@ git commit -m "feat(indexing): add reranker registry"
 ### Task 5: Build FTS Repository
 
 **Files:**
+
 - Create: `packages/indexing/src/fts.repository.ts`
 - Create: `packages/indexing/src/fts.repository.types.ts`
 - Test: `packages/indexing/src/fts.repository.test.ts`
@@ -169,6 +178,7 @@ git commit -m "feat(indexing): add reranker registry"
 **Step 1: Write the failing test**
 
 Cover:
+
 - schema bootstraps in SQLite
 - upsert rows for one node
 - delete rows by `nodeId`
@@ -185,6 +195,7 @@ Expected: FAIL because repository is missing.
 **Step 3: Write minimal implementation**
 
 Implement:
+
 - schema creation
 - `replaceNodeChunks(rows)`
 - `deleteByNodeId(nodeId)`
@@ -200,13 +211,14 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add packages/indexing/src/fts.repository.* 
+git add packages/indexing/src/fts.repository.*
 git commit -m "feat(indexing): add sqlite fts repository"
 ```
 
 ### Task 6: Build Vector Repository Adapter
 
 **Files:**
+
 - Create: `packages/indexing/src/vector.repository.ts`
 - Create: `packages/indexing/src/vector.repository.types.ts`
 - Test: `packages/indexing/src/vector.repository.test.ts`
@@ -214,6 +226,7 @@ git commit -m "feat(indexing): add sqlite fts repository"
 **Step 1: Write the failing test**
 
 Cover:
+
 - initializes zvec collection
 - upserts rows
 - deletes rows by `nodeId`
@@ -228,6 +241,7 @@ Expected: FAIL because repository is missing.
 **Step 3: Write minimal implementation**
 
 Implement a zvec-backed repository that stores:
+
 - `chunkId`
 - vector
 - metadata required for result reconstruction and node deletion filtering
@@ -249,12 +263,14 @@ git commit -m "feat(indexing): add zvec repository adapter"
 ### Task 7: Implement Node Reindex Flow
 
 **Files:**
+
 - Create: `packages/indexing/src/indexing.service.ts`
 - Test: `packages/indexing/src/indexing.index.test.ts`
 
 **Step 1: Write the failing test**
 
 Add service tests that:
+
 - index one node from `AsyncIterable<ParseChunk>`
 - skip non-`ok` chunks
 - replace old rows for the same `nodeId`
@@ -270,6 +286,7 @@ Expected: FAIL because service flow is missing.
 **Step 3: Write minimal implementation**
 
 Implement `index()`:
+
 - materialize valid chunks
 - delete old FTS/vector rows for the node
 - embed chunk text
@@ -293,12 +310,14 @@ git commit -m "feat(indexing): add node reindex flow"
 ### Task 8: Implement Node Deletion Flow
 
 **Files:**
+
 - Modify: `packages/indexing/src/indexing.service.ts`
 - Test: `packages/indexing/src/indexing.delete.test.ts`
 
 **Step 1: Write the failing test**
 
 Cover:
+
 - `delete({ nodeId })` removes both FTS and vector rows
 - deleting a missing node is a no-op
 
@@ -326,12 +345,14 @@ git commit -m "feat(indexing): add node delete flow"
 ### Task 9: Implement Hybrid Search
 
 **Files:**
+
 - Modify: `packages/indexing/src/indexing.service.ts`
 - Test: `packages/indexing/src/indexing.search.test.ts`
 
 **Step 1: Write the failing test**
 
 Cover:
+
 - returns `hybrid`, `fts`, `vector`, `reranked`, `meta`
 - merges rows by `chunkId`
 - empty query returns empty result sets
@@ -346,6 +367,7 @@ Expected: FAIL because search flow is missing or partial.
 **Step 3: Write minimal implementation**
 
 Implement `search()`:
+
 - FTS lookup
 - optional query embedding + vector lookup
 - score normalization
@@ -367,12 +389,14 @@ git commit -m "feat(indexing): add hybrid search"
 ### Task 10: Add Optional Reranking
 
 **Files:**
+
 - Modify: `packages/indexing/src/indexing.service.ts`
 - Test: `packages/indexing/src/indexing.rerank.test.ts`
 
 **Step 1: Write the failing test**
 
 Cover:
+
 - reranker receives fused rows and `topK`
 - `reranked` differs from `hybrid` when provider is enabled
 - fallback behavior when reranker is absent
@@ -401,11 +425,13 @@ git commit -m "feat(indexing): add optional reranking"
 ### Task 11: Add End-to-End Package Tests
 
 **Files:**
+
 - Test: `packages/indexing/src/indexing.e2e.test.ts`
 
 **Step 1: Write the failing test**
 
 Build an in-package integration test with:
+
 - a stub embedding provider
 - a stub reranker provider
 - one `VfsNode`
@@ -437,6 +463,7 @@ git commit -m "test(indexing): add end-to-end package coverage"
 ### Task 12: Verify Full Package
 
 **Files:**
+
 - Modify: `packages/indexing/src/index.ts`
 - Test: `packages/indexing/src/*.test.ts`
 

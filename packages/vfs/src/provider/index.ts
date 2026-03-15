@@ -6,10 +6,10 @@ import { createLocalVfsProvider } from "./local";
 
 export function registerBuiltinVfsProviders(registry: VfsProviderRegistry): void {
   registry.register("huggingface", (container, mount) =>
-    createHuggingFaceVfsProvider(mount, { logger: resolveLogger(container) }),
+    createHuggingFaceVfsProvider(mount, { logger: resolveLogger(container) })
   );
   registry.register("local", (container, mount) =>
-    createLocalVfsProvider(mount, { logger: resolveLogger(container) }),
+    createLocalVfsProvider(mount, { logger: resolveLogger(container) })
   );
 }
 

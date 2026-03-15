@@ -11,6 +11,7 @@ This package is intentionally scoped to parsing only. It does not define indexin
 ## Scope
 
 In scope:
+
 - Construct parser service with `vfs`, `basePath`, and `logger`
 - Read file bytes with `vfs.createReadStream({ id })`
 - Convert file content to markdown with `markitdown-ts`
@@ -22,6 +23,7 @@ In scope:
 - Return error or skipped chunks instead of throwing workflow-breaking parse errors
 
 Out of scope:
+
 - Indexing pipeline integration
 - sqlite FTS schema mapping
 - vector DB schema mapping
@@ -92,6 +94,7 @@ Cache content is stored under:
 ```
 
 Files:
+
 - `document.md`: full converted markdown
 - `manifest.json`: node metadata and parse metadata
 - `error.json`: last parse failure context, only present after failures
@@ -113,6 +116,7 @@ type ParseManifest = {
 ```
 
 Cache hit rule:
+
 - use cached markdown only when `manifest.providerVersion` equals the current node `providerVersion`
 - if `providerVersion` is `null`, skip cache reuse and rebuild markdown
 
@@ -182,6 +186,7 @@ export type ParseChunk = {
 ```
 
 Design notes:
+
 - `ParseChunk` carries source and parser metadata directly so later storage layers can map fields without reparsing
 - `markdown` is retained per chunk when available because some downstream renderers or citation systems may want markdown-preserving excerpts
 - offsets are character offsets within the converted markdown, not byte offsets of the original binary file
@@ -201,12 +206,14 @@ This is parser-local for now. Mapping to app-wide retrieval identifiers is defer
 The package should not break the consumer's iteration flow for expected parse failures.
 
 Behavior:
+
 - unsupported file type: return one `status: "skipped"` chunk and log at warn or error level
 - conversion failure: return one `status: "error"` chunk and log the error
 - empty markdown or empty extracted text: return one `status: "skipped"` chunk and log the reason
 - malformed markdown AST handling failures: return one `status: "error"` chunk and log the error
 
 Error chunks:
+
 - keep `text` empty
 - keep source metadata populated
 - include `error.code` and `error.message`
@@ -217,6 +224,7 @@ The package may still throw for programmer errors such as invalid constructor ar
 ## Section Splitting
 
 Section splitting should be heading-aware:
+
 - top-level content before the first heading becomes a synthetic preamble section
 - each heading starts a new section
 - nested headings produce a `sectionPath` representing the heading stack
@@ -225,12 +233,16 @@ Example:
 
 ```md
 # Intro
+
 ## Install
+
 ## Usage
+
 # API
 ```
 
 Produces section paths:
+
 - `["Intro"]`
 - `["Intro", "Install"]`
 - `["Intro", "Usage"]`
@@ -241,6 +253,7 @@ Produces section paths:
 LangChain splitting runs after sectioning.
 
 Requirements:
+
 - preserve section metadata on every derived chunk
 - compute `charStart` and `charEnd` relative to the full markdown text when practical
 - compute `tokenEstimate` for each final chunk
@@ -251,6 +264,7 @@ The package should accept an injected text splitter so chunk sizing policy can c
 ## Dependencies
 
 Expected package dependencies:
+
 - `@knowdisk/vfs`
 - `markitdown-ts`
 - `remark`
@@ -263,6 +277,7 @@ Expected package dependencies:
 Tests should focus on the package boundary and pipeline behavior.
 
 Required coverage:
+
 - reads file bytes from VFS and converts to markdown
 - caches markdown by `providerVersion`
 - rebuilds cache when `providerVersion` changes
@@ -275,6 +290,7 @@ Required coverage:
 ## Open Decisions Deferred
 
 These are intentionally postponed:
+
 - exact file extension and MIME support matrix
 - final chunk ID generation
 - exact sqlite FTS column mapping

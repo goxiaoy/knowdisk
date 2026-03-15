@@ -1,6 +1,4 @@
-import type {
-  VfsOperationCore,
-} from "./vfs.service.types";
+import type { VfsOperationCore } from "./vfs.service.types";
 
 export type ProviderCapabilities = {
   watch: boolean;

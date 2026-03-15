@@ -8,7 +8,7 @@ describe("local reranker provider", () => {
     container.clearInstances();
 
     expect(() => createLocalRerankerProvider(container)).toThrow(
-      'Local reranker provider requires "ModelService"',
+      'Local reranker provider requires "ModelService"'
     );
   });
 

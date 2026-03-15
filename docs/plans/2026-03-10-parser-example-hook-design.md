@@ -9,6 +9,7 @@ Add a parser example that mounts a local VFS directory, listens to VFS `afterUpd
 ## Scope
 
 In scope:
+
 - add a standalone parser example under `packages/parser/example`
 - mount a local VFS provider that points at `packages/parser/example/data`
 - include sample markdown, image, pdf, and json files in that directory
@@ -18,6 +19,7 @@ In scope:
 - print `ParseChunk` output to stdout
 
 Out of scope:
+
 - HTTP server or UI for the example
 - integration with indexing, sqlite FTS, or vector DB
 - OCR or guaranteed success for image/pdf conversion
@@ -27,6 +29,7 @@ Out of scope:
 The example lives independently from the existing `packages/vfs/example` server demo.
 
 New files:
+
 - `packages/parser/example/app.ts`
 - `packages/parser/example/logger.ts`
 - `packages/parser/example/data/hello.md`
@@ -36,6 +39,7 @@ New files:
 - optional `packages/parser/example/app.test.ts`
 
 Runtime flow:
+
 1. create example runtime directories for `vfs.db`, synced VFS content, and parser cache
 2. create VFS repository, registry, and service
 3. create parser service with `basePath=<runtime>/parser-cache`
@@ -77,6 +81,7 @@ The example prints compact one-line records:
   - `[CHUNK] status=ok|skipped|error index=... heading=... tokens=... text="..."`
 
 Error and skipped chunks include:
+
 - `code`
 - `message`
 
@@ -85,6 +90,7 @@ This keeps the example readable while still showing chunk metadata.
 ## Sample Data Expectations
 
 The example data folder includes:
+
 - `hello.md`: expected to emit normal `ok` chunks
 - `info.json`: expected to emit normal `ok` chunks through text conversion
 - `paper.pdf`: may emit `ok` chunks or parser `error` chunks depending on converter support/runtime
@@ -95,6 +101,7 @@ The example is successful as long as it demonstrates hook-driven parse attempts 
 ## Package Contract Changes
 
 Minimal package changes:
+
 - add an example script to `packages/parser/package.json`
 - optionally add a small example-specific helper if terminal formatting would otherwise duplicate parser internals
 
@@ -103,6 +110,7 @@ The parser package itself should not gain server-oriented or example-only runtim
 ## Testing Strategy
 
 Prefer one lightweight example test:
+
 - start the example against a temp local data directory
 - assert that markdown/json produce at least one `ok` chunk line
 - assert that png/pdf produce parse output attempts with `status=error` or `status=skipped`

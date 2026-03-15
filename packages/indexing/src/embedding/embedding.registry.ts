@@ -1,9 +1,7 @@
 import type { DependencyContainer } from "tsyringe";
 import type { EmbeddingRegistry, EmbeddingFactory } from "../indexing.types";
 
-export function createEmbeddingRegistry(
-  container: DependencyContainer,
-): EmbeddingRegistry {
+export function createEmbeddingRegistry(container: DependencyContainer): EmbeddingRegistry {
   const factories = new Map<string, EmbeddingFactory>();
 
   return {

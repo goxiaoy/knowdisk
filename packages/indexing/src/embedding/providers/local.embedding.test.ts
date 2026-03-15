@@ -8,7 +8,7 @@ describe("local embedding provider", () => {
     container.clearInstances();
 
     expect(() => createLocalEmbeddingProvider(container)).toThrow(
-      'Local embedding provider requires "ModelService"',
+      'Local embedding provider requires "ModelService"'
     );
   });
 

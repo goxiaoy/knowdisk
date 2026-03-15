@@ -38,9 +38,7 @@ describe("indexing package e2e", () => {
         return [0, 1];
       },
       async embedBatch(texts: string[]) {
-        return texts.map((text) =>
-          text.toLowerCase().includes("alpha") ? [1, 0] : [0, 1],
-        );
+        return texts.map((text) => (text.toLowerCase().includes("alpha") ? [1, 0] : [0, 1]));
       },
     }));
     rerankerRegistry.register("stub-reranker", () => ({
@@ -194,7 +192,7 @@ function createNode(): VfsNode {
 }
 
 function createChunk(
-  overrides: Partial<ParseChunk> & Pick<ParseChunk, "chunkIndex" | "text">,
+  overrides: Partial<ParseChunk> & Pick<ParseChunk, "chunkIndex" | "text">
 ): ParseChunk {
   return {
     chunkIndex: overrides.chunkIndex,
@@ -244,7 +242,5 @@ function createLoggerStub() {
 }
 
 function buildChunkId(nodeId: string, chunkIndex: number): string {
-  return createHash("sha1")
-    .update(`${nodeId}:${chunkIndex}`)
-    .digest("hex");
+  return createHash("sha1").update(`${nodeId}:${chunkIndex}`).digest("hex");
 }

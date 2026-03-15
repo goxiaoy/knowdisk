@@ -13,6 +13,7 @@
 ### Task 1: Add hook types to the public service API
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.service.types.ts`
 - Modify: `packages/vfs/src/index.ts`
 - Test: `packages/vfs/src/vfs.service.runtime.test.ts`
@@ -48,12 +49,14 @@ git commit -m "feat: add vfs node event hook api"
 ### Task 2: Add a service-level hook registry
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.service.ts`
 - Test: `packages/vfs/src/vfs.service.runtime.test.ts`
 
 **Step 1: Write the failing test**
 
 Add tests for:
+
 - multiple registrations execute in order
 - unsubscribe removes a registration
 
@@ -85,6 +88,7 @@ git commit -m "feat: add vfs hook registry"
 ### Task 3: Thread hook runner into syncer construction
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.syncer.ts`
 - Modify: `packages/vfs/src/vfs.service.ts`
 - Test: `packages/vfs/src/vfs.service.runtime.test.ts`
@@ -118,12 +122,14 @@ git commit -m "feat: inject hook runner into vfs syncer"
 ### Task 4: Add blocking `before_*` and best-effort `after_*` around event application
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.syncer.ts`
 - Test: `packages/vfs/src/vfs.syncer.test.ts`
 
 **Step 1: Write the failing tests**
 
 Add tests for:
+
 - `before_add` throws -> queued event remains
 - `after_add` throws -> queued event is deleted
 - `before_update_metadata` throws -> node is not updated
@@ -136,6 +142,7 @@ Expected: FAIL because hooks are not executed yet.
 **Step 3: Write minimal implementation**
 
 In `runNodeEventsHandler(...)`:
+
 - load `prevNode`
 - run `before_${event.type}` hooks before `applyNodeEvent(...)`
 - re-read `nextNode` after apply
@@ -157,12 +164,14 @@ git commit -m "feat: add syncer event lifecycle hooks"
 ### Task 5: Add `before_sync_content` and `after_sync_content`
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.syncer.ts`
 - Test: `packages/vfs/src/vfs.syncer.test.ts`
 
 **Step 1: Write the failing tests**
 
 Add tests for:
+
 - `before_sync_content` throws -> final file is not written and event remains queued
 - `after_sync_content` throws -> final file exists and event is still deleted
 
@@ -174,6 +183,7 @@ Expected: FAIL because content-sync hooks are not present.
 **Step 3: Write minimal implementation**
 
 In `syncContent(...)`:
+
 - build `VfsSyncContentHookContext`
 - run `before_sync_content` before download starts
 - run `after_sync_content` after finalize rename succeeds
@@ -194,6 +204,7 @@ git commit -m "feat: add vfs sync content hooks"
 ### Task 6: Add structured logging for hook failures
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.syncer.ts`
 - Test: `packages/vfs/src/vfs.syncer.test.ts` or existing logger-focused tests if available
 
@@ -209,6 +220,7 @@ Expected: FAIL because hook failure logs do not exist or do not include the requ
 **Step 3: Write minimal implementation**
 
 Log at least:
+
 - `mountId`
 - `sourceRef`
 - `eventType`
@@ -233,6 +245,7 @@ git commit -m "chore: log vfs hook failures"
 ### Task 7: Verify package exports and examples still type-check cleanly
 
 **Files:**
+
 - Modify: `packages/vfs/example/app.ts` only if typings require it
 - Test: `packages/vfs/example/app.test.ts`
 - Test: `packages/vfs/src/vfs.service.runtime.test.ts`
@@ -244,6 +257,7 @@ Only add a test if the exported API surface or example integration requires one.
 **Step 2: Run targeted verification**
 
 Run:
+
 - `bun test packages/vfs/example/app.test.ts`
 - `bun x eslint packages/vfs --max-warnings=0`
 
@@ -256,6 +270,7 @@ Adjust example or exported types only if required by the new hook API.
 **Step 4: Run test to verify it passes**
 
 Run:
+
 - `bun test packages/vfs/example/app.test.ts`
 - `bun x eslint packages/vfs --max-warnings=0`
 
@@ -271,6 +286,7 @@ git add packages/vfs/example/app.ts packages/vfs/example/app.test.ts packages/vf
 ### Task 8: Run full VFS verification
 
 **Files:**
+
 - No code changes expected
 
 **Step 1: Run full verification**
@@ -283,6 +299,7 @@ bun test packages/vfs/src packages/vfs/example
 ```
 
 Expected:
+
 - ESLint exits 0
 - Bun test reports 0 failures
 

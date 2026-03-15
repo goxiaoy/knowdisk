@@ -7,10 +7,7 @@ describe("ModelService types", () => {
   it("supports separate embedding and reranker redownload APIs", () => {
     expect(model).toHaveProperty("createModelService");
 
-    const service: Pick<
-      ModelService,
-      "redownloadEmbeddingModel" | "redownloadRerankerModel"
-    > = {
+    const service: Pick<ModelService, "redownloadEmbeddingModel" | "redownloadRerankerModel"> = {
       redownloadEmbeddingModel: async () => ({ ok: true }),
       redownloadRerankerModel: async () => ({ ok: true }),
     };

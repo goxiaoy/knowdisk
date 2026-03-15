@@ -17,7 +17,7 @@ describe("qwen embedding provider", () => {
     container.registerInstance("CoreConfig", config);
 
     expect(() => createQwenEmbeddingProvider(container)).toThrow(
-      'Qwen embedding provider requires "providers.qwen.endpoint"',
+      'Qwen embedding provider requires "providers.qwen.endpoint"'
     );
   });
 
@@ -30,13 +30,14 @@ describe("qwen embedding provider", () => {
       embeddingModel: "text-embedding-v4",
     };
 
-    const fetchImpl = mock(async () =>
-      new Response(
-        JSON.stringify({
-          data: [{ embedding: [0.1, 0.2] }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
+    const fetchImpl = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [{ embedding: [0.1, 0.2] }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
     );
 
     container.clearInstances();

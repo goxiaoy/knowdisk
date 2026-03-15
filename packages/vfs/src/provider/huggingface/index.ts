@@ -28,7 +28,7 @@ const DEFAULT_HUGGINGFACE_ENDPOINT = "https://huggingface.co";
 
 export function createHuggingFaceVfsProvider(
   mount: VfsMount,
-  deps?: CreateHuggingFaceVfsProviderDeps,
+  deps?: CreateHuggingFaceVfsProviderDeps
 ): VfsProviderAdapter {
   const fetchFn = deps?.fetch ?? fetch;
   const logger =
@@ -50,14 +50,12 @@ export function createHuggingFaceVfsProvider(
           limit: input.limit,
           cursor: input.cursor,
         },
-        "huggingface listChildren",
+        "huggingface listChildren"
       );
       const apiUrl = `${normalizeHost(config.endpoint)}/api/models/${encodePathSegment(config.model)}`;
       const response = await fetchFn(apiUrl);
       if (!response.ok) {
-        throw new Error(
-          `Failed to list model files: ${response.status} ${response.statusText}`,
-        );
+        throw new Error(`Failed to list model files: ${response.status} ${response.statusText}`);
       }
       const payload = (await response.json()) as HuggingFaceRepoResponse;
       const allItems = buildListItems(mount.mountId, payload.siblings ?? []);
@@ -75,16 +73,12 @@ export function createHuggingFaceVfsProvider(
       const nextOffset = offset + input.limit;
       return {
         items: page,
-        nextCursor:
-          nextOffset < directChildren.length ? String(nextOffset) : undefined,
+        nextCursor: nextOffset < directChildren.length ? String(nextOffset) : undefined,
       };
     },
     async createReadStream(input) {
       const config = parseMountConfig(mount);
-      const id =
-        input.id ??
-        (input as unknown as { sourceRef?: string }).sourceRef ??
-        "";
+      const id = input.id ?? (input as unknown as { sourceRef?: string }).sourceRef ?? "";
       logger.info(
         {
           mountId: mount.mountId,
@@ -93,7 +87,7 @@ export function createHuggingFaceVfsProvider(
           offset: input.offset,
           length: input.length,
         },
-        "huggingface createReadStream",
+        "huggingface createReadStream"
       );
       if (!isWhitelistedFile(id)) {
         throw new Error(`id is not allowed by whitelist: "${id}"`);
@@ -105,9 +99,7 @@ export function createHuggingFaceVfsProvider(
         headers: buildRangeHeaders(input.offset, input.length),
       });
       if (!response.ok) {
-        throw new Error(
-          `Failed to read model file: ${response.status} ${response.statusText}`,
-        );
+        throw new Error(`Failed to read model file: ${response.status} ${response.statusText}`);
       }
       if (!response.body) {
         throw new Error("Failed to read model file: empty response body");
@@ -116,17 +108,14 @@ export function createHuggingFaceVfsProvider(
     },
     async getMetadata(input) {
       const config = parseMountConfig(mount);
-      const id =
-        input.id ??
-        (input as unknown as { sourceRef?: string }).sourceRef ??
-        "";
+      const id = input.id ?? (input as unknown as { sourceRef?: string }).sourceRef ?? "";
       logger.info(
         {
           mountId: mount.mountId,
           model: config.model,
           id,
         },
-        "huggingface getMetadata",
+        "huggingface getMetadata"
       );
       if (!isWhitelistedFile(id)) {
         return null;
@@ -134,14 +123,10 @@ export function createHuggingFaceVfsProvider(
       const apiUrl = `${normalizeHost(config.endpoint)}/api/models/${encodePathSegment(config.model)}`;
       const response = await fetchFn(apiUrl);
       if (!response.ok) {
-        throw new Error(
-          `Failed to list model files: ${response.status} ${response.statusText}`,
-        );
+        throw new Error(`Failed to list model files: ${response.status} ${response.statusText}`);
       }
       const payload = (await response.json()) as HuggingFaceRepoResponse;
-      const found = (payload.siblings ?? []).find(
-        (item) => item.rfilename === id,
-      );
+      const found = (payload.siblings ?? []).find((item) => item.rfilename === id);
       if (!found) {
         return null;
       }
@@ -161,17 +146,14 @@ export function createHuggingFaceVfsProvider(
           id,
           size: size ?? 0,
         },
-        "huggingface getMetadata resolved",
+        "huggingface getMetadata resolved"
       );
       return toListChildrenItem(mount.mountId, found.rfilename!, size);
     },
   };
 }
 
-function buildRangeHeaders(
-  offset?: number,
-  length?: number,
-): Record<string, string> | undefined {
+function buildRangeHeaders(offset?: number, length?: number): Record<string, string> | undefined {
   const hasOffset = typeof offset === "number";
   const hasLength = typeof length === "number";
   if (!hasOffset && !hasLength) {
@@ -202,7 +184,7 @@ function parseMountConfig(mount: VfsMount): {
 
 function pickOptionalNonEmptyString(
   value: Record<string, unknown>,
-  key: "endpoint",
+  key: "endpoint"
 ): string | undefined {
   const got = value[key];
   if (typeof got === "undefined") {
@@ -214,10 +196,7 @@ function pickOptionalNonEmptyString(
   return got.trim();
 }
 
-function pickNonEmptyString(
-  value: Record<string, unknown>,
-  key: "endpoint" | "model",
-): string {
+function pickNonEmptyString(value: Record<string, unknown>, key: "endpoint" | "model"): string {
   const got = value[key];
   if (typeof got !== "string" || got.trim().length === 0) {
     throw new Error(`providerExtra.${key} must be a non-empty string`);
@@ -247,10 +226,7 @@ function encodePathSegment(value: string): string {
     .join("/");
 }
 
-async function probeRemoteFileSize(
-  fetchFn: typeof fetch,
-  fileUrl: string,
-): Promise<number> {
+async function probeRemoteFileSize(fetchFn: typeof fetch, fileUrl: string): Promise<number> {
   try {
     const head = await fetchFn(fileUrl, { method: "HEAD" });
     if (head.ok) {
@@ -264,9 +240,7 @@ async function probeRemoteFileSize(
   }
   try {
     const ranged = await fetchFn(fileUrl, { headers: { Range: "bytes=0-0" } });
-    const fromRange = parseContentRangeTotal(
-      ranged.headers.get("content-range"),
-    );
+    const fromRange = parseContentRangeTotal(ranged.headers.get("content-range"));
     if (fromRange && fromRange > 0) {
       return fromRange;
     }
@@ -294,22 +268,17 @@ function parseContentRangeTotal(value: string | null): number | null {
 
 function buildListItems(
   mountId: string,
-  siblings: Array<{ rfilename?: string; size?: number }>,
+  siblings: Array<{ rfilename?: string; size?: number }>
 ): VfsNode[] {
   const byKey = new Map<string, VfsNode>();
   for (const sibling of siblings) {
-    if (
-      typeof sibling.rfilename !== "string" ||
-      sibling.rfilename.length === 0
-    ) {
+    if (typeof sibling.rfilename !== "string" || sibling.rfilename.length === 0) {
       continue;
     }
     if (!isWhitelistedFile(sibling.rfilename)) {
       continue;
     }
-    const parts = sibling.rfilename
-      .split("/")
-      .filter((part) => part.length > 0);
+    const parts = sibling.rfilename.split("/").filter((part) => part.length > 0);
     if (parts.length === 0) {
       continue;
     }
@@ -328,33 +297,24 @@ function buildListItems(
             name,
             kind: "folder",
             size: null,
-          }),
+          })
         );
       }
     }
     const fileName = parts[parts.length - 1]!;
-    const fileParent =
-      parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
+    const fileParent = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
     const fileKey = `file|${fileParent ?? ""}|${fileName}`;
     if (!byKey.has(fileKey)) {
-      byKey.set(
-        fileKey,
-        toListChildrenItem(mountId, sibling.rfilename, sibling.size),
-      );
+      byKey.set(fileKey, toListChildrenItem(mountId, sibling.rfilename, sibling.size));
     }
   }
   return [...byKey.values()];
 }
 
-function toListChildrenItem(
-  mountId: string,
-  sourceRef: string,
-  size?: number,
-): VfsNode {
+function toListChildrenItem(mountId: string, sourceRef: string, size?: number): VfsNode {
   const parts = sourceRef.split("/").filter((part) => part.length > 0);
   const name = parts[parts.length - 1] ?? sourceRef;
-  const parentId =
-    parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
+  const parentId = parts.length > 1 ? parts.slice(0, parts.length - 1).join("/") : null;
   return toProviderNode({
     mountId,
     sourceRef,

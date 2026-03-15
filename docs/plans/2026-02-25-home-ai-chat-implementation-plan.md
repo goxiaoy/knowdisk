@@ -13,6 +13,7 @@
 ### Task 1: Extend Config Model For Chat Settings
 
 **Files:**
+
 - Modify: `src/core/config/config.types.ts`
 - Modify: `src/core/config/default-config.ts`
 - Modify: `src/core/config/config.service.test.ts`
@@ -62,6 +63,7 @@ git commit -m "feat(config): add chat provider settings"
 ### Task 2: Add Chat Persistence Repository (SQLite)
 
 **Files:**
+
 - Create: `src/core/chat/chat.repository.types.ts`
 - Create: `src/core/chat/chat.repository.ts`
 - Create: `src/core/chat/chat.repository.test.ts`
@@ -74,8 +76,15 @@ Create tests for CRUD + cascade delete:
 test("creates session, appends messages, stores citations", () => {
   const repo = createChatRepository({ dbPath: ":memory:" });
   const s = repo.createSession({ title: "New Chat" });
-  const m = repo.createMessage({ sessionId: s.id, role: "assistant", content: "ok", status: "done" });
-  repo.replaceCitations(m.id, [{ sourcePath: "/a.md", chunkId: "c1", score: 0.9, chunkTextPreview: "txt" }]);
+  const m = repo.createMessage({
+    sessionId: s.id,
+    role: "assistant",
+    content: "ok",
+    status: "done",
+  });
+  repo.replaceCitations(m.id, [
+    { sourcePath: "/a.md", chunkId: "c1", score: 0.9, chunkTextPreview: "txt" },
+  ]);
   expect(repo.listSessions()[0].id).toBe(s.id);
   expect(repo.listMessages(s.id)).toHaveLength(1);
   expect(repo.listCitations(m.id)).toHaveLength(1);
@@ -90,6 +99,7 @@ Expected: FAIL (`createChatRepository` missing).
 **Step 3: Write minimal implementation**
 
 Implement schema + repository methods:
+
 - `createSession`, `renameSession`, `deleteSession`, `listSessions`
 - `createMessage`, `updateMessageContent`, `updateMessageStatus`, `listMessages`
 - `replaceCitations`, `listCitations`
@@ -111,6 +121,7 @@ git commit -m "feat(chat): add sqlite chat repository"
 ### Task 3: Build OpenAI Chat Provider Abstraction
 
 **Files:**
+
 - Create: `src/core/chat/provider/chat.provider.types.ts`
 - Create: `src/core/chat/provider/openai.chat.provider.ts`
 - Create: `src/core/chat/provider/openai.chat.provider.test.ts`
@@ -122,7 +133,12 @@ Add tests for request mapping and tool schema inclusion:
 ```ts
 test("maps chat config and tools into openai stream request", async () => {
   const provider = createOpenAiChatProvider({ fetchImpl: mockFetchOkStream });
-  await provider.streamResponse({ apiKey: "k", model: "gpt-4.1-mini", messages: [], tools: [tool] });
+  await provider.streamResponse({
+    apiKey: "k",
+    model: "gpt-4.1-mini",
+    messages: [],
+    tools: [tool],
+  });
   expect(mockFetchOkStream).toHaveBeenCalled();
 });
 ```
@@ -159,6 +175,7 @@ git commit -m "feat(chat): add openai chat provider"
 ### Task 4: Implement Chat Service Tool Loop + Streaming
 
 **Files:**
+
 - Create: `src/core/chat/chat.service.types.ts`
 - Create: `src/core/chat/chat.service.ts`
 - Create: `src/core/chat/chat.service.test.ts`
@@ -166,6 +183,7 @@ git commit -m "feat(chat): add openai chat provider"
 **Step 1: Write the failing test**
 
 Add tests for:
+
 - user message persisted before generation
 - tool call executes retrieval and continues
 - stream chunks merge into assistant message
@@ -190,6 +208,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Implement service orchestration:
+
 - load message history
 - append new user message
 - call provider stream
@@ -212,6 +231,7 @@ git commit -m "feat(chat): add streaming chat service with retrieval tools"
 ### Task 5: Wire Chat Service Into DI Container
 
 **Files:**
+
 - Modify: `src/bun/app.container.ts`
 - Modify: `src/bun/app.container.test.ts`
 
@@ -245,6 +265,7 @@ git commit -m "feat(bun): register chat service in container"
 ### Task 6: Add Chat RPC Contracts And Bun Main Handlers
 
 **Files:**
+
 - Modify: `src/bun/index.ts`
 - Modify: `src/mainview/services/bun.rpc.ts`
 - Create: `src/mainview/services/chat.stream.client.ts`
@@ -262,6 +283,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Add RPCs:
+
 - `chat_list_sessions`
 - `chat_create_session`
 - `chat_rename_session`
@@ -287,6 +309,7 @@ git commit -m "feat(rpc): add chat session and streaming handlers"
 ### Task 7: Build Chat UI Components (Home Chat-First)
 
 **Files:**
+
 - Modify: `src/mainview/components/home/HomePage.tsx`
 - Create: `src/mainview/components/home/chat/SessionSidebar.tsx`
 - Create: `src/mainview/components/home/chat/ChatThread.tsx`
@@ -297,6 +320,7 @@ git commit -m "feat(rpc): add chat session and streaming handlers"
 **Step 1: Write the failing test**
 
 Add Home tests for:
+
 - chat layout renders
 - sending message shows streaming assistant content
 - citation section appears for assistant message
@@ -309,6 +333,7 @@ Expected: FAIL (new UI missing).
 **Step 3: Write minimal implementation**
 
 Implement chat-first Home with:
+
 - session sidebar actions
 - chat thread messages
 - composer send/stop
@@ -330,12 +355,14 @@ git commit -m "feat(home): implement chat-first home experience"
 ### Task 8: Add Chat Settings UI (Dedicated API Key + Fixed Model Dropdown)
 
 **Files:**
+
 - Modify: `src/mainview/components/settings/SettingsPage.tsx`
 - Modify: `src/mainview/components/settings/SettingsPage.test.tsx`
 
 **Step 1: Write the failing test**
 
 Add Settings tests:
+
 - chat model dropdown renders fixed options
 - API key save updates config.chat.openai.apiKey
 
@@ -347,6 +374,7 @@ Expected: FAIL.
 **Step 3: Write minimal implementation**
 
 Add Chat Settings section:
+
 - provider display (`openai`)
 - model dropdown (`gpt-4.1-mini`, `gpt-4.1`)
 - masked API key input
@@ -367,12 +395,14 @@ git commit -m "feat(settings): add chat openai configuration"
 ### Task 9: Add API-Key Missing Empty State + Session UX Guards
 
 **Files:**
+
 - Modify: `src/mainview/components/home/HomePage.tsx`
 - Modify: `src/mainview/components/home/HomePage.test.tsx`
 
 **Step 1: Write the failing test**
 
 Add tests for:
+
 - empty-state if chat key not configured
 - switching session while streaming triggers stop
 
@@ -402,6 +432,7 @@ git commit -m "feat(chat-ui): add empty state and stream safety guards"
 ### Task 10: End-to-End Verification + Docs Update
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
 - Optional: `docs/plans/verification-checklist-local-rag-mcp.md` (if checklist needs chat coverage)
@@ -413,11 +444,13 @@ If any scenario still untested (citation rendering, RPC stop behavior), add targ
 **Step 2: Run full verification suite**
 
 Run:
+
 - `bun test`
 - `bunx tsc --noEmit -p tsconfig.typecheck.json`
 - `bun run build`
 
 Expected:
+
 - all tests PASS
 - no type errors
 - build success
@@ -425,6 +458,7 @@ Expected:
 **Step 3: Update docs minimally**
 
 Document:
+
 - Home chat-first UX
 - Chat OpenAI key/model config
 - Retrieval tools auto-calling + citation behavior

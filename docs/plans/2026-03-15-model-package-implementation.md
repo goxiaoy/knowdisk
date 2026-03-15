@@ -13,6 +13,7 @@
 ### Task 1: Package Skeleton
 
 **Files:**
+
 - Create: `packages/model/package.json`
 - Create: `packages/model/src/index.ts`
 - Test: `packages/model/src/model.package.test.ts`
@@ -46,6 +47,7 @@ git commit -m "feat(model): add package skeleton"
 ### Task 2: Public Types
 
 **Files:**
+
 - Create: `packages/model/src/model.service.types.ts`
 - Test: `packages/model/src/model.service.types.test.ts`
 - Modify: `packages/model/src/index.ts`
@@ -86,6 +88,7 @@ git commit -m "feat(model): add model service types"
 ### Task 3: Service Shell
 
 **Files:**
+
 - Create: `packages/model/src/model.service.ts`
 - Test: `packages/model/src/model.service.test.ts`
 
@@ -122,6 +125,7 @@ git commit -m "feat(model): add model service shell"
 ### Task 4: Status And Task Planning
 
 **Files:**
+
 - Test: `packages/model/src/model.status.test.ts`
 - Test: `packages/model/src/model.specs.test.ts`
 - Modify: `packages/model/src/model.service.ts`
@@ -161,6 +165,7 @@ git commit -m "feat(model): add status store and task planning"
 ### Task 5: Download Helpers
 
 **Files:**
+
 - Test: `packages/model/src/model.download.test.ts`
 - Modify: `packages/model/src/model.service.ts`
 
@@ -192,6 +197,7 @@ git commit -m "feat(model): add repo file selection"
 ### Task 6: Retry And Progress
 
 **Files:**
+
 - Test: `packages/model/src/model.retry.test.ts`
 - Modify: `packages/model/src/model.service.ts`
 
@@ -231,6 +237,7 @@ git commit -m "feat(model): add retry and progress tracking"
 ### Task 7: Runtime Acquisition
 
 **Files:**
+
 - Test: `packages/model/src/model.runtime.test.ts`
 - Modify: `packages/model/src/model.service.ts`
 - Modify: `packages/model/package.json`
@@ -272,6 +279,7 @@ git commit -m "feat(model): add local runtime acquisition"
 ### Task 8: Separate Redownload APIs
 
 **Files:**
+
 - Test: `packages/model/src/model.redownload.test.ts`
 - Modify: `packages/model/src/model.service.ts`
 
@@ -306,6 +314,7 @@ git commit -m "feat(model): add separate redownload APIs"
 ### Task 9: Verification
 
 **Files:**
+
 - Test: `packages/model/src/*`
 
 **Step 1: Run package tests**

@@ -72,7 +72,7 @@ describe("local vfs provider", () => {
       const content = await readAll(
         await provider.createReadStream!({
           id: "a.txt",
-        }),
+        })
       );
       expect(content).toBe("alpha");
 
@@ -140,28 +140,19 @@ describe("local vfs provider", () => {
 
       writeFileSync(join(dir, "watch.txt"), "x");
       const sawAdd = await waitUntil(
-        () =>
-          events.some(
-            (event) => event.type === "add" && event.id === "watch.txt",
-          ),
-        4000,
+        () => events.some((event) => event.type === "add" && event.id === "watch.txt"),
+        4000
       );
       await Bun.sleep(100);
       writeFileSync(join(dir, "watch.txt"), "y");
       const sawUpdate = await waitUntil(
-        () =>
-          events.some(
-            (event) => event.type === "update" && event.id === "watch.txt",
-          ),
-        4000,
+        () => events.some((event) => event.type === "update" && event.id === "watch.txt"),
+        4000
       );
       rmSync(join(dir, "watch.txt"), { force: true });
       const sawDelete = await waitUntil(
-        () =>
-          events.some(
-            (event) => event.type === "delete" && event.id === "watch.txt",
-          ),
-        4000,
+        () => events.some((event) => event.type === "delete" && event.id === "watch.txt"),
+        4000
       );
       await watcher.close();
 
@@ -190,8 +181,8 @@ describe("local vfs provider", () => {
 
       expect(
         mock.records.some(
-          (record) => record.level === "info" && record.msg.includes("local listChildren"),
-        ),
+          (record) => record.level === "info" && record.msg.includes("local listChildren")
+        )
       ).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });

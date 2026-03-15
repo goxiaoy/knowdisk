@@ -20,10 +20,8 @@ function createMockLogger() {
     logger: {
       info: (obj: unknown, msg?: string) => records.push({ level: "info", obj, msg: msg ?? "" }),
       warn: (obj: unknown, msg?: string) => records.push({ level: "warn", obj, msg: msg ?? "" }),
-      error: (obj: unknown, msg?: string) =>
-        records.push({ level: "error", obj, msg: msg ?? "" }),
-      debug: (obj: unknown, msg?: string) =>
-        records.push({ level: "debug", obj, msg: msg ?? "" }),
+      error: (obj: unknown, msg?: string) => records.push({ level: "error", obj, msg: msg ?? "" }),
+      debug: (obj: unknown, msg?: string) => records.push({ level: "debug", obj, msg: msg ?? "" }),
     },
     records,
   };
@@ -250,7 +248,9 @@ describe("vfs syncer", () => {
       expect(offsets).toEqual([]);
       expect(() => readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toThrow();
       const queued = repo.listNodeEventsByMountId(mount.mountId);
-      expect(queued.some((event) => event.sourceRef === "f.txt" && event.type === "update_content")).toBe(true);
+      expect(
+        queued.some((event) => event.sourceRef === "f.txt" && event.type === "update_content")
+      ).toBe(true);
       expect(events.some((e) => e.type === "download_progress")).toBe(false);
     } finally {
       repo.close();
@@ -566,7 +566,7 @@ describe("vfs syncer", () => {
       await syncer.startWatching();
       const drained = await waitUntil(
         () => repo.listNodeEventsByMountId(mount.mountId).length === 1,
-        500,
+        500
       );
       await syncer.stopWatching();
 
@@ -662,7 +662,7 @@ describe("vfs syncer", () => {
       await syncer.startWatching();
       const drained = await waitUntil(
         () => repo.listNodeEventsByMountId(mount.mountId).length === 0,
-        500,
+        500
       );
       await syncer.stopWatching();
 
@@ -753,7 +753,7 @@ describe("vfs syncer", () => {
             stage: "before",
             error: "Error: blocked",
           }),
-        }),
+        })
       );
     } finally {
       repo.close();
@@ -844,7 +844,7 @@ describe("vfs syncer", () => {
       await syncer.startWatching();
       const drained = await waitUntil(
         () => repo.listNodeEventsByMountId(mount.mountId).length === 0,
-        500,
+        500
       );
       await syncer.stopWatching();
 
@@ -861,7 +861,7 @@ describe("vfs syncer", () => {
             stage: "after",
             error: "Error: after-update-content",
           }),
-        }),
+        })
       );
     } finally {
       repo.close();
@@ -1089,8 +1089,8 @@ describe("vfs syncer", () => {
       await syncer.fullSync();
       expect(
         mock.records.some(
-          (record) => record.level === "info" && record.msg.includes("syncer status changed"),
-        ),
+          (record) => record.level === "info" && record.msg.includes("syncer status changed")
+        )
       ).toBe(true);
     } finally {
       repo.close();

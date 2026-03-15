@@ -171,9 +171,7 @@ function createChunk(): ParseChunk {
   };
 }
 
-function createChunks(
-  items: ParseChunk[],
-): AsyncIterable<ParseChunk> {
+function createChunks(items: ParseChunk[]): AsyncIterable<ParseChunk> {
   return {
     async *[Symbol.asyncIterator]() {
       for (const item of items) {

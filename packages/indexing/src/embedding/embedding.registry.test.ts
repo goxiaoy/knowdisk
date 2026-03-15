@@ -27,9 +27,7 @@ describe("embedding registry", () => {
   test("throws clear error for unknown type", () => {
     const registry = createEmbeddingRegistry(rootContainer.createChildContainer());
 
-    expect(() => registry.get("missing")).toThrow(
-      'Unknown embedding provider type: "missing"',
-    );
+    expect(() => registry.get("missing")).toThrow('Unknown embedding provider type: "missing"');
   });
 
   test("passes container and options into the factory", async () => {

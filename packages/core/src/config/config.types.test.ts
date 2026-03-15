@@ -5,6 +5,7 @@ import type { CoreConfig } from "./index";
 describe("CoreConfig", () => {
   it("supports provider selection separately from provider settings", () => {
     const config: CoreConfig = {
+      basePath: "/tmp/.knowdisk",
       logger: { level: "info", name: "knowdisk" },
       providers: {
         openai: {
@@ -31,6 +32,7 @@ describe("CoreConfig", () => {
 
     expect(config.providers.openai?.endpoint).toBe("https://api.openai.com");
     expect(config.embedding.provider).toBe("openai");
+    expect(config.basePath).toBe("/tmp/.knowdisk");
     expect(configModule).toBeObject();
   });
 });

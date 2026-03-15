@@ -12,10 +12,7 @@ import {
   type VfsProviderAdapter,
 } from "../src";
 
-type ProviderOverrides = Record<
-  string,
-  (mount: VfsMount) => VfsProviderAdapter
->;
+type ProviderOverrides = Record<string, (mount: VfsMount) => VfsProviderAdapter>;
 
 type MountStatus = {
   mountId: string;
@@ -75,9 +72,7 @@ export async function createVfsExampleApp(input?: {
   exampleContainer.register("logger", { useValue: logger });
   const registry = createVfsProviderRegistry(exampleContainer);
   if (input?.providerOverrides) {
-    for (const [providerType, factory] of Object.entries(
-      input.providerOverrides,
-    )) {
+    for (const [providerType, factory] of Object.entries(input.providerOverrides)) {
       registry.register(providerType, (_container, mount) => factory(mount));
     }
   }
@@ -121,10 +116,7 @@ export async function createVfsExampleApp(input?: {
       const mountNode = repository
         .listNodesByMountId(ext.mountId)
         .find(
-          (node) =>
-            node.kind === "mount" &&
-            node.sourceRef === "" &&
-            node.deletedAtMs === null,
+          (node) => node.kind === "mount" && node.sourceRef === "" && node.deletedAtMs === null
         );
       if (!mountNode) {
         return [];
@@ -184,7 +176,7 @@ export async function createVfsExampleApp(input?: {
   const encoder = new TextEncoder();
   const sendEvent = (event: { type: string; payload: unknown }) => {
     const chunk = encoder.encode(
-      `event: ${event.type}\ndata: ${JSON.stringify(event.payload)}\n\n`,
+      `event: ${event.type}\ndata: ${JSON.stringify(event.payload)}\n\n`
     );
     for (const listener of listeners) {
       listener.enqueue(chunk);
@@ -224,15 +216,11 @@ export async function createVfsExampleApp(input?: {
         const limit = Number(url.searchParams.get("limit") ?? "100");
         const token = url.searchParams.get("cursor");
         const parentNodeId =
-          parentNodeIdParam === null || parentNodeIdParam.length === 0
-            ? null
-            : parentNodeIdParam;
+          parentNodeIdParam === null || parentNodeIdParam.length === 0 ? null : parentNodeIdParam;
         try {
           const result = await vfs.walkChildren({
             parentNodeId,
-            limit: Number.isFinite(limit)
-              ? Math.max(1, Math.min(500, Math.floor(limit)))
-              : 100,
+            limit: Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 100,
             cursor: token ? { mode: "local", token } : undefined,
           });
           return Response.json({
@@ -240,8 +228,7 @@ export async function createVfsExampleApp(input?: {
             nextCursor: result.nextCursor?.token,
           });
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
+          const message = error instanceof Error ? error.message : String(error);
           if (message.includes("Parent node not found")) {
             return Response.json({ error: message }, { status: 404 });
           }
@@ -252,10 +239,7 @@ export async function createVfsExampleApp(input?: {
       if (url.pathname === "/api/metadata") {
         const nodeId = url.searchParams.get("nodeId");
         if (!nodeId) {
-          return Response.json(
-            { error: "nodeId is required" },
-            { status: 400 },
-          );
+          return Response.json({ error: "nodeId is required" }, { status: 400 });
         }
         const node = repository.getNodeById(nodeId);
         if (!node) {
@@ -309,16 +293,10 @@ export async function createVfsExampleApp(input?: {
             kind?: "file" | "folder";
           };
           if (!body.parentNodeId) {
-            return Response.json(
-              { error: "parentNodeId is required" },
-              { status: 400 },
-            );
+            return Response.json({ error: "parentNodeId is required" }, { status: 400 });
           }
           if (!vfs.create) {
-            return Response.json(
-              { error: "create is not supported" },
-              { status: 400 },
-            );
+            return Response.json({ error: "create is not supported" }, { status: 400 });
           }
           const created = await vfs.create({
             parentId: body.parentNodeId,
@@ -327,8 +305,7 @@ export async function createVfsExampleApp(input?: {
           });
           return Response.json({ node: created });
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
+          const message = error instanceof Error ? error.message : String(error);
           return Response.json({ error: message }, { status: 400 });
         }
       }
@@ -340,16 +317,10 @@ export async function createVfsExampleApp(input?: {
             name?: string;
           };
           if (!body.nodeId || !body.name) {
-            return Response.json(
-              { error: "nodeId and name are required" },
-              { status: 400 },
-            );
+            return Response.json({ error: "nodeId and name are required" }, { status: 400 });
           }
           if (!vfs.rename) {
-            return Response.json(
-              { error: "rename is not supported" },
-              { status: 400 },
-            );
+            return Response.json({ error: "rename is not supported" }, { status: 400 });
           }
           const renamed = await vfs.rename({
             id: body.nodeId,
@@ -357,8 +328,7 @@ export async function createVfsExampleApp(input?: {
           });
           return Response.json({ node: renamed });
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
+          const message = error instanceof Error ? error.message : String(error);
           return Response.json({ error: message }, { status: 400 });
         }
       }
@@ -369,24 +339,17 @@ export async function createVfsExampleApp(input?: {
             nodeId?: string;
           };
           if (!body.nodeId) {
-            return Response.json(
-              { error: "nodeId is required" },
-              { status: 400 },
-            );
+            return Response.json({ error: "nodeId is required" }, { status: 400 });
           }
           if (!vfs.delete) {
-            return Response.json(
-              { error: "delete is not supported" },
-              { status: 400 },
-            );
+            return Response.json({ error: "delete is not supported" }, { status: 400 });
           }
           await vfs.delete({
             id: body.nodeId,
           });
           return Response.json({ ok: true });
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
+          const message = error instanceof Error ? error.message : String(error);
           return Response.json({ error: message }, { status: 400 });
         }
       }
@@ -399,8 +362,8 @@ export async function createVfsExampleApp(input?: {
               encoder.encode(
                 `event: init\ndata: ${JSON.stringify({
                   statuses: toStatusArray(),
-                })}\n\n`,
-              ),
+                })}\n\n`
+              )
             );
           },
           cancel() {
@@ -418,12 +381,9 @@ export async function createVfsExampleApp(input?: {
         });
       }
 
-      return new Response(
-        renderHtml({ mounts: listMountedNodes(), statuses: toStatusArray() }),
-        {
-          headers: { "content-type": "text/html; charset=utf-8" },
-        },
-      );
+      return new Response(renderHtml({ mounts: listMountedNodes(), statuses: toStatusArray() }), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
     },
   });
 
@@ -545,7 +505,7 @@ function renderHtml(input: {
         mountId: item.mountId,
         mountNodeId: item.mountNodeId,
         operations: item.operations,
-      })),
+      }))
     )};
     let statuses = ${JSON.stringify(input.statuses)};
     let selectedPath = mounts[0]?.mountNodeId || "";

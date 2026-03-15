@@ -13,6 +13,7 @@
 ### Task 1: Add vector inspect types + repository API
 
 **Files:**
+
 - Modify: `src/core/vector/vector.repository.types.ts`
 - Modify: `src/core/vector/vector.repository.ts`
 - Test: `src/core/vector/vector.repository.test.ts`
@@ -24,6 +25,7 @@
 ### Task 2: Expose inspect via app container + Bun RPC + mainview RPC client
 
 **Files:**
+
 - Modify: `src/bun/app.container.ts`
 - Modify: `src/bun/index.ts`
 - Modify: `src/mainview/services/bun.rpc.ts`
@@ -35,6 +37,7 @@
 ### Task 3: Add Home page and Vector Stats card
 
 **Files:**
+
 - Create: `src/mainview/components/home/VectorStatsCard.tsx`
 - Create: `src/mainview/components/home/HomePage.tsx`
 - Modify: `src/mainview/App.tsx`
@@ -46,6 +49,7 @@
 ### Task 4: Add/adjust tests and run focused verification
 
 **Files:**
+
 - Modify: `src/mainview/components/settings/SettingsPage.test.tsx` (only if selector collisions)
 - Create: `src/mainview/components/home/VectorStatsCard.test.tsx` (optional smoke)
 

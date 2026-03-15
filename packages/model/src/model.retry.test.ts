@@ -27,11 +27,7 @@ function textResponse(body: string, total: number) {
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) =>
-      rm(dir, { recursive: true, force: true }),
-    ),
-  );
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 describe("model retry and progress", () => {

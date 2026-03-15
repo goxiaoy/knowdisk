@@ -6,11 +6,11 @@ import "./index.css";
 const rootElement = document.getElementById("root");
 
 if (!rootElement) {
-	throw new Error('Renderer root element "#root" was not found');
+  throw new Error('Renderer root element "#root" was not found');
 }
 
 ReactDOM.createRoot(rootElement).render(
-	<React.StrictMode>
-		<App />
-	</React.StrictMode>,
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
 );

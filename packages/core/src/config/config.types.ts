@@ -22,6 +22,7 @@ export type RerankerProviderId = "local" | "openai" | "qwen";
 export type ChatProviderId = "openai";
 
 export type CoreConfig = {
+  basePath: string;
   logger: {
     level: string;
     name: string;

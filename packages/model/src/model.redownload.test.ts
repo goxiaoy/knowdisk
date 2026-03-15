@@ -22,7 +22,7 @@ function createFetchStub() {
         {
           status: 200,
           headers: { "content-type": "application/json" },
-        },
+        }
       );
     }
     return new Response("test", {

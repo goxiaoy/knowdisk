@@ -2,16 +2,11 @@ export type DecodedVfsCursorToken =
   | { mode: "local"; lastName: string; lastNodeId: string }
   | { mode: "remote"; providerCursor: string };
 
-export function encodeVfsLocalCursorToken(input: {
-  lastName: string;
-  lastNodeId: string;
-}): string {
+export function encodeVfsLocalCursorToken(input: { lastName: string; lastNodeId: string }): string {
   return encodeToken({ mode: "local", lastName: input.lastName, lastNodeId: input.lastNodeId });
 }
 
-export function encodeVfsRemoteCursorToken(input: {
-  providerCursor: string;
-}): string {
+export function encodeVfsRemoteCursorToken(input: { providerCursor: string }): string {
   return encodeToken({ mode: "remote", providerCursor: input.providerCursor });
 }
 

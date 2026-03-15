@@ -1,7 +1,10 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { CoreConfig } from "./config.types";
 
 export function createDefaultCoreConfig(): CoreConfig {
   return {
+    basePath: join(homedir(), ".knowdisk"),
     logger: {
       level: "info",
       name: "knowdisk",

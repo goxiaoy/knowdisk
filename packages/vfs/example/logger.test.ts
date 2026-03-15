@@ -18,8 +18,8 @@ describe("vfs example logger", () => {
     expect(text).toContain("syncer watch started");
     expect(text).toContain("mountId=m1");
     expect(text).toContain("sourceRef=a.txt");
-    expect(text).not.toContain("\"pid\"");
-    expect(text).not.toContain("\"hostname\"");
+    expect(text).not.toContain('"pid"');
+    expect(text).not.toContain('"hostname"');
     expect(text).not.toContain("{");
   });
 });

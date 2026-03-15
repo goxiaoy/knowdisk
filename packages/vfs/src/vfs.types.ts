@@ -2,11 +2,7 @@ export const VFS_TYPES_READY = true;
 
 export type VfsNodeKind = "mount" | "file" | "folder";
 export type VfsNodeRequiredField = "size" | "providerVersion" | "mtimeMs";
-export const MetadataAllField: VfsNodeRequiredField[] = [
-  "size",
-  "providerVersion",
-  "mtimeMs",
-];
+export const MetadataAllField: VfsNodeRequiredField[] = ["size", "providerVersion", "mtimeMs"];
 
 export type VfsMountConfig = {
   providerType: string;
@@ -39,7 +35,7 @@ export type VfsNode = {
 
 export function complete(
   node: Pick<VfsNode, VfsNodeRequiredField>,
-  requiredFields: VfsNodeRequiredField[],
+  requiredFields: VfsNodeRequiredField[]
 ): boolean {
   for (const field of requiredFields) {
     if (field === "size") {
@@ -55,10 +51,7 @@ export function complete(
       continue;
     }
     if (field === "providerVersion") {
-      if (
-        typeof node.providerVersion !== "string" ||
-        node.providerVersion.length === 0
-      ) {
+      if (typeof node.providerVersion !== "string" || node.providerVersion.length === 0) {
         return false;
       }
     }

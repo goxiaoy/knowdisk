@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createVfsNodeId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe("vfs node id", () => {
   test("creates deterministic node id from mountId/sourceRef", () => {
@@ -23,5 +22,4 @@ describe("vfs node id", () => {
     const uuid = decodeBase64UrlNodeIdToUuid(nodeId);
     expect(UUID_REGEX.test(uuid)).toBe(true);
   });
-
 });

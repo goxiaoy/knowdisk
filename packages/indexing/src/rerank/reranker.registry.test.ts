@@ -19,9 +19,7 @@ describe("reranker registry", () => {
   test("throws clear error for unknown type", () => {
     const registry = createRerankerRegistry(rootContainer.createChildContainer());
 
-    expect(() => registry.get("missing")).toThrow(
-      'Unknown reranker provider type: "missing"',
-    );
+    expect(() => registry.get("missing")).toThrow('Unknown reranker provider type: "missing"');
   });
 
   test("factory returns reranker implementation", async () => {
@@ -33,11 +31,9 @@ describe("reranker registry", () => {
       },
     }));
 
-    const result = await registry.get("reverse").rerank(
-      "q",
-      [createHit("a"), createHit("b")],
-      { topK: 2 },
-    );
+    const result = await registry
+      .get("reverse")
+      .rerank("q", [createHit("a"), createHit("b")], { topK: 2 });
 
     expect(result.map((item) => item.chunkId)).toEqual(["b", "a"]);
   });

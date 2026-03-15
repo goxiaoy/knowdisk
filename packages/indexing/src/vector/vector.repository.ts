@@ -13,9 +13,7 @@ import type { VectorRepository } from "./vector.repository.types";
 
 const VECTOR_FIELD = "embedding";
 
-export function createVectorRepository(opts: {
-  collectionPath: string;
-}): VectorRepository {
+export function createVectorRepository(opts: { collectionPath: string }): VectorRepository {
   const collectionPath = resolve(opts.collectionPath);
   mkdirSync(dirname(collectionPath), { recursive: true });
   let collection = existsSync(collectionPath) ? ZVecOpen(collectionPath) : null;
@@ -37,7 +35,7 @@ export function createVectorRepository(opts: {
       } else {
         if (currentDimension !== null && currentDimension !== dimension) {
           throw new Error(
-            `Embedding dimension mismatch: expected ${currentDimension}, received ${dimension}`,
+            `Embedding dimension mismatch: expected ${currentDimension}, received ${dimension}`
           );
         }
         currentDimension = dimension;
@@ -61,11 +59,10 @@ export function createVectorRepository(opts: {
             sectionPath: JSON.stringify(row.sectionPath),
             charStart: row.charStart === null ? "" : String(row.charStart),
             charEnd: row.charEnd === null ? "" : String(row.charEnd),
-            tokenEstimate:
-              row.tokenEstimate === null ? "" : String(row.tokenEstimate),
+            tokenEstimate: row.tokenEstimate === null ? "" : String(row.tokenEstimate),
             updatedAt: row.updatedAt,
           },
-        })),
+        }))
       );
     },
 
@@ -82,7 +79,7 @@ export function createVectorRepository(opts: {
       }
       if (currentDimension !== null && currentDimension !== queryVector.length) {
         throw new Error(
-          `Query vector dimension mismatch: expected ${currentDimension}, received ${queryVector.length}`,
+          `Query vector dimension mismatch: expected ${currentDimension}, received ${queryVector.length}`
         );
       }
       const rows = collection.querySync({

@@ -13,6 +13,7 @@
 ### Task 1: Create `packages/core` package skeleton
 
 **Files:**
+
 - Create: `packages/core/package.json`
 - Create: `packages/core/tsconfig.json`
 - Create: `packages/core/src/index.ts`
@@ -77,6 +78,7 @@ git commit -m "feat(core): add package skeleton"
 ### Task 2: Move logger into `packages/core`
 
 **Files:**
+
 - Create: `packages/core/src/logger/index.ts`
 - Create: `packages/core/src/logger/logger.service.ts`
 - Create: `packages/core/src/logger/logger.service.types.ts`
@@ -139,6 +141,7 @@ git commit -m "feat(core): add shared logger module"
 ### Task 3: Define the core config contract
 
 **Files:**
+
 - Create: `packages/core/src/config/index.ts`
 - Create: `packages/core/src/config/config.types.ts`
 - Create: `packages/core/src/config/config.types.test.ts`
@@ -220,6 +223,7 @@ git commit -m "feat(core): add core config types"
 ### Task 4: Add default config generation
 
 **Files:**
+
 - Create: `packages/core/src/config/default-config.ts`
 - Create: `packages/core/src/config/default-config.test.ts`
 - Modify: `packages/core/src/config/index.ts`
@@ -318,6 +322,7 @@ git commit -m "feat(core): add default core config"
 ### Task 5: Add config validation
 
 **Files:**
+
 - Create: `packages/core/src/config/validate-config.ts`
 - Create: `packages/core/src/config/validate-config.test.ts`
 - Modify: `packages/core/src/config/index.ts`
@@ -329,10 +334,7 @@ Create `packages/core/src/config/validate-config.test.ts`:
 
 ```ts
 import { describe, expect, it } from "bun:test";
-import {
-  createDefaultCoreConfig,
-  validateCoreConfig,
-} from "./index";
+import { createDefaultCoreConfig, validateCoreConfig } from "./index";
 
 describe("validateCoreConfig", () => {
   it("accepts the default config", () => {
@@ -421,6 +423,7 @@ git commit -m "feat(core): add config validation"
 ### Task 6: Verify package exports and full core test suite
 
 **Files:**
+
 - Test: `packages/core/src/core.package.test.ts`
 - Test: `packages/core/src/logger/logger.service.test.ts`
 - Test: `packages/core/src/config/config.types.test.ts`
@@ -480,6 +483,7 @@ git commit -m "test(core): verify shared package exports"
 ### Task 7: Optional follow-up adapter for `packages/indexing`
 
 **Files:**
+
 - Modify: `packages/indexing/src/index.ts`
 - Create or Modify: an adapter file only if needed after Task 6
 - Test: new indexing-side adapter tests only if the adapter is introduced

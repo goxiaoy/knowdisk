@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ParseCachePaths, ParseManifest } from "./parser.types";
 
 export async function readCachedMarkdown(
-  paths: ParseCachePaths,
+  paths: ParseCachePaths
 ): Promise<{ markdown: string; manifest: ParseManifest } | null> {
   try {
     const [markdown, manifestText] = await Promise.all([
@@ -24,7 +24,7 @@ export async function readCachedMarkdown(
 
 export async function writeCachedMarkdown(
   paths: ParseCachePaths,
-  input: { markdown: string; manifest: ParseManifest },
+  input: { markdown: string; manifest: ParseManifest }
 ): Promise<void> {
   await mkdir(paths.dir, { recursive: true });
   await Promise.all([
@@ -35,17 +35,12 @@ export async function writeCachedMarkdown(
 
 export async function writeParseError(
   paths: ParseCachePaths,
-  input: { code: string; message: string; createdAt: string },
+  input: { code: string; message: string; createdAt: string }
 ): Promise<void> {
   await mkdir(paths.dir, { recursive: true });
   await writeFile(paths.errorPath, JSON.stringify(input, null, 2), "utf8");
 }
 
 function isMissingFileError(error: unknown): error is NodeJS.ErrnoException {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "ENOENT"
-  );
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }

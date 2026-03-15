@@ -4,11 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { container as rootContainer } from "tsyringe";
 import { createParserService, type ParseChunk } from "../src";
-import {
-  createVfsProviderRegistry,
-  createVfsRepository,
-  createVfsService,
-} from "@knowdisk/vfs";
+import { createVfsProviderRegistry, createVfsRepository, createVfsService } from "@knowdisk/vfs";
 import { createParserExampleLogger } from "./logger";
 
 const exampleDir = dirname(fileURLToPath(import.meta.url));
@@ -19,8 +15,7 @@ export async function createParserExampleApp(input?: {
   stream?: NodeJS.WritableStream;
   dataDir?: string;
 }) {
-  const runtimeRoot =
-    input?.runtimeRoot ?? join(process.cwd(), ".parser-example");
+  const runtimeRoot = input?.runtimeRoot ?? join(process.cwd(), ".parser-example");
   const paths = {
     dbPath: join(runtimeRoot, "vfs.db"),
     parserCacheDir: join(runtimeRoot, "parser-cache"),
@@ -64,7 +59,7 @@ export async function createParserExampleApp(input?: {
     const chunks: ParseChunk[] = [];
 
     exampleLogger.writeLine(
-      `[PARSE] sourceRef=${input.sourceRef} nodeId=${input.nodeId} providerVersion=${input.providerVersion ?? "null"}`,
+      `[PARSE] sourceRef=${input.sourceRef} nodeId=${input.nodeId} providerVersion=${input.providerVersion ?? "null"}`
     );
     for await (const chunk of parser.parseNode({
       nodeId: input.nodeId,
@@ -86,9 +81,9 @@ export async function createParserExampleApp(input?: {
           chunks,
         },
         null,
-        2,
+        2
       ),
-      "utf8",
+      "utf8"
     );
   };
 
@@ -196,8 +191,7 @@ export async function runParserExample(input?: {
 }
 
 function formatChunk(chunk: ParseChunk): string {
-  const preview =
-    chunk.text.length > 60 ? `${chunk.text.slice(0, 60)}...` : chunk.text;
+  const preview = chunk.text.length > 60 ? `${chunk.text.slice(0, 60)}...` : chunk.text;
   return [
     "[CHUNK]",
     `status=${chunk.status}`,

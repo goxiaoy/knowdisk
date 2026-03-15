@@ -13,6 +13,7 @@
 ### Task 1: Lock Public API and Move Embedding/Rerank Files
 
 **Files:**
+
 - Modify: `packages/indexing/src/indexing.package.test.ts`
 - Create: `packages/indexing/src/embedding/index.ts`
 - Create: `packages/indexing/src/rerank/index.ts`
@@ -50,6 +51,7 @@ git commit -m "refactor(indexing): group embedding and rerank modules"
 ### Task 2: Move FTS/Vector Files Into Feature Folders
 
 **Files:**
+
 - Create: `packages/indexing/src/fts/index.ts`
 - Create: `packages/indexing/src/vector/index.ts`
 - Move: `packages/indexing/src/fts.repository.ts`
@@ -89,6 +91,7 @@ git commit -m "refactor(indexing): group fts and vector modules"
 ### Task 3: Run Full Verification
 
 **Files:**
+
 - Modify: `packages/indexing/src/index.ts`
 - Test: `packages/indexing/src`
 

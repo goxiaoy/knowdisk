@@ -2,11 +2,7 @@ import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { VfsNode } from "@knowdisk/vfs";
 import { defaultMarkdownConverter } from "./converter";
-import {
-  readCachedMarkdown,
-  writeCachedMarkdown,
-  writeParseError,
-} from "./parser.cache";
+import { readCachedMarkdown, writeCachedMarkdown, writeParseError } from "./parser.cache";
 import { splitMarkdownIntoSections } from "./section-splitter";
 import { defaultTextSplitter } from "./text-splitter";
 import type {
@@ -16,9 +12,7 @@ import type {
   ParserService,
 } from "./parser.types";
 
-export function createParserService(
-  input: CreateParserServiceInput,
-): ParserService {
+export function createParserService(input: CreateParserServiceInput): ParserService {
   const basePath = input.basePath.trim();
   const converter = input.converter ?? defaultMarkdownConverter;
   const textSplitter = input.textSplitter ?? defaultTextSplitter;
@@ -47,9 +41,7 @@ export function createParserService(
             }
             const relativeStart = section.markdown.indexOf(text);
             const charStart =
-              relativeStart >= 0
-                ? section.charStart + relativeStart
-                : sectionCursor;
+              relativeStart >= 0 ? section.charStart + relativeStart : sectionCursor;
             const charEnd = charStart + text.length;
             sectionCursor = charEnd;
 
@@ -103,16 +95,14 @@ export function createParserService(
         cached &&
         cached.manifest.providerVersion === node.providerVersion &&
         node.providerVersion !== null;
-      const rebuilt =
-        cacheHit ? null : await rebuildMarkdown(input, cachePaths, node, converter);
-      const markdown =
-        cacheHit
-          ? cached.markdown
-          : rebuilt?.markdown ?? "";
+      const rebuilt = cacheHit ? null : await rebuildMarkdown(input, cachePaths, node, converter);
+      const markdown = cacheHit ? cached.markdown : (rebuilt?.markdown ?? "");
       const title =
-        cached && cached.manifest.providerVersion === node.providerVersion && node.providerVersion !== null
+        cached &&
+        cached.manifest.providerVersion === node.providerVersion &&
+        node.providerVersion !== null
           ? cached.manifest.title
-          : rebuilt?.title ?? null;
+          : (rebuilt?.title ?? null);
 
       return {
         node,
@@ -138,10 +128,7 @@ export function createParserService(
   };
 }
 
-async function getNodeOrThrow(
-  input: CreateParserServiceInput,
-  nodeId: string,
-): Promise<VfsNode> {
+async function getNodeOrThrow(input: CreateParserServiceInput, nodeId: string): Promise<VfsNode> {
   const node = await input.vfs.getMetadata({ id: nodeId });
   if (!node) {
     throw new Error(`Node not found: ${nodeId}`);
@@ -152,10 +139,7 @@ async function getNodeOrThrow(
   return node;
 }
 
-async function readNodeBuffer(
-  input: CreateParserServiceInput,
-  nodeId: string,
-): Promise<Buffer> {
+async function readNodeBuffer(input: CreateParserServiceInput, nodeId: string): Promise<Buffer> {
   if (!input.vfs.createReadStream) {
     throw new Error(`VFS does not support createReadStream: ${nodeId}`);
   }
@@ -178,7 +162,7 @@ async function rebuildMarkdown(
   input: CreateParserServiceInput,
   cachePaths: ParseCachePaths,
   node: VfsNode,
-  converter: CreateParserServiceInput["converter"] extends infer T ? NonNullable<T> : never,
+  converter: CreateParserServiceInput["converter"] extends infer T ? NonNullable<T> : never
 ): Promise<{ markdown: string; title: string | null }> {
   const buffer = await readNodeBuffer(input, node.nodeId);
   let result;
@@ -203,7 +187,7 @@ async function rebuildMarkdown(
 function createManifest(
   node: VfsNode,
   converter: { id: string; version: string },
-  title: string | null,
+  title: string | null
 ): ParseManifest {
   return {
     nodeId: node.nodeId,
@@ -234,13 +218,13 @@ function createSkippedChunk(node: VfsNode, code: string, message: string) {
     charStart: null,
     charEnd: null,
     tokenEstimate: null,
-      source: {
-        nodeId: node.nodeId,
-        mountId: node.mountId,
-        sourceRef: node.sourceRef,
-        name: node.name,
-        kind: "file" as const,
-        size: node.size,
+    source: {
+      nodeId: node.nodeId,
+      mountId: node.mountId,
+      sourceRef: node.sourceRef,
+      name: node.name,
+      kind: "file" as const,
+      size: node.size,
       mtimeMs: node.mtimeMs,
       providerVersion: node.providerVersion,
     },

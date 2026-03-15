@@ -62,8 +62,8 @@ describe("vfs types", () => {
           ...node,
           size: 0,
         },
-        ["size"],
-      ),
+        ["size"]
+      )
     ).toBe(false);
   });
 });

@@ -13,6 +13,7 @@
 ### Task 1: Workspace bootstrap and package contract
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `packages/vfs/package.json`
 - Create: `packages/vfs/src/index.ts`
@@ -27,6 +28,7 @@
 ### Task 2: Move full VFS directory into package and fix imports
 
 **Files:**
+
 - Move: `src/core/vfs/*` -> `packages/vfs/src/*`
 - Modify: `src/bun/app.container.ts`
 - Modify: `src/bun/index.ts`
@@ -41,6 +43,7 @@
 ### Task 3: Verification and docs sync
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
 

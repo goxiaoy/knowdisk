@@ -13,6 +13,7 @@
 ### Task 1: Add parser example script wiring
 
 **Files:**
+
 - Modify: `packages/parser/package.json`
 - Create: `packages/parser/example/app.ts`
 - Test: `packages/parser/example/app.test.ts`
@@ -45,6 +46,7 @@ git commit -m "feat: bootstrap parser example"
 ### Task 2: Add parser example logger and runtime bootstrap
 
 **Files:**
+
 - Create: `packages/parser/example/logger.ts`
 - Modify: `packages/parser/example/app.ts`
 - Test: `packages/parser/example/app.test.ts`
@@ -61,6 +63,7 @@ Expected: FAIL because runtime bootstrap helpers do not exist.
 **Step 3: Write minimal implementation**
 
 Add:
+
 - example logger
 - runtime directory creation for VFS DB, content root, and parser cache
 - a returned stop/close handle
@@ -80,6 +83,7 @@ git commit -m "feat: add parser example runtime bootstrap"
 ### Task 3: Mount local example data through VFS
 
 **Files:**
+
 - Modify: `packages/parser/example/app.ts`
 - Create: `packages/parser/example/data/hello.md`
 - Create: `packages/parser/example/data/info.json`
@@ -90,6 +94,7 @@ git commit -m "feat: add parser example runtime bootstrap"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - mount the local provider against example data
 - expose the mounted local mount id
 - start the VFS runtime without throwing
@@ -104,6 +109,7 @@ Expected: FAIL because local mount bootstrapping is incomplete.
 Implement local mount creation with `providerType: "local"` pointing to `packages/parser/example/data`.
 
 Add sample files:
+
 - real markdown and json text fixtures
 - placeholder binary fixtures for image/pdf sufficient for parse-attempt demonstration
 
@@ -122,12 +128,14 @@ git commit -m "feat: mount parser example data through vfs"
 ### Task 4: Register afterUpdateContent hook and print parse output
 
 **Files:**
+
 - Modify: `packages/parser/example/app.ts`
 - Test: `packages/parser/example/app.test.ts`
 
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - capture example output into a memory stream
 - verify `afterUpdateContent` parses file nodes
 - verify output includes `[PARSE]` and `[CHUNK]` lines
@@ -140,6 +148,7 @@ Expected: FAIL because no hook-driven parser output exists yet.
 **Step 3: Write minimal implementation**
 
 In the example:
+
 - create `ParserService`
 - register `afterUpdateContent`
 - call `parseNode({ nodeId })`
@@ -160,12 +169,14 @@ git commit -m "feat: parse vfs content hook events in parser example"
 ### Task 5: Cover success and fallback parse output
 
 **Files:**
+
 - Modify: `packages/parser/example/app.test.ts`
 - Modify: `packages/parser/example/app.ts`
 
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - assert markdown/json produce at least one `status=ok` chunk output
 - assert image/pdf produce parse output attempts with `status=error` or `status=skipped`
 
@@ -179,6 +190,7 @@ Expected: FAIL because output formatting or coverage is incomplete.
 **Step 3: Write minimal implementation**
 
 Refine output formatting to include:
+
 - `status`
 - `chunkIndex`
 - `heading`
@@ -201,6 +213,7 @@ git commit -m "feat: report parser example chunk outcomes"
 ### Task 6: Final verification and docs sync
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
 - Modify: `docs/plans/2026-03-10-parser-example-hook-design.md`

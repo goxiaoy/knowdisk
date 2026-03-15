@@ -6,9 +6,7 @@ type QwenEmbeddingResponse = {
   data?: Array<{ embedding?: number[] }>;
 };
 
-export function createQwenEmbeddingProvider(
-  container: DependencyContainer,
-): EmbeddingProvider {
+export function createQwenEmbeddingProvider(container: DependencyContainer): EmbeddingProvider {
   const config = container.resolve<CoreConfig>("CoreConfig");
   const fetchImpl = resolveFetch(container);
   const providerConfig = config.providers.qwen;
@@ -26,17 +24,20 @@ export function createQwenEmbeddingProvider(
   return {
     type: "qwen",
     async embed(text) {
-      const response = await fetchImpl(`${providerConfig.endpoint.replace(/\/+$/, "")}/embeddings`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${providerConfig.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: providerConfig.embeddingModel,
-          input: text,
-        }),
-      });
+      const response = await fetchImpl(
+        `${providerConfig.endpoint.replace(/\/+$/, "")}/embeddings`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${providerConfig.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: providerConfig.embeddingModel,
+            input: text,
+          }),
+        }
+      );
       if (!response.ok) {
         throw new Error(`Qwen embedding request failed: ${response.status} ${response.statusText}`);
       }

@@ -3,9 +3,7 @@ import { walk } from "./vfs.provider.walk";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsNode } from "./vfs.types";
 
-function node(
-  input: Partial<VfsNode> & Pick<VfsNode, "sourceRef" | "name" | "kind">,
-): VfsNode {
+function node(input: Partial<VfsNode> & Pick<VfsNode, "sourceRef" | "name" | "kind">): VfsNode {
   return {
     nodeId: input.nodeId ?? input.sourceRef,
     mountId: input.mountId ?? "m1",

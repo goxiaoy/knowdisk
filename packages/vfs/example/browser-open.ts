@@ -9,7 +9,7 @@ export function shouldAutoOpenBrowser(isTTY: boolean | undefined): boolean {
 
 export function getOpenBrowserCommand(
   platform: NodeJS.Platform,
-  url: string,
+  url: string
 ): BrowserCommand | null {
   if (platform === "darwin") {
     return { cmd: "open", args: [url] };

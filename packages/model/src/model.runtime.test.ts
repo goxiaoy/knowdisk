@@ -22,7 +22,7 @@ function createFetchStub() {
         {
           status: 200,
           headers: { "content-type": "application/json" },
-        },
+        }
       );
     }
     return new Response("test", {
@@ -77,7 +77,7 @@ describe("model runtime acquisition", () => {
     });
 
     await expect(service.getLocalEmbeddingExtractor()).rejects.toThrow(
-      "Local embedding provider is not enabled",
+      "Local embedding provider is not enabled"
     );
   });
 

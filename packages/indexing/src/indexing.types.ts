@@ -14,21 +14,17 @@ export type EmbeddingProvider = {
 
 export type RerankerProvider = {
   type: string;
-  rerank: (
-    query: string,
-    rows: SearchHit[],
-    opts: { topK: number },
-  ) => Promise<SearchHit[]>;
+  rerank: (query: string, rows: SearchHit[], opts: { topK: number }) => Promise<SearchHit[]>;
 };
 
 export type EmbeddingFactory = (
   container: DependencyContainer,
-  options?: Record<string, unknown>,
+  options?: Record<string, unknown>
 ) => EmbeddingProvider;
 
 export type RerankerFactory = (
   container: DependencyContainer,
-  options?: Record<string, unknown>,
+  options?: Record<string, unknown>
 ) => RerankerProvider;
 
 export type EmbeddingRegistry = {
@@ -105,13 +101,10 @@ export type CreateIndexingServiceInput = {
         converterId: string;
         converterVersion: string;
         updatedAt: string;
-      }>,
+      }>
     ) => Promise<void>;
     deleteByNodeId: (nodeId: string) => Promise<void>;
-    search: (
-      query: string,
-      opts: { topK: number; titleOnly?: boolean },
-    ) => Promise<SearchHit[]>;
+    search: (query: string, opts: { topK: number; titleOnly?: boolean }) => Promise<SearchHit[]>;
   };
   vectorRepository: {
     replaceNodeChunks: (
@@ -131,7 +124,7 @@ export type CreateIndexingServiceInput = {
         tokenEstimate: number | null;
         updatedAt: string;
         embedding: number[];
-      }>,
+      }>
     ) => Promise<void>;
     deleteByNodeId: (nodeId: string) => Promise<void>;
     search: (queryVector: number[], opts: { topK: number }) => Promise<SearchHit[]>;
@@ -159,6 +152,6 @@ export type IndexingService = {
   delete: (input: { nodeId: string }) => Promise<void>;
   search: (
     query: string,
-    opts?: { topK?: number; titleOnly?: boolean },
+    opts?: { topK?: number; titleOnly?: boolean }
   ) => Promise<SearchResultSet>;
 };

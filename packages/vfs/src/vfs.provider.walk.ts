@@ -14,14 +14,11 @@ export type WalkProviderInput = {
   requiredFields?: VfsNodeRequiredField[];
 };
 
-export type WalkProviderCallback = (
-  error: Error | null,
-  entries: WalkProviderEntry[],
-) => void;
+export type WalkProviderCallback = (error: Error | null, entries: WalkProviderEntry[]) => void;
 
 export function walk(
   input: WalkProviderInput,
-  callback?: WalkProviderCallback,
+  callback?: WalkProviderCallback
 ): Promise<WalkProviderEntry[]> {
   const run = async (): Promise<WalkProviderEntry[]> => {
     const out: WalkProviderEntry[] = [];
@@ -47,11 +44,7 @@ export function walk(
           cursor,
         } as unknown as Parameters<typeof input.provider.listChildren>[0]);
         for (const item of page.items) {
-          const normalized = await enrichMetadataIfNeeded(
-            item,
-            input.provider,
-            requiredFields,
-          );
+          const normalized = await enrichMetadataIfNeeded(item, input.provider, requiredFields);
           out.push({
             ...normalized,
             path: normalized.sourceRef,
@@ -86,29 +79,23 @@ export function walk(
 export async function enrichMetadataIfNeeded(
   item: VfsNode,
   provider: VfsProviderAdapter,
-  requiredFields: VfsNodeRequiredField[],
+  requiredFields: VfsNodeRequiredField[]
 ): Promise<VfsNode> {
   if (item.kind !== "file" || complete(item, requiredFields)) {
     return item;
   }
   const requireProviderVersion = requiredFields.includes("providerVersion");
-  const metadataFields = requiredFields.filter(
-    (field) => field !== "providerVersion",
-  );
+  const metadataFields = requiredFields.filter((field) => field !== "providerVersion");
   let metadata: VfsNode | null = null;
-  const needMetadataFields =
-    metadataFields.length > 0 && !complete(item, metadataFields);
+  const needMetadataFields = metadataFields.length > 0 && !complete(item, metadataFields);
   const needProviderVersionFromMetadata =
-    requireProviderVersion &&
-    !provider.getVersion &&
-    !complete(item, ["providerVersion"]);
+    requireProviderVersion && !provider.getVersion && !complete(item, ["providerVersion"]);
   if (needMetadataFields || needProviderVersionFromMetadata) {
     metadata = await provider.getMetadata({ id: itemProviderId(item) });
   }
   let providerVersion = item.providerVersion;
   if (requireProviderVersion && !complete(item, ["providerVersion"])) {
-    providerVersion =
-      (await provider.getVersion?.({ id: itemProviderId(item) })) ?? null;
+    providerVersion = (await provider.getVersion?.({ id: itemProviderId(item) })) ?? null;
     if (!providerVersion && metadata?.providerVersion) {
       providerVersion = metadata.providerVersion;
     }

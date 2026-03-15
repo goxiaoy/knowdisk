@@ -53,7 +53,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           sync_content=excluded.sync_content,
           metadata_ttl_sec=excluded.metadata_ttl_sec,
           reconcile_interval_ms=excluded.reconcile_interval_ms,
-          updated_at_ms=excluded.updated_at_ms`,
+          updated_at_ms=excluded.updated_at_ms`
       ).run(
         row.nodeId,
         row.mountId,
@@ -65,7 +65,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         row.metadataTtlSec,
         row.reconcileIntervalMs,
         row.createdAtMs,
-        row.updatedAtMs,
+        row.updatedAtMs
       );
     },
 
@@ -85,13 +85,10 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
           FROM vfs_node_mount_ext
-          ORDER BY mount_id ASC`,
+          ORDER BY mount_id ASC`
         )
         .all() as Array<
-        Omit<
-          VfsNodeMountExtRow,
-          "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"
-        > & {
+        Omit<VfsNodeMountExtRow, "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"> & {
           autoSync: number | null;
           syncMetadata: number;
           syncContent: number;
@@ -108,9 +105,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     },
 
     deleteNodeMountExtByMountId(mountId: string) {
-      db.query(`DELETE FROM vfs_node_mount_ext WHERE mount_id = ?`).run(
-        mountId,
-      );
+      db.query(`DELETE FROM vfs_node_mount_ext WHERE mount_id = ?`).run(mountId);
     },
 
     getNodeMountExtByMountId(mountId: string) {
@@ -129,7 +124,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
           FROM vfs_node_mount_ext
-          WHERE mount_id = ?`,
+          WHERE mount_id = ?`
         )
         .get(mountId) as
         | (Omit<
@@ -174,7 +169,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           source_ref=excluded.source_ref,
           provider_version=excluded.provider_version,
           deleted_at_ms=excluded.deleted_at_ms,
-          updated_at_ms=excluded.updated_at_ms`,
+          updated_at_ms=excluded.updated_at_ms`
       );
       const tx = db.transaction((items: VfsNode[]) => {
         for (const row of items) {
@@ -190,7 +185,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             row.providerVersion,
             row.deletedAtMs,
             row.createdAtMs,
-            row.updatedAtMs,
+            row.updatedAtMs
           );
         }
       });
@@ -221,7 +216,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             created_at_ms AS createdAtMs,
             updated_at_ms AS updatedAtMs
           FROM vfs_nodes
-          WHERE mount_id = ?`,
+          WHERE mount_id = ?`
         )
         .all(mountId) as VfsNode[];
     },
@@ -245,7 +240,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           FROM vfs_nodes
           WHERE mount_id = ?
             AND source_ref = ?
-          LIMIT 1`,
+          LIMIT 1`
         )
         .get(mountId, sourceRef) as VfsNode | null;
     },
@@ -268,14 +263,12 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             updated_at_ms AS updatedAtMs
           FROM vfs_nodes
           WHERE node_id = ?
-            AND deleted_at_ms IS NULL`,
+            AND deleted_at_ms IS NULL`
         )
         .get(nodeId) as VfsNode | null;
     },
 
-    listChildrenPageLocal(
-      input: ListChildrenPageLocalInput,
-    ): ListChildrenPageLocalOutput {
+    listChildrenPageLocal(input: ListChildrenPageLocalInput): ListChildrenPageLocalOutput {
       const { mountId, parentId, limit, cursor } = input;
       const args = [] as Array<string | null>;
       let mountClause = "";
@@ -313,7 +306,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             ${mountClause}
             ${cursorClause}
           ORDER BY name ASC, node_id ASC
-          LIMIT ?`,
+          LIMIT ?`
         )
         .all(...args, limit + 1) as VfsNode[];
 
@@ -341,7 +334,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         ON CONFLICT(cache_key) DO UPDATE SET
           items_json=excluded.items_json,
           next_cursor=excluded.next_cursor,
-          expires_at_ms=excluded.expires_at_ms`,
+          expires_at_ms=excluded.expires_at_ms`
       ).run(row.cacheKey, row.itemsJson, row.nextCursor, row.expiresAtMs);
     },
 
@@ -355,15 +348,13 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             expires_at_ms AS expiresAtMs
           FROM vfs_page_cache
           WHERE cache_key = ?
-            AND expires_at_ms > ?`,
+            AND expires_at_ms > ?`
         )
         .get(cacheKey, nowMs) as VfsPageCacheRow | null;
     },
 
     deletePageCacheByMountId(mountId: string) {
-      db.query(`DELETE FROM vfs_page_cache WHERE cache_key LIKE ?`).run(
-        `${mountId}::%`,
-      );
+      db.query(`DELETE FROM vfs_page_cache WHERE cache_key LIKE ?`).run(`${mountId}::%`);
     },
 
     insertNodeEvents(rows: Array<Omit<VfsNodeEventRow, "id">>) {
@@ -382,7 +373,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           id=excluded.id,
           parent_id=excluded.parent_id,
           node_json=excluded.node_json,
-          created_at_ms=excluded.created_at_ms`,
+          created_at_ms=excluded.created_at_ms`
       );
       const tx = db.transaction((items: Array<Omit<VfsNodeEventRow, "id">>) => {
         for (const row of items) {
@@ -394,7 +385,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             row.parentId,
             row.type,
             row.node ? JSON.stringify(row.node) : null,
-            row.createdAtMs,
+            row.createdAtMs
           );
           insertedRows.push({
             id,
@@ -413,8 +404,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     },
 
     listNodeEventsByMountId(mountId: string, limit = 1000) {
-      const rows = db.query(
-        `SELECT
+      const rows = db
+        .query(
+          `SELECT
           id,
           source_ref AS sourceRef,
           mount_id AS mountId,
@@ -425,8 +417,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         FROM vfs_node_events
         WHERE mount_id = ?
         ORDER BY created_at_ms ASC, source_ref ASC, type ASC
-        LIMIT ?`,
-      ).all(mountId, limit) as Array<{
+        LIMIT ?`
+        )
+        .all(mountId, limit) as Array<{
         id: string;
         sourceRef: string;
         mountId: string;

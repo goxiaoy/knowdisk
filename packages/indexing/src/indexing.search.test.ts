@@ -67,8 +67,7 @@ describe("indexing service search", () => {
 function createDeps() {
   const embeddingCalls: string[] = [];
   const vectorSearchCalls: Array<{ queryVector: number[]; opts: { topK: number } }> = [];
-  const ftsSearchCalls: Array<{ query: string; opts: { topK: number; titleOnly?: boolean } }> =
-    [];
+  const ftsSearchCalls: Array<{ query: string; opts: { topK: number; titleOnly?: boolean } }> = [];
   const service = createIndexingService({
     logger: {
       error() {},
@@ -87,9 +86,7 @@ function createDeps() {
       async deleteByNodeId() {},
       async search(query, opts) {
         ftsSearchCalls.push({ query, opts });
-        return [
-          createHit("chunk-1", { fts: 0.9, score: 0.9 }),
-        ];
+        return [createHit("chunk-1", { fts: 0.9, score: 0.9 })];
       },
     },
     vectorRepository: {
@@ -131,7 +128,7 @@ function createDeps() {
 
 function createHit(
   chunkId: string,
-  scores: { fts?: number; vector?: number; score: number },
+  scores: { fts?: number; vector?: number; score: number }
 ): SearchHit {
   return {
     chunkId,

@@ -13,6 +13,7 @@
 ### Task 1: Define Verify/Retry State Model
 
 **Files:**
+
 - Modify: `src/core/model/model-download.service.types.ts`
 - Test: `src/bun/model-download-trigger.test.ts`
 
@@ -49,6 +50,7 @@ git commit -m "refactor(model): extend download status for verify and task retry
 ### Task 2: Add Startup Verify Stage
 
 **Files:**
+
 - Modify: `src/core/model/model-download.service.ts`
 - Modify: `src/bun/index.ts`
 - Test: `src/bun/app.container.test.ts`
@@ -88,6 +90,7 @@ git commit -m "feat(model): add startup verify before download"
 ### Task 3: Enforce Task Order + File Concurrency
 
 **Files:**
+
 - Modify: `src/core/model/model-download.service.ts`
 - Test: `src/bun/app.container.test.ts`
 
@@ -125,6 +128,7 @@ git commit -m "feat(model): enforce embedding-first task order"
 ### Task 4: Fix Progress Calculation Contract
 
 **Files:**
+
 - Modify: `src/core/model/model-download.service.ts`
 - Modify: `src/mainview/components/status/ModelDownloadCard.tsx`
 - Test: `src/mainview/components/home/HomePage.test.tsx`
@@ -163,6 +167,7 @@ git commit -m "fix(model): stabilize running progress and byte accounting"
 ### Task 5: Task-Level Retry with Backoff + Retry Now
 
 **Files:**
+
 - Modify: `src/core/model/model-download.service.ts`
 - Modify: `src/bun/index.ts`
 - Modify: `src/mainview/services/bun.rpc.ts`
@@ -202,6 +207,7 @@ git commit -m "feat(model): add task-level auto backoff and manual retry"
 ### Task 6: Cleanup .part on Exhausted
 
 **Files:**
+
 - Modify: `src/core/model/model-download.service.ts`
 - Test: `src/bun/app.container.test.ts`
 
@@ -238,6 +244,7 @@ git commit -m "fix(model): cleanup part files when retry exhausted"
 ### Task 7: End-to-End Verification & Docs
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
 - Modify: `docs/plans/2026-02-24-model-download-verify-retry-design.md`

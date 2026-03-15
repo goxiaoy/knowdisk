@@ -38,7 +38,7 @@ describe("indexing service rerank", () => {
 
 function createDeps(
   rerankCalls: Array<{ query: string; rows: SearchHit[]; topK: number }>,
-  options: { withReranker?: boolean } = {},
+  options: { withReranker?: boolean } = {}
 ) {
   return {
     logger: {
@@ -126,7 +126,7 @@ function createDeps(
 
 function createHit(
   chunkId: string,
-  scores: { fts?: number; vector?: number; score: number },
+  scores: { fts?: number; vector?: number; score: number }
 ): SearchHit {
   return {
     chunkId,

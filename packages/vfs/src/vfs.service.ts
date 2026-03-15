@@ -9,11 +9,7 @@ import {
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
-import {
-  createVfsSyncer,
-  type VfsSyncer,
-  type VfsSyncerHookRunner,
-} from "./vfs.syncer";
+import { createVfsSyncer, type VfsSyncer, type VfsSyncerHookRunner } from "./vfs.syncer";
 import type { VfsNodeEventHooks, VfsService } from "./vfs.service.types";
 import type {
   VfsMount,
@@ -35,19 +31,14 @@ export function createVfsService(deps: {
   const reconcileTimers = new Map<string, ReturnType<typeof setInterval>>();
   const reconcileRunning = new Set<string>();
   const nodeEventHooks = new Map<number, VfsNodeEventHooks>();
-  const syncers = new Map<
-    string,
-    { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }
-  >();
+  const syncers = new Map<string, { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }>();
   let nextHookRegistrationId = 1;
 
   deps.repository.subscribeNodeEventsQueued((row) => {
     deps.repository.deletePageCacheByMountId(row.mountId);
   });
 
-  const mountFromExt = (
-    ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>,
-  ): VfsMount => {
+  const mountFromExt = (ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>): VfsMount => {
     if (!ext) {
       throw new Error("mount config not found");
     }
@@ -63,8 +54,7 @@ export function createVfsService(deps: {
     };
   };
 
-  const isAutoSyncEnabled = (mount: VfsMount): boolean =>
-    mount.autoSync !== false;
+  const isAutoSyncEnabled = (mount: VfsMount): boolean => mount.autoSync !== false;
 
   const hooksRunner: VfsSyncerHookRunner = {
     async beforeNodeEvent(hookName, ctx) {
@@ -85,9 +75,7 @@ export function createVfsService(deps: {
       return existing.syncer;
     }
     if (!deps.contentRootParent) {
-      throw new Error(
-        "contentRootParent is required when starting vfs runtime",
-      );
+      throw new Error("contentRootParent is required when starting vfs runtime");
     }
     const syncer = createVfsSyncer({
       mount,
@@ -130,11 +118,7 @@ export function createVfsService(deps: {
 
   const scheduleReconcile = (mount: VfsMount): void => {
     clearReconcileTimer(mount.mountId);
-    if (
-      !started ||
-      !isAutoSyncEnabled(mount) ||
-      mount.reconcileIntervalMs <= 0
-    ) {
+    if (!started || !isAutoSyncEnabled(mount) || mount.reconcileIntervalMs <= 0) {
       return;
     }
     const timer = setInterval(() => {
@@ -197,9 +181,7 @@ export function createVfsService(deps: {
         return;
       }
       started = true;
-      const mounts = deps.repository
-        .listNodeMountExts()
-        .map((ext) => mountFromExt(ext));
+      const mounts = deps.repository.listNodeMountExts().map((ext) => mountFromExt(ext));
       for (const mount of mounts) {
         if (!isAutoSyncEnabled(mount)) {
           clearReconcileTimer(mount.mountId);
@@ -307,7 +289,7 @@ export function createVfsService(deps: {
             type: "delete" as const,
             node: null,
             createdAtMs: now,
-          })),
+          }))
         );
       }
       deps.repository.deleteNodeMountExtByMountId(mountId);
@@ -315,9 +297,7 @@ export function createVfsService(deps: {
 
     async listChildren(input) {
       if (input.parentId === null) {
-        throw new Error(
-          "listChildren requires parentId; use walkChildren for root listing",
-        );
+        throw new Error("listChildren requires parentId; use walkChildren for root listing");
       }
       const parentNode = deps.repository.getNodeById(input.parentId);
       if (!parentNode) {
@@ -357,25 +337,18 @@ export function createVfsService(deps: {
         if (!deps.contentRootParent) {
           throw new Error("contentRootParent is required for syncContent reads");
         }
-        const localPath = join(
-          deps.contentRootParent,
-          mount.mountId,
-          ...node.sourceRef.split("/"),
-        );
+        const localPath = join(deps.contentRootParent, mount.mountId, ...node.sourceRef.split("/"));
         const file = Bun.file(localPath);
         if (input.offset !== undefined || input.length !== undefined) {
           const start = input.offset ?? 0;
-          const end =
-            input.length === undefined ? undefined : start + input.length;
+          const end = input.length === undefined ? undefined : start + input.length;
           return file.slice(start, end).stream();
         }
         return file.stream();
       }
       const provider = deps.registry.get(mount);
       if (!provider.createReadStream) {
-        throw new Error(
-          `Provider "${mount.providerType}" does not support createReadStream`,
-        );
+        throw new Error(`Provider "${mount.providerType}" does not support createReadStream`);
       }
       return provider.createReadStream({
         id: node.sourceRef,
@@ -410,9 +383,7 @@ export function createVfsService(deps: {
       const mount = mountFromExt(ext);
       const provider = deps.registry.get(mount);
       if (!provider.create) {
-        throw new Error(
-          `Provider "${mount.providerType}" does not support create`,
-        );
+        throw new Error(`Provider "${mount.providerType}" does not support create`);
       }
       const created = await provider.create({
         parentId: parentNode.kind === "mount" ? null : parentNode.sourceRef,
@@ -450,9 +421,7 @@ export function createVfsService(deps: {
       const mount = mountFromExt(ext);
       const provider = deps.registry.get(mount);
       if (!provider.rename) {
-        throw new Error(
-          `Provider "${mount.providerType}" does not support rename`,
-        );
+        throw new Error(`Provider "${mount.providerType}" does not support rename`);
       }
       const renamed = await provider.rename({
         id: node.sourceRef,
@@ -492,9 +461,7 @@ export function createVfsService(deps: {
       const mount = mountFromExt(ext);
       const provider = deps.registry.get(mount);
       if (!provider.delete) {
-        throw new Error(
-          `Provider "${mount.providerType}" does not support delete`,
-        );
+        throw new Error(`Provider "${mount.providerType}" does not support delete`);
       }
       await provider.delete({
         id: node.sourceRef,
@@ -507,7 +474,7 @@ export function createVfsService(deps: {
             row.deletedAtMs === null &&
             (row.nodeId === node.nodeId ||
               row.sourceRef === node.sourceRef ||
-              row.sourceRef.startsWith(`${node.sourceRef}/`)),
+              row.sourceRef.startsWith(`${node.sourceRef}/`))
         )
         .map((row) => ({
           ...row,
@@ -557,8 +524,7 @@ export function createVfsService(deps: {
       }
 
       const adapter = deps.registry.get(resolvedMount);
-      const parentProviderId =
-        parentNode.kind === "mount" ? null : parentNode.sourceRef;
+      const parentProviderId = parentNode.kind === "mount" ? null : parentNode.sourceRef;
       const providerCursor = decodeRemoteCursor(input.cursor?.token);
       const cacheKey = `${resolvedMount.mountId}::${parentNode.nodeId}::${providerCursor ?? ""}::${input.limit}`;
       const cached = deps.repository.getPageCacheIfFresh(cacheKey, nowMs());
@@ -587,8 +553,7 @@ export function createVfsService(deps: {
 
       const now = nowMs();
       const items = listed.items.map((item) => {
-        const sourceRef =
-          item.sourceRef ?? (item as unknown as { id?: string }).id ?? "";
+        const sourceRef = item.sourceRef ?? (item as unknown as { id?: string }).id ?? "";
         return {
           nodeId: createVfsNodeId({
             mountId: resolvedMount.mountId,
@@ -687,11 +652,7 @@ function decodeRemoteCursor(token?: string) {
   return decoded.providerCursor;
 }
 
-function toRepositoryNode(input: {
-  mountId: string;
-  item: VfsNode;
-  now: number;
-}): VfsNode {
+function toRepositoryNode(input: { mountId: string; item: VfsNode; now: number }): VfsNode {
   const sourceRef =
     input.item.sourceRef ??
     (input.item as unknown as { id?: string; nodeId?: string }).id ??

@@ -152,7 +152,7 @@ describe("vfs service runtime", () => {
         mountId: "mount-1",
         kind: "mount",
         parentId: null,
-      }),
+      })
     );
 
     off();
@@ -296,10 +296,7 @@ describe("vfs service runtime", () => {
     });
 
     const startPromise = ctx.service.start().then(() => true);
-    const settledQuickly = await Promise.race([
-      startPromise,
-      Bun.sleep(20).then(() => false),
-    ]);
+    const settledQuickly = await Promise.race([startPromise, Bun.sleep(20).then(() => false)]);
     expect(settledQuickly).toBe(true);
 
     await ctx.service.close();
@@ -343,5 +340,4 @@ describe("vfs service runtime", () => {
     await ctx.service.close();
     ctx.cleanup();
   });
-
 });

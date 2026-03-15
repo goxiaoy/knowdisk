@@ -103,17 +103,11 @@ export type MarkdownConverterResult = {
 export type MarkdownConverter = {
   id: string;
   version: string;
-  convert: (input: {
-    buffer: Buffer;
-    node: VfsNode;
-  }) => Promise<MarkdownConverterResult>;
+  convert: (input: { buffer: Buffer; node: VfsNode }) => Promise<MarkdownConverterResult>;
 };
 
 export type TextSplitter = {
   id: string;
   version: string;
-  splitText: (input: {
-    text: string;
-    sectionPath: string[];
-  }) => Promise<string[]>;
+  splitText: (input: { text: string; sectionPath: string[] }) => Promise<string[]>;
 };

@@ -72,7 +72,7 @@ async function downloadFileWithProgress(input: {
         if (total > 0) {
           const pct = ((loaded / total) * 100).toFixed(1);
           console.log(
-            `[hf-vfs] downloading ${input.id}: ${formatBytes(loaded)}/${formatBytes(total)} (${pct}%)`,
+            `[hf-vfs] downloading ${input.id}: ${formatBytes(loaded)}/${formatBytes(total)} (${pct}%)`
           );
         } else {
           console.log(`[hf-vfs] downloading ${input.id}: ${formatBytes(loaded)}`);
@@ -120,7 +120,7 @@ async function runTransformersValidationInNode(input: {
         '  throw new Error("empty embedding output");',
         "}",
         "console.log(`[hf-vfs-node] embedding dims: ${dims}`);",
-      ].join("\n"),
+      ].join("\n")
     );
     const proc = Bun.spawn(["node", scriptPath], {
       cwd: process.cwd(),
@@ -142,7 +142,7 @@ async function runTransformersValidationInNode(input: {
     }
     if (exitCode !== 0) {
       throw new Error(
-        `node transformers validation failed with code ${exitCode}: ${stderr.trim() || "(no stderr)"}`,
+        `node transformers validation failed with code ${exitCode}: ${stderr.trim() || "(no stderr)"}`
       );
     }
   } finally {
@@ -186,7 +186,7 @@ describe("huggingface vfs provider integration", () => {
             await mkdir(dirname(outputPath), { recursive: true });
             console.log(
               `[hf-vfs] [${i + 1}/${files.length}] start ${file.sourceRef}` +
-                (file.size ? ` (${formatBytes(file.size)})` : ""),
+                (file.size ? ` (${formatBytes(file.size)})` : "")
             );
             await downloadFileWithProgress({
               provider,
@@ -198,7 +198,7 @@ describe("huggingface vfs provider integration", () => {
           }
 
           console.log(
-            `[hf-vfs] transformers env set for node child process: localModelPath=${localModelRoot}`,
+            `[hf-vfs] transformers env set for node child process: localModelPath=${localModelRoot}`
           );
           await runTransformersValidationInNode({
             localModelRoot,
@@ -217,6 +217,6 @@ describe("huggingface vfs provider integration", () => {
         throw error;
       }
     },
-    30 * 60 * 1000,
+    30 * 60 * 1000
   );
 });

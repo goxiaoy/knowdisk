@@ -5,7 +5,7 @@ import { registerBuiltinVfsProviders } from "./provider";
 
 export type VfsProviderAdapterFactory = (
   container: DependencyContainer,
-  mount: VfsMount,
+  mount: VfsMount
 ) => VfsProviderAdapter;
 
 export type VfsProviderRegistry = {
@@ -14,9 +14,7 @@ export type VfsProviderRegistry = {
   listTypes: () => string[];
 };
 
-export function createVfsProviderRegistry(
-  container: DependencyContainer,
-): VfsProviderRegistry {
+export function createVfsProviderRegistry(container: DependencyContainer): VfsProviderRegistry {
   const factories = new Map<string, VfsProviderAdapterFactory>();
   const registry: VfsProviderRegistry = {
     register(providerType: string, factory: VfsProviderAdapterFactory) {

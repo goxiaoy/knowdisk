@@ -36,10 +36,7 @@ describe("parser package", () => {
   });
 });
 
-function createVfsStub(input: {
-  node: VfsNode;
-  streamText: string;
-}): VfsOperationCore {
+function createVfsStub(input: { node: VfsNode; streamText: string }): VfsOperationCore {
   return {
     async listChildren() {
       return { items: [] };
@@ -68,8 +65,7 @@ function createNode(input: Partial<VfsNode> & Pick<VfsNode, "nodeId">): VfsNode 
     size: input.size ?? 12,
     mtimeMs: input.mtimeMs ?? 123,
     sourceRef: input.sourceRef ?? "docs/guide.md",
-    providerVersion:
-      input.providerVersion === undefined ? "v1" : input.providerVersion,
+    providerVersion: input.providerVersion === undefined ? "v1" : input.providerVersion,
     deletedAtMs: input.deletedAtMs ?? null,
     createdAtMs: input.createdAtMs ?? 1,
     updatedAtMs: input.updatedAtMs ?? 1,

@@ -21,7 +21,7 @@ export function createFtsRepository(opts: { dbPath: string }): FtsRepository {
           section_path_json, text, markdown, chunk_index, token_estimate, char_start,
           char_end, provider_version, parser_id, parser_version, converter_id,
           converter_version, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
       const tx = db.transaction((items: FtsChunkRow[]) => {
         for (const row of items) {
@@ -47,7 +47,7 @@ export function createFtsRepository(opts: { dbPath: string }): FtsRepository {
             row.parserVersion,
             row.converterId,
             row.converterVersion,
-            row.updatedAt,
+            row.updatedAt
           );
         }
       });
@@ -84,7 +84,7 @@ export function createFtsRepository(opts: { dbPath: string }): FtsRepository {
           JOIN index_chunks ON index_chunks.rowid = index_chunks_fts.rowid
           WHERE index_chunks_fts MATCH ?
           ORDER BY rawScore
-          LIMIT ?`,
+          LIMIT ?`
         )
         .all(`${column}:${buildMatchQuery(normalized)}`, opts.topK) as Array<{
         chunkId: string;
@@ -126,7 +126,7 @@ function toSearchHit(
     charStart: number | null;
     charEnd: number | null;
   },
-  rawScore: number,
+  rawScore: number
 ): SearchHit {
   const normalizedScore = rawScore === 0 ? 1 : 1 / (1 + Math.abs(rawScore));
   return {

@@ -27,9 +27,6 @@ export type FtsChunkRow = {
 export type FtsRepository = {
   replaceNodeChunks: (rows: FtsChunkRow[]) => Promise<void>;
   deleteByNodeId: (nodeId: string) => Promise<void>;
-  search: (
-    query: string,
-    opts: { topK: number; titleOnly?: boolean },
-  ) => Promise<SearchHit[]>;
+  search: (query: string, opts: { topK: number; titleOnly?: boolean }) => Promise<SearchHit[]>;
   close: () => void;
 };

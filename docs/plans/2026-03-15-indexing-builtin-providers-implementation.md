@@ -13,6 +13,7 @@
 ### Task 1: Entry Points
 
 **Files:**
+
 - Modify: `packages/indexing/package.json`
 - Modify: `packages/indexing/src/index.ts`
 - Create: `packages/indexing/src/indexing.builtins.test.ts`
@@ -54,6 +55,7 @@ git commit -m "feat(indexing): add built-in entrypoints"
 ### Task 2: Local Providers
 
 **Files:**
+
 - Create: `packages/indexing/src/embedding/providers/local.embedding.ts`
 - Create: `packages/indexing/src/embedding/providers/local.embedding.test.ts`
 - Create: `packages/indexing/src/rerank/providers/local.reranker.ts`
@@ -98,6 +100,7 @@ git commit -m "feat(indexing): add local providers"
 ### Task 3: Hosted Embedding Providers
 
 **Files:**
+
 - Create: `packages/indexing/src/embedding/providers/openai.embedding.ts`
 - Create: `packages/indexing/src/embedding/providers/openai.embedding.test.ts`
 - Create: `packages/indexing/src/embedding/providers/qwen.embedding.ts`
@@ -144,6 +147,7 @@ git commit -m "feat(indexing): add hosted embedding providers"
 ### Task 4: Built-in Registration
 
 **Files:**
+
 - Modify: `packages/indexing/src/builtins/register-builtins.ts`
 - Create: `packages/indexing/src/builtins/register-builtins.test.ts`
 
@@ -178,6 +182,7 @@ git commit -m "feat(indexing): add built-in provider registration"
 ### Task 5: Config-Driven Service Creation
 
 **Files:**
+
 - Modify: `packages/indexing/src/builtins/create-indexing-service-from-config.ts`
 - Create: `packages/indexing/src/builtins/create-indexing-service-from-config.test.ts`
 
@@ -220,6 +225,7 @@ git commit -m "feat(indexing): add config-driven service creation"
 ### Task 6: Provider Error Coverage
 
 **Files:**
+
 - Modify: `packages/indexing/src/embedding/providers/local.embedding.test.ts`
 - Modify: `packages/indexing/src/rerank/providers/local.reranker.test.ts`
 - Modify: `packages/indexing/src/embedding/providers/openai.embedding.test.ts`
@@ -262,6 +268,7 @@ git commit -m "test(indexing): add provider error coverage"
 ### Task 7: Integration Coverage
 
 **Files:**
+
 - Modify: `packages/indexing/src/indexing.e2e.test.ts`
 
 **Step 1: Write the failing test**
@@ -299,6 +306,7 @@ git commit -m "test(indexing): add built-in integration coverage"
 ### Task 8: Verification
 
 **Files:**
+
 - Test: `packages/indexing/src/**/*`
 
 **Step 1: Run indexing tests**

@@ -49,7 +49,7 @@ describe("vfs service walkChildren", () => {
 
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
     const mountNode = roots.items.find(
-      (item) => item.kind === "mount" && item.mountId === mount.mountId,
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
     );
     expect(mountNode).toBeDefined();
 
@@ -84,7 +84,10 @@ describe("vfs service walkChildren", () => {
       },
     ]);
 
-    const pageChildren1 = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 1 });
+    const pageChildren1 = await ctx.service.walkChildren({
+      parentNodeId: mountNode!.nodeId,
+      limit: 1,
+    });
     expect(pageChildren1.source).toBe("local");
     expect(pageChildren1.items.map((item) => item.nodeId)).toEqual(["n1"]);
     expect(pageChildren1.nextCursor?.mode).toBe("local");
@@ -134,7 +137,9 @@ describe("vfs service walkChildren", () => {
     });
 
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
     const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
     expect(called).toBe(1);
@@ -236,7 +241,9 @@ describe("vfs service walkChildren", () => {
     });
 
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
 
     const first = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
@@ -283,7 +290,9 @@ describe("vfs service walkChildren", () => {
     });
 
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
 
     await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
@@ -341,7 +350,9 @@ describe("vfs service walkChildren", () => {
       reconcileIntervalMs: 1_000,
     });
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount" && item.mountId === mount.mountId);
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
     expect(mountNode).toBeDefined();
 
     await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });

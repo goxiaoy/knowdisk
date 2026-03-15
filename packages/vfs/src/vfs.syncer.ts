@@ -6,10 +6,7 @@ import { enrichMetadataIfNeeded, walk } from "./vfs.provider.walk";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsNodeEventRow, VfsRepository } from "./vfs.repository.types";
-import type {
-  VfsChangeEvent,
-  VfsNodeEventHookContext,
-} from "./vfs.service.types";
+import type { VfsChangeEvent, VfsNodeEventHookContext } from "./vfs.service.types";
 import { MetadataAllField, type VfsMount, type VfsNode } from "./vfs.types";
 
 export type VfsSyncerEvent =
@@ -48,7 +45,10 @@ export type VfsSyncer = {
 };
 
 class BlockingHookError extends Error {
-  constructor(message: string, readonly causeValue: unknown) {
+  constructor(
+    message: string,
+    readonly causeValue: unknown
+  ) {
     super(message);
   }
 }
@@ -129,7 +129,7 @@ export function createVfsSyncer(input: {
           phase: event.payload.phase,
           isSyncing: event.payload.isSyncing,
         },
-        "syncer status changed",
+        "syncer status changed"
       );
     }
     for (const listener of listeners) {
@@ -186,7 +186,7 @@ export function createVfsSyncer(input: {
     items: VfsNode[],
     options?: {
       restartSourceRefs?: Set<string>;
-    },
+    }
   ): Promise<void> {
     if (!input.mount.syncContent || !input.provider.createReadStream) {
       return;
@@ -197,11 +197,7 @@ export function createVfsSyncer(input: {
         continue;
       }
       const sourceRef = itemSourceRef(item);
-      const finalPath = join(
-        input.contentRootParent,
-        input.mount.mountId,
-        ...sourceRef.split("/"),
-      );
+      const finalPath = join(input.contentRootParent, input.mount.mountId, ...sourceRef.split("/"));
       const partPath = `${finalPath}.part`;
       await mkdir(dirname(finalPath), { recursive: true });
       const forceRestart = options?.restartSourceRefs?.has(sourceRef) ?? false;
@@ -265,9 +261,7 @@ export function createVfsSyncer(input: {
       emit({ type: "status", payload: { isSyncing: true, phase: "metadata" } });
       const now = nowMs();
       const existing = input.repository.listNodesByMountId(input.mount.mountId);
-      const existingByRef = new Map(
-        existing.map((node) => [node.sourceRef, node]),
-      );
+      const existingByRef = new Map(existing.map((node) => [node.sourceRef, node]));
 
       const walkedItems = await walk({
         provider: input.provider,
@@ -275,7 +269,7 @@ export function createVfsSyncer(input: {
       });
       logger.info(
         { mountId: input.mount.mountId, discoveredCount: walkedItems.length },
-        "syncer discovered remote metadata",
+        "syncer discovered remote metadata"
       );
 
       let processed = 0;
@@ -340,10 +334,7 @@ export function createVfsSyncer(input: {
       const seen = new Set(walkedItems.map((item) => itemSourceRef(item)));
       const deletedRows = existing
         .filter(
-          (node) =>
-            node.kind !== "mount" &&
-            node.deletedAtMs === null &&
-            !seen.has(node.sourceRef),
+          (node) => node.kind !== "mount" && node.deletedAtMs === null && !seen.has(node.sourceRef)
         )
         .map((node) => ({
           ...node,
@@ -384,7 +375,7 @@ export function createVfsSyncer(input: {
           updated,
           deleted: deletedRows.length,
         },
-        "syncer metadata reconcile completed",
+        "syncer metadata reconcile completed"
       );
       emit({ type: "status", payload: { isSyncing: false, phase: "idle" } });
     },
@@ -502,9 +493,7 @@ export function createVfsSyncer(input: {
         const rows = input.repository
           .listNodeEventsByMountId(input.mount.mountId, NODE_EVENTS_BATCH)
           .filter(
-            (row) =>
-              options?.includeContentUpdates !== false ||
-              row.type !== "update_content",
+            (row) => options?.includeContentUpdates !== false || row.type !== "update_content"
           );
         if (rows.length === 0) {
           break;
@@ -512,7 +501,7 @@ export function createVfsSyncer(input: {
         for (const event of rows) {
           const prevNode = input.repository.listNodesByMountIdAndSourceRef(
             input.mount.mountId,
-            event.sourceRef,
+            event.sourceRef
           );
           const beforeHookName = toBeforeHookName(event.type);
           const afterHookName = toAfterHookName(event.type);
@@ -537,7 +526,7 @@ export function createVfsSyncer(input: {
                 prevNode,
                 nextNode: input.repository.listNodesByMountIdAndSourceRef(
                   input.mount.mountId,
-                  event.sourceRef,
+                  event.sourceRef
                 ),
               });
             } catch (error) {
@@ -550,7 +539,7 @@ export function createVfsSyncer(input: {
                   stage: "after",
                   error: String(error),
                 },
-                "syncer event hook failed",
+                "syncer event hook failed"
               );
             }
           } catch (error) {
@@ -564,7 +553,7 @@ export function createVfsSyncer(input: {
                   stage: "before",
                   error: String(error.causeValue ?? error),
                 },
-                "syncer nodeEvents handler blocked by hook",
+                "syncer nodeEvents handler blocked by hook"
               );
               return;
             }
@@ -574,7 +563,7 @@ export function createVfsSyncer(input: {
                 sourceRef: event.sourceRef,
                 error: String(error),
               },
-              "syncer nodeEvents handler failed",
+              "syncer nodeEvents handler failed"
             );
             input.repository.deleteNodeEventsByIds([event.id]);
             continue;
@@ -605,7 +594,7 @@ export function createVfsSyncer(input: {
       node: VfsNode | null;
       createdAtMs: number;
     },
-    options?: { allowContentSync?: boolean },
+    options?: { allowContentSync?: boolean }
   ): Promise<void> {
     logger.info(
       {
@@ -613,12 +602,12 @@ export function createVfsSyncer(input: {
         type: event.type === "delete" ? "delete" : "upsert",
         id: event.sourceRef,
       },
-      "syncer watch event received",
+      "syncer watch event received"
     );
     const now = nowMs();
     const prev = input.repository.listNodesByMountIdAndSourceRef(
       input.mount.mountId,
-      event.sourceRef,
+      event.sourceRef
     );
 
     if (event.type === "delete") {
@@ -659,7 +648,7 @@ export function createVfsSyncer(input: {
             }
           : enriched,
         input.provider,
-        ["providerVersion"],
+        ["providerVersion"]
       );
     }
     if (!enriched) {
@@ -712,11 +701,7 @@ export function createVfsSyncer(input: {
         prev.mtimeMs !== node.mtimeMs ||
         prev.providerVersion !== node.providerVersion ||
         !existsSync(
-          join(
-            input.contentRootParent,
-            input.mount.mountId,
-            ...enriched.sourceRef.split("/"),
-          ),
+          join(input.contentRootParent, input.mount.mountId, ...enriched.sourceRef.split("/"))
         ));
     if (!shouldSyncSingle) {
       return;
@@ -769,7 +754,7 @@ export function createVfsSyncer(input: {
       metadataChanged?: boolean;
       contentChanged?: boolean;
       node?: VfsNode | null;
-    },
+    }
   ): void {
     const makeRow = (type: NodeEventInsertRow["type"]): NodeEventInsertRow => ({
       sourceRef: inputDiff.sourceRef,
@@ -815,9 +800,7 @@ async function downloadWithResume(input: {
         id: input.item.sourceRef,
         sourceRef: input.item.sourceRef,
         offset: startOffset > 0 ? startOffset : undefined,
-      } as unknown as Parameters<
-        NonNullable<typeof input.provider.createReadStream>
-      >[0]);
+      } as unknown as Parameters<NonNullable<typeof input.provider.createReadStream>>[0]);
       const writer = createWriteStream(input.partPath, {
         flags: startOffset > 0 ? "a" : "w",
       });
@@ -858,7 +841,7 @@ async function downloadWithResume(input: {
 
       if ((input.item.size ?? 0) > 0 && loaded < (input.item.size ?? 0)) {
         throw new Error(
-          `Downloaded file is incomplete: ${input.item.sourceRef} (${loaded}/${input.item.size})`,
+          `Downloaded file is incomplete: ${input.item.sourceRef} (${loaded}/${input.item.size})`
         );
       }
       await rename(input.partPath, input.finalPath);

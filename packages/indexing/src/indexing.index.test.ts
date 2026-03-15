@@ -64,12 +64,12 @@ describe("indexing service index", () => {
 function createHarness() {
   const deletedNodeIds: string[] = [];
   const ftsReplaceCalls: CreateIndexingServiceInput["ftsRepository"]["replaceNodeChunks"] extends (
-    rows: infer T,
+    rows: infer T
   ) => Promise<void>
     ? T[]
     : never = [];
   const vectorReplaceCalls: CreateIndexingServiceInput["vectorRepository"]["replaceNodeChunks"] extends (
-    rows: infer T,
+    rows: infer T
   ) => Promise<void>
     ? T[]
     : never = [];
@@ -153,7 +153,7 @@ function createNode(): VfsNode {
 }
 
 function createChunk(
-  overrides: Partial<ParseChunk> & Pick<ParseChunk, "chunkIndex" | "text">,
+  overrides: Partial<ParseChunk> & Pick<ParseChunk, "chunkIndex" | "text">
 ): ParseChunk {
   return {
     chunkIndex: overrides.chunkIndex,
@@ -203,9 +203,7 @@ function createLoggerStub() {
 }
 
 function buildChunkId(nodeId: string, chunkIndex: number): string {
-  return createHash("sha1")
-    .update(`${nodeId}:${chunkIndex}`)
-    .digest("hex");
+  return createHash("sha1").update(`${nodeId}:${chunkIndex}`).digest("hex");
 }
 
 void ({} as SearchHit);

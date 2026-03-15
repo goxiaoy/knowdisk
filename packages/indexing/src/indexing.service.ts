@@ -7,12 +7,10 @@ import type {
   SearchResultSet,
 } from "./indexing.types";
 
-export function createIndexingService(
-  input: CreateIndexingServiceInput,
-): IndexingService {
+export function createIndexingService(input: CreateIndexingServiceInput): IndexingService {
   const embeddingProvider = input.embeddingRegistry.get(
     input.embedding.type,
-    input.embedding.options,
+    input.embedding.options
   );
   const rerankerProvider =
     input.reranker && input.rerankerRegistry
@@ -61,7 +59,7 @@ export function createIndexingService(
           converterId: chunk.parse.converterId,
           converterVersion: chunk.parse.converterVersion,
           updatedAt: indexedAt,
-        })),
+        }))
       );
 
       await input.vectorRepository.replaceNodeChunks(
@@ -81,7 +79,7 @@ export function createIndexingService(
           tokenEstimate: chunk.tokenEstimate,
           updatedAt: indexedAt,
           embedding: embeddings[index] ?? [],
-        })),
+        }))
       );
 
       return { indexed: validChunks.length };
@@ -113,13 +111,11 @@ export function createIndexingService(
         topK,
         titleOnly,
       });
-      const vector =
-        titleOnly
-          ? []
-          : await input.vectorRepository.search(
-              await embeddingProvider.embed(normalizedQuery),
-              { topK },
-            );
+      const vector = titleOnly
+        ? []
+        : await input.vectorRepository.search(await embeddingProvider.embed(normalizedQuery), {
+            topK,
+          });
       const hybrid = fuseSearchHits(fts, vector, topK);
       const reranked = rerankerProvider
         ? await rerankerProvider.rerank(normalizedQuery, hybrid, { topK })
@@ -142,9 +138,7 @@ export function createIndexingService(
   };
 }
 
-async function collectValidChunks(
-  chunks: AsyncIterable<ParseChunk>,
-): Promise<ParseChunk[]> {
+async function collectValidChunks(chunks: AsyncIterable<ParseChunk>): Promise<ParseChunk[]> {
   const valid: ParseChunk[] = [];
   for await (const chunk of chunks) {
     if (chunk.status === "ok") {
@@ -155,16 +149,10 @@ async function collectValidChunks(
 }
 
 function buildChunkId(nodeId: string, chunkIndex: number): string {
-  return createHash("sha1")
-    .update(`${nodeId}:${chunkIndex}`)
-    .digest("hex");
+  return createHash("sha1").update(`${nodeId}:${chunkIndex}`).digest("hex");
 }
 
-function fuseSearchHits(
-  fts: SearchHit[],
-  vector: SearchHit[],
-  topK: number,
-): SearchHit[] {
+function fuseSearchHits(fts: SearchHit[], vector: SearchHit[], topK: number): SearchHit[] {
   const merged = new Map<string, SearchHit>();
 
   for (const hit of fts) {
@@ -177,10 +165,7 @@ function fuseSearchHits(
   for (const hit of vector) {
     const existing = merged.get(hit.chunkId);
     if (existing) {
-      const fused = average(
-        existing.scores.fts ?? existing.score,
-        hit.scores.vector ?? hit.score,
-      );
+      const fused = average(existing.scores.fts ?? existing.score, hit.scores.vector ?? hit.score);
       merged.set(hit.chunkId, {
         ...existing,
         score: fused,

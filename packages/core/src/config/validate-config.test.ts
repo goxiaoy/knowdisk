@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-  createDefaultCoreConfig,
-  validateCoreConfig,
-} from "./index";
+import { createDefaultCoreConfig, validateCoreConfig } from "./index";
 
 describe("validateCoreConfig", () => {
   it("accepts the default config", () => {
@@ -50,6 +47,16 @@ describe("validateCoreConfig", () => {
     expect(validateCoreConfig(config)).toEqual({
       ok: false,
       errors: ["embedding.local is required for embedding.provider=local"],
+    });
+  });
+
+  it("requires basePath", () => {
+    const config = createDefaultCoreConfig();
+    config.basePath = "   ";
+
+    expect(validateCoreConfig(config)).toEqual({
+      ok: false,
+      errors: ["basePath is required"],
     });
   });
 });

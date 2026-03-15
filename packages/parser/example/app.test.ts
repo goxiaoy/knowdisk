@@ -23,9 +23,7 @@ describe("parser example", () => {
       expect(typeof app.stop).toBe("function");
       expect(app.paths.dbPath).toBe(join(runtimeRoot, "vfs.db"));
       expect(app.paths.parserCacheDir).toBe(join(runtimeRoot, "parser-cache"));
-      expect(app.paths.parserChunksDir).toBe(
-        join(runtimeRoot, "parser-chunks"),
-      );
+      expect(app.paths.parserChunksDir).toBe(join(runtimeRoot, "parser-chunks"));
       expect(app.paths.contentDir).toBe(join(runtimeRoot, "content"));
 
       await app.stop();
@@ -70,27 +68,20 @@ describe("parser example", () => {
 
       expect(chunks.some((line) => line.includes("[PARSE]"))).toBe(true);
       expect(chunks.some((line) => line.includes("[CHUNK]"))).toBe(true);
-      expect(
-        chunks.some(
-          (line) =>
-            line.includes("[CHUNK]") &&
-            line.includes("status=ok"),
-        ),
-      ).toBe(true);
+      expect(chunks.some((line) => line.includes("[CHUNK]") && line.includes("status=ok"))).toBe(
+        true
+      );
       expect(
         chunks.some(
           (line) =>
             (line.includes("sourceRef=info.json") ||
               line.includes("sourceRef=image.png") ||
               line.includes("sourceRef=paper.pdf")) &&
-            line.includes("[PARSE]"),
-        ),
+            line.includes("[PARSE]")
+        )
       ).toBe(true);
       expect(
-        chunks.some(
-          (line) =>
-            line.includes("status=error") || line.includes("status=skipped"),
-        ),
+        chunks.some((line) => line.includes("status=error") || line.includes("status=skipped"))
       ).toBe(true);
 
       await app.stop();
@@ -140,16 +131,13 @@ describe("parser example", () => {
 
       const infoNode = app.repository.listNodesByMountIdAndSourceRef(
         app.mounts[0]!.mountId,
-        "info.json",
+        "info.json"
       );
       if (!infoNode) {
         throw new Error("expected info.json node");
       }
 
-      const outputPath = join(
-        app.paths.parserChunksDir,
-        `${infoNode.nodeId}.json`,
-      );
+      const outputPath = join(app.paths.parserChunksDir, `${infoNode.nodeId}.json`);
       const initialOutput = JSON.parse(await readFile(outputPath, "utf8"));
       expect(initialOutput.nodeId).toBe(infoNode.nodeId);
       expect(initialOutput.sourceRef).toBe("info.json");
@@ -163,7 +151,9 @@ describe("parser example", () => {
       expect(refreshedOutput.stale).toBeUndefined();
       expect(refreshedOutput.nodeId).toBe(infoNode.nodeId);
       expect(refreshedOutput.sourceRef).toBe("info.json");
-      expect(refreshedOutput.chunks.some((chunk: { status: string }) => chunk.status === "ok")).toBe(true);
+      expect(
+        refreshedOutput.chunks.some((chunk: { status: string }) => chunk.status === "ok")
+      ).toBe(true);
 
       await app.stop();
     } finally {
@@ -185,16 +175,13 @@ describe("parser example", () => {
 
       const infoNode = app.repository.listNodesByMountIdAndSourceRef(
         app.mounts[0]!.mountId,
-        "info.json",
+        "info.json"
       );
       if (!infoNode) {
         throw new Error("expected info.json node");
       }
 
-      const outputPath = join(
-        app.paths.parserChunksDir,
-        `${infoNode.nodeId}.json`,
-      );
+      const outputPath = join(app.paths.parserChunksDir, `${infoNode.nodeId}.json`);
       const cachePaths = app.parser.getCachePaths({ nodeId: infoNode.nodeId });
 
       await access(outputPath);

@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  getOpenBrowserCommand,
-  shouldAutoOpenBrowser,
-} from "./browser-open";
+import { getOpenBrowserCommand, shouldAutoOpenBrowser } from "./browser-open";
 
 describe("browser open helper", () => {
   test("returns open command on darwin", () => {
@@ -27,9 +24,7 @@ describe("browser open helper", () => {
   });
 
   test("returns null for unsupported platform", () => {
-    expect(getOpenBrowserCommand("freebsd", "http://127.0.0.1:3099")).toBe(
-      null,
-    );
+    expect(getOpenBrowserCommand("freebsd", "http://127.0.0.1:3099")).toBe(null);
   });
 
   test("auto-open only when tty", () => {

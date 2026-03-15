@@ -47,7 +47,7 @@ const EMPTY_STATUS: ModelDownloadStatus = {
 };
 
 export function selectPreferredRepoFiles(
-  siblings: Array<{ rfilename?: string; size?: number }>,
+  siblings: Array<{ rfilename?: string; size?: number }>
 ): Array<{ path: string; size: number }> {
   const requiredPaths = new Set([
     "config.json",
@@ -70,14 +70,11 @@ export function selectPreferredRepoFiles(
         item.rfilename.length > 0 &&
         (requiredPaths.has(item.rfilename) ||
           item.rfilename === "onnx/model.onnx" ||
-          item.rfilename.startsWith("onnx/model.onnx")),
+          item.rfilename.startsWith("onnx/model.onnx"))
     )
     .map((item) => ({
       path: item.rfilename,
-      size:
-        Number.isFinite(item.size) && (item.size ?? 0) > 0
-          ? Number(item.size)
-          : 0,
+      size: Number.isFinite(item.size) && (item.size ?? 0) > 0 ? Number(item.size) : 0,
     }));
 }
 
@@ -205,17 +202,24 @@ export function createModelService(input: CreateModelServiceInput): ModelService
       return 100;
     }
     return Math.round(
-      entries.reduce((sum, task) => sum + (task?.progressPct ?? 0), 0) / entries.length,
+      entries.reduce((sum, task) => sum + (task?.progressPct ?? 0), 0) / entries.length
     );
   }
 
-  function updateTask(id: ModelDownloadTask["id"], updater: (task: ModelDownloadTask) => ModelDownloadTask) {
+  function updateTask(
+    id: ModelDownloadTask["id"],
+    updater: (task: ModelDownloadTask) => ModelDownloadTask
+  ) {
     updateStatus((current) => {
       const nextTasks = {
         embedding:
-          current.tasks.embedding?.id === id ? updater(current.tasks.embedding) : current.tasks.embedding,
+          current.tasks.embedding?.id === id
+            ? updater(current.tasks.embedding)
+            : current.tasks.embedding,
         reranker:
-          current.tasks.reranker?.id === id ? updater(current.tasks.reranker) : current.tasks.reranker,
+          current.tasks.reranker?.id === id
+            ? updater(current.tasks.reranker)
+            : current.tasks.reranker,
       };
       return {
         ...current,
@@ -238,7 +242,12 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     return files;
   }
 
-  async function downloadFile(spec: LocalTaskSpec, file: { path: string; size: number }, totalBytes: number, downloadedState: { value: number }) {
+  async function downloadFile(
+    spec: LocalTaskSpec,
+    file: { path: string; size: number },
+    totalBytes: number,
+    downloadedState: { value: number }
+  ) {
     const destination = join(modelRoot(spec), file.path);
     await mkdir(dirname(destination), { recursive: true });
     const response = await fetchImpl(`${spec.hfEndpoint}/${spec.model}/resolve/main/${file.path}`);
@@ -253,7 +262,10 @@ export function createModelService(input: CreateModelServiceInput): ModelService
       state: "downloading",
       downloadedBytes: downloadedState.value,
       totalBytes,
-      progressPct: totalBytes > 0 ? Math.min(100, Math.round((downloadedState.value / totalBytes) * 100)) : 100,
+      progressPct:
+        totalBytes > 0
+          ? Math.min(100, Math.round((downloadedState.value / totalBytes) * 100))
+          : 100,
     }));
   }
 
@@ -268,9 +280,9 @@ export function createModelService(input: CreateModelServiceInput): ModelService
           files,
         },
         null,
-        2,
+        2
       )}\n`,
-      "utf8",
+      "utf8"
     );
   }
 
@@ -320,7 +332,10 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         for (const file of files) {
           await downloadFile(spec, file, totalBytes, downloadedState);
         }
-        await writeManifest(spec, files.map((file) => file.path));
+        await writeManifest(
+          spec,
+          files.map((file) => file.path)
+        );
         await verifyModelIntegrity(spec);
         updateTask(spec.id, (task) => ({
           ...task,
@@ -352,7 +367,8 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         }));
       }
       const nextAttempt = status.retry.attempt + 1;
-      const delay = MODEL_RETRY_BACKOFF_MS[Math.min(nextAttempt - 1, MODEL_RETRY_BACKOFF_MS.length - 1)] ?? 0;
+      const delay =
+        MODEL_RETRY_BACKOFF_MS[Math.min(nextAttempt - 1, MODEL_RETRY_BACKOFF_MS.length - 1)] ?? 0;
       const exhausted = nextAttempt > MODEL_RETRY_MAX_ATTEMPTS;
       const nextRetryAt = exhausted ? "" : new Date(Date.now() + delay).toISOString();
       updateStatus((current) => ({
@@ -402,7 +418,16 @@ export function createModelService(input: CreateModelServiceInput): ModelService
 
   async function configureTransformersEnv(spec: LocalTaskSpec) {
     const transformers = await import("@huggingface/transformers");
-    const env = (transformers as { env?: { allowRemoteModels?: boolean; remoteHost?: string; localModelPath?: string; cacheDir?: string } }).env;
+    const env = (
+      transformers as {
+        env?: {
+          allowRemoteModels?: boolean;
+          remoteHost?: string;
+          localModelPath?: string;
+          cacheDir?: string;
+        };
+      }
+    ).env;
     if (env) {
       env.allowRemoteModels = false;
       env.remoteHost = `${spec.hfEndpoint}/`;
@@ -414,13 +439,15 @@ export function createModelService(input: CreateModelServiceInput): ModelService
   async function defaultLoadEmbeddingExtractor(spec: LocalTaskSpec) {
     await configureTransformersEnv(spec);
     const transformers = await import("@huggingface/transformers");
-    return (transformers as unknown as {
-      pipeline: (
-        task: "feature-extraction",
-        model: string,
-        opts: { local_files_only: true },
-      ) => Promise<LocalEmbeddingExtractor>;
-    }).pipeline("feature-extraction", spec.model, {
+    return (
+      transformers as unknown as {
+        pipeline: (
+          task: "feature-extraction",
+          model: string,
+          opts: { local_files_only: true }
+        ) => Promise<LocalEmbeddingExtractor>;
+      }
+    ).pipeline("feature-extraction", spec.model, {
       local_files_only: true,
     });
   }
@@ -428,24 +455,33 @@ export function createModelService(input: CreateModelServiceInput): ModelService
   async function defaultLoadRerankerRuntime(spec: LocalTaskSpec) {
     await configureTransformersEnv(spec);
     const transformers = await import("@huggingface/transformers");
-    const tokenizer = await (transformers as unknown as {
-      AutoTokenizer: {
-        from_pretrained: (
-          model: string,
-          opts: { local_files_only: true },
-        ) => Promise<(texts: string[], opts: { text_pair: string[]; padding: boolean; truncation: boolean }) => Promise<Record<string, unknown>>>;
-      };
-    }).AutoTokenizer.from_pretrained(spec.model, {
+    const tokenizer = await (
+      transformers as unknown as {
+        AutoTokenizer: {
+          from_pretrained: (
+            model: string,
+            opts: { local_files_only: true }
+          ) => Promise<
+            (
+              texts: string[],
+              opts: { text_pair: string[]; padding: boolean; truncation: boolean }
+            ) => Promise<Record<string, unknown>>
+          >;
+        };
+      }
+    ).AutoTokenizer.from_pretrained(spec.model, {
       local_files_only: true,
     });
-    const model = await (transformers as unknown as {
-      AutoModelForSequenceClassification: {
-        from_pretrained: (
-          model: string,
-          opts: { quantized: false; local_files_only: true },
-        ) => Promise<(inputs: unknown) => Promise<{ logits?: { data?: ArrayLike<number> } }>>;
-      };
-    }).AutoModelForSequenceClassification.from_pretrained(spec.model, {
+    const model = await (
+      transformers as unknown as {
+        AutoModelForSequenceClassification: {
+          from_pretrained: (
+            model: string,
+            opts: { quantized: false; local_files_only: true }
+          ) => Promise<(inputs: unknown) => Promise<{ logits?: { data?: ArrayLike<number> } }>>;
+        };
+      }
+    ).AutoModelForSequenceClassification.from_pretrained(spec.model, {
       quantized: false,
       local_files_only: true,
     });
@@ -477,7 +513,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         ? input.deps.loadEmbeddingExtractor(
             spec.model,
             join(input.cacheDir, spec.kind),
-            spec.hfEndpoint,
+            spec.hfEndpoint
           )
         : defaultLoadEmbeddingExtractor(spec);
       embeddingVerifyGuards.set(key, pending);
@@ -492,11 +528,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
       return;
     }
     const pending = input.deps?.loadRerankerRuntime
-      ? input.deps.loadRerankerRuntime(
-          spec.model,
-          join(input.cacheDir, spec.kind),
-          spec.hfEndpoint,
-        )
+      ? input.deps.loadRerankerRuntime(spec.model, join(input.cacheDir, spec.kind), spec.hfEndpoint)
       : defaultLoadRerankerRuntime(spec);
     rerankerVerifyGuards.set(key, pending);
     await pending;
@@ -527,7 +559,11 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         if (postVerify) {
           return postVerify;
         }
-        return (input.deps?.loadEmbeddingExtractor ?? defaultLoadEmbeddingExtractor)(spec.model, join(input.cacheDir, spec.kind), spec.hfEndpoint);
+        return (input.deps?.loadEmbeddingExtractor ?? defaultLoadEmbeddingExtractor)(
+          spec.model,
+          join(input.cacheDir, spec.kind),
+          spec.hfEndpoint
+        );
       })();
       embeddingRuntimeGuards.set(key, pending);
       try {
@@ -559,7 +595,11 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         if (postVerify) {
           return postVerify;
         }
-        return (input.deps?.loadRerankerRuntime ?? defaultLoadRerankerRuntime)(spec.model, join(input.cacheDir, spec.kind), spec.hfEndpoint);
+        return (input.deps?.loadRerankerRuntime ?? defaultLoadRerankerRuntime)(
+          spec.model,
+          join(input.cacheDir, spec.kind),
+          spec.hfEndpoint
+        );
       })();
       rerankerRuntimeGuards.set(key, pending);
       try {

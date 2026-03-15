@@ -127,6 +127,7 @@ This keeps hook orchestration at the service boundary and avoids pushing policy 
 No hooks run during event production.
 
 Reason:
+
 - the desired semantics are tied to `applyNodeEvent(...)`
 - producer-side hooks would split behavior between `fullSync()` and watch generation paths
 - the current architecture already unifies both paths at queue consumption time

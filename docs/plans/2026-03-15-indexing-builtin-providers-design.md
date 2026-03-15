@@ -85,7 +85,7 @@ Add a built-in registration helper:
 registerBuiltInProviders(container, {
   embeddingRegistry,
   rerankerRegistry,
-})
+});
 ```
 
 This function registers:
@@ -107,7 +107,7 @@ createIndexingServiceFromConfig(container, {
   ftsRepository,
   vectorRepository,
   defaults,
-})
+});
 ```
 
 Responsibilities:

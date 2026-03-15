@@ -3,14 +3,13 @@ import type { EmbeddingProvider } from "../../indexing.types";
 
 export function createLocalEmbeddingProvider(
   container: DependencyContainer,
-  options?: Record<string, unknown>,
+  options?: Record<string, unknown>
 ): EmbeddingProvider {
   const modelService = resolveModelService(container);
 
   return {
     type: "local",
-    dimension:
-      typeof options?.dimension === "number" ? options.dimension : undefined,
+    dimension: typeof options?.dimension === "number" ? options.dimension : undefined,
     async embed(text) {
       const extractor = await modelService.getLocalEmbeddingExtractor();
       const result = await extractor(text, {
@@ -26,7 +25,10 @@ function resolveModelService(container: DependencyContainer) {
   try {
     return container.resolve<{
       getLocalEmbeddingExtractor: () => Promise<
-        (text: string, opts: { pooling: "mean"; normalize: true }) => Promise<{ data?: ArrayLike<number> }>
+        (
+          text: string,
+          opts: { pooling: "mean"; normalize: true }
+        ) => Promise<{ data?: ArrayLike<number> }>
       >;
     }>("ModelService");
   } catch {

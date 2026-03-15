@@ -16,7 +16,7 @@ describe("model status store", () => {
             headers: {
               "content-type": "application/json",
             },
-          },
+          }
         );
       }
       return new Response("test", {

@@ -6,9 +6,7 @@ type OpenAiEmbeddingResponse = {
   data?: Array<{ embedding?: number[] }>;
 };
 
-export function createOpenAiEmbeddingProvider(
-  container: DependencyContainer,
-): EmbeddingProvider {
+export function createOpenAiEmbeddingProvider(container: DependencyContainer): EmbeddingProvider {
   const config = container.resolve<CoreConfig>("CoreConfig");
   const fetchImpl = resolveFetch(container);
   const providerConfig = config.providers.openai;
@@ -26,19 +24,24 @@ export function createOpenAiEmbeddingProvider(
   return {
     type: "openai",
     async embed(text) {
-      const response = await fetchImpl(`${providerConfig.endpoint.replace(/\/+$/, "")}/embeddings`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${providerConfig.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: providerConfig.embeddingModel,
-          input: text,
-        }),
-      });
+      const response = await fetchImpl(
+        `${providerConfig.endpoint.replace(/\/+$/, "")}/embeddings`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${providerConfig.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: providerConfig.embeddingModel,
+            input: text,
+          }),
+        }
+      );
       if (!response.ok) {
-        throw new Error(`OpenAI embedding request failed: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `OpenAI embedding request failed: ${response.status} ${response.statusText}`
+        );
       }
       const payload = (await response.json()) as OpenAiEmbeddingResponse;
       const embedding = payload.data?.[0]?.embedding;

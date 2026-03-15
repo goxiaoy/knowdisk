@@ -3,9 +3,7 @@ import { splitMarkdownIntoSections } from "./section-splitter";
 
 describe("section splitter", () => {
   test("creates a preamble section before the first heading", () => {
-    const sections = splitMarkdownIntoSections(
-      "Intro paragraph\n\n# Heading One\n\nBody text\n",
-    );
+    const sections = splitMarkdownIntoSections("Intro paragraph\n\n# Heading One\n\nBody text\n");
 
     expect(sections).toHaveLength(2);
     expect(sections[0]).toMatchObject({
@@ -24,7 +22,7 @@ describe("section splitter", () => {
 
   test("builds sectionPath from nested headings", () => {
     const sections = splitMarkdownIntoSections(
-      "# Intro\n\nAlpha\n\n## Install\n\nBeta\n\n## Usage\n\nGamma\n\n# API\n\nDelta\n",
+      "# Intro\n\nAlpha\n\n## Install\n\nBeta\n\n## Usage\n\nGamma\n\n# API\n\nDelta\n"
     );
 
     expect(sections.map((section) => section.sectionPath)).toEqual([

@@ -10,31 +10,19 @@ export function registerBuiltInProviders(
     embeddingRegistry: {
       register: (
         providerType: string,
-        factory: (
-          container: DependencyContainer,
-          options?: Record<string, unknown>,
-        ) => unknown,
+        factory: (container: DependencyContainer, options?: Record<string, unknown>) => unknown
       ) => void;
     };
     rerankerRegistry: {
       register: (
         providerType: string,
-        factory: (
-          container: DependencyContainer,
-          options?: Record<string, unknown>,
-        ) => unknown,
+        factory: (container: DependencyContainer, options?: Record<string, unknown>) => unknown
       ) => void;
     };
-  },
+  }
 ) {
   input.embeddingRegistry.register("local", createLocalEmbeddingProvider);
-  input.embeddingRegistry.register("openai", () =>
-    createOpenAiEmbeddingProvider(container),
-  );
-  input.embeddingRegistry.register("qwen", () =>
-    createQwenEmbeddingProvider(container),
-  );
-  input.rerankerRegistry.register("local", () =>
-    createLocalRerankerProvider(container),
-  );
+  input.embeddingRegistry.register("openai", () => createOpenAiEmbeddingProvider(container));
+  input.embeddingRegistry.register("qwen", () => createQwenEmbeddingProvider(container));
+  input.rerankerRegistry.register("local", () => createLocalRerankerProvider(container));
 }

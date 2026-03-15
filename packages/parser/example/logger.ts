@@ -7,9 +7,7 @@ type CreateParserExampleLoggerInput = {
   name?: string;
 };
 
-export function createParserExampleLogger(
-  input?: CreateParserExampleLoggerInput,
-) {
+export function createParserExampleLogger(input?: CreateParserExampleLoggerInput) {
   const stream = input?.stream ?? process.stdout;
   const name = input?.name ?? "knowdisk.parser.example";
   const logger = createExampleLogger({ stream, name });

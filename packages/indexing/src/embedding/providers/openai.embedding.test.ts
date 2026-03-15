@@ -17,7 +17,7 @@ describe("openai embedding provider", () => {
     container.registerInstance("CoreConfig", config);
 
     expect(() => createOpenAiEmbeddingProvider(container)).toThrow(
-      'OpenAI embedding provider requires "providers.openai.endpoint"',
+      'OpenAI embedding provider requires "providers.openai.endpoint"'
     );
   });
 
@@ -30,13 +30,14 @@ describe("openai embedding provider", () => {
       embeddingModel: "text-embedding-3-small",
     };
 
-    const fetchImpl = mock(async () =>
-      new Response(
-        JSON.stringify({
-          data: [{ embedding: [0.1, 0.2] }],
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
+    const fetchImpl = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: [{ embedding: [0.1, 0.2] }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        )
     );
 
     container.clearInstances();

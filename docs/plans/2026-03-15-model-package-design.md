@@ -39,7 +39,7 @@ createModelService({
   logger,
   config,
   cacheDir,
-})
+});
 ```
 
 Public service contract:

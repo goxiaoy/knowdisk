@@ -22,7 +22,7 @@ describe("createParserService", () => {
         vfs: createVfsStub(),
         basePath: "   ",
         logger: createLoggerStub(),
-      }),
+      })
     ).toThrow("basePath is required");
   });
 });

@@ -1,9 +1,7 @@
 import type { DependencyContainer } from "tsyringe";
 import type { RerankerFactory, RerankerRegistry } from "../indexing.types";
 
-export function createRerankerRegistry(
-  container: DependencyContainer,
-): RerankerRegistry {
+export function createRerankerRegistry(container: DependencyContainer): RerankerRegistry {
   const factories = new Map<string, RerankerFactory>();
 
   return {

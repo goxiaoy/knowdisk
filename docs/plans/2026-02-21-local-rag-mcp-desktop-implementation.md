@@ -15,6 +15,7 @@ References: @brainstorming @writing-plans @test-driven-development @systematic-d
 ### Task 1: Establish Test Harness For Core Services
 
 **Files:**
+
 - Create: `src/core/test/setup.ts`
 - Create: `src/core/config/config.service.test.ts`
 - Modify: `package.json`
@@ -67,6 +68,7 @@ git commit -m "test: bootstrap core service tests"
 ### Task 2: Implement Config Schema, Validation, And Migration
 
 **Files:**
+
 - Create: `src/core/config/config.types.ts`
 - Modify: `src/core/config/config.service.ts`
 - Modify: `src/core/config/config.service.test.ts`
@@ -125,6 +127,7 @@ git commit -m "feat: add config validation and migration"
 ### Task 3: Build File System Abstraction Layer With Watch Capability Detection
 
 **Files:**
+
 - Create: `src/core/fs/fs.types.ts`
 - Create: `src/core/fs/fs.service.ts`
 - Create: `src/core/fs/fs.service.test.ts`
@@ -174,6 +177,7 @@ git commit -m "feat: add filesystem abstraction and event normalization"
 ### Task 4: Add Parser Registry And Text-First Parsers
 
 **Files:**
+
 - Create: `src/core/parser/parser.types.ts`
 - Create: `src/core/parser/parser.registry.ts`
 - Create: `src/core/parser/parsers/text.parser.ts`
@@ -225,6 +229,7 @@ git commit -m "feat: add parser registry with text-first coverage"
 ### Task 5: Implement Chunking And Deterministic Chunk IDs
 
 **Files:**
+
 - Create: `src/core/indexing/chunking.ts`
 - Create: `src/core/indexing/chunking.test.ts`
 
@@ -249,7 +254,9 @@ Expected: FAIL with missing `chunkDocument`.
 import { createHash } from "node:crypto";
 
 export function chunkDocument(input: { path: string; text: string }) {
-  const checksum = createHash("sha256").update(input.path + "\n" + input.text).digest("hex");
+  const checksum = createHash("sha256")
+    .update(input.path + "\n" + input.text)
+    .digest("hex");
   return [{ chunkId: `${input.path}#0#${checksum.slice(0, 12)}`, content: input.text, checksum }];
 }
 ```
@@ -269,6 +276,7 @@ git commit -m "feat: add deterministic chunking"
 ### Task 6: Implement Embedding Provider Abstraction (Local/Cloud)
 
 **Files:**
+
 - Create: `src/core/embedding/embedding.types.ts`
 - Create: `src/core/embedding/embedding.service.ts`
 - Create: `src/core/embedding/embedding.service.test.ts`
@@ -317,6 +325,7 @@ git commit -m "feat: add embedding provider abstraction"
 ### Task 7: Add zvec Repository Adapter
 
 **Files:**
+
 - Create: `src/core/vector/vector.repository.ts`
 - Create: `src/core/vector/vector.repository.test.ts`
 
@@ -377,6 +386,7 @@ git commit -m "feat: add vector repository adapter for zvec"
 ### Task 8: Implement Indexing Service (Full, Incremental, Scheduled Reconcile)
 
 **Files:**
+
 - Create: `src/core/indexing/indexing.service.ts`
 - Create: `src/core/indexing/indexing.service.test.ts`
 
@@ -433,6 +443,7 @@ git commit -m "feat: add indexing service with rebuild and reconcile flows"
 ### Task 9: Implement Retrieval Service (Top-K Chunks + Metadata)
 
 **Files:**
+
 - Create: `src/core/retrieval/retrieval.service.ts`
 - Create: `src/core/retrieval/retrieval.service.test.ts`
 
@@ -488,6 +499,7 @@ git commit -m "feat: add retrieval service returning top-k chunks"
 ### Task 10: Add MCP Server Tool Contract And Handler
 
 **Files:**
+
 - Create: `src/core/mcp/mcp.server.ts`
 - Create: `src/core/mcp/mcp.server.test.ts`
 - Modify: `src/bun/index.ts`
@@ -511,7 +523,9 @@ Expected: FAIL with missing tool registration.
 **Step 3: Write minimal implementation**
 
 ```ts
-export function createMcpServer(deps: { retrieval: { search: (q: string, o: { topK: number }) => Promise<unknown[]> } }) {
+export function createMcpServer(deps: {
+  retrieval: { search: (q: string, o: { topK: number }) => Promise<unknown[]> };
+}) {
   return {
     async callTool(name: string, args: { query: string; top_k?: number }) {
       if (name !== "search_local_knowledge") throw new Error("TOOL_NOT_FOUND");
@@ -537,6 +551,7 @@ git commit -m "feat: add mcp search tool for local knowledge"
 ### Task 11: Build Settings UI With Safe Presets + Advanced Panel
 
 **Files:**
+
 - Modify: `src/mainview/App.tsx`
 - Create: `src/mainview/components/settings/SettingsPage.tsx`
 - Create: `src/mainview/components/settings/SettingsPage.test.tsx`
@@ -566,7 +581,9 @@ export function SettingsPage() {
   return (
     <section>
       <h1>Settings</h1>
-      <button onClick={() => setShowAdvanced((v) => !v)}>{showAdvanced ? "Hide Advanced" : "Show Advanced"}</button>
+      <button onClick={() => setShowAdvanced((v) => !v)}>
+        {showAdvanced ? "Hide Advanced" : "Show Advanced"}
+      </button>
       {showAdvanced ? <div>Advanced Settings</div> : null}
     </section>
   );
@@ -588,6 +605,7 @@ git commit -m "feat: add settings page with safe presets and advanced toggle"
 ### Task 12: Add Health, Activity, And Degraded-Mode Signals
 
 **Files:**
+
 - Create: `src/core/health/health.service.ts`
 - Create: `src/core/health/health.service.test.ts`
 - Modify: `src/mainview/components/settings/SettingsPage.tsx`
@@ -647,12 +665,14 @@ git commit -m "feat: add health aggregation and degraded status surfacing"
 ### Task 13: Verification Gate Before Completion
 
 **Files:**
+
 - Modify: `README.md`
 - Create: `docs/plans/verification-checklist-local-rag-mcp.md`
 
 **Step 1: Write failing integration smoke checklist item**
 
 Add checklist entries that are initially unchecked for:
+
 - add source -> index -> MCP query,
 - restart persistence,
 - degraded watch fallback.
@@ -660,11 +680,13 @@ Add checklist entries that are initially unchecked for:
 **Step 2: Run full verification commands**
 
 Run:
+
 - `bun test`
 - `bun run build`
 - `bun run dev` (manual smoke)
 
 Expected:
+
 - tests pass,
 - build succeeds,
 - manual smoke path validated.
@@ -672,6 +694,7 @@ Expected:
 **Step 3: Update checklist with evidence**
 
 Document:
+
 - command outputs summary,
 - date/time,
 - known gaps.

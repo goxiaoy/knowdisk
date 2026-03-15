@@ -13,6 +13,7 @@
 ### Task 1: Add API types for `getVersion` and tri-state flags
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.service.types.ts`
 - Test: `packages/vfs/src/vfs.service.runtime.test.ts`
 
@@ -61,6 +62,7 @@ git commit -m "feat(vfs): add getVersion and tri-state change flags"
 ### Task 2: Add repository tri-state storage + merge function
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.repository.types.ts`
 - Modify: `packages/vfs/src/vfs.repository.ts`
 - Test: `packages/vfs/src/vfs.repository.test.ts`
@@ -68,6 +70,7 @@ git commit -m "feat(vfs): add getVersion and tri-state change flags"
 **Step 1: Write the failing test**
 
 Add compaction test matrix for one node covering merges:
+
 - `false + null => null`
 - `null + true => true`
 - `false + false => false`
@@ -121,6 +124,7 @@ git commit -m "feat(vfs): support tri-state compaction in vfs_node_events"
 ### Task 3: Implement `getVersion` in local provider and service
 
 **Files:**
+
 - Modify: `packages/vfs/src/provider/local/index.ts`
 - Modify: `packages/vfs/src/vfs.service.ts`
 - Test: `packages/vfs/src/provider/local/local.provider.test.ts`
@@ -128,12 +132,13 @@ git commit -m "feat(vfs): support tri-state compaction in vfs_node_events"
 
 **Step 1: Write the failing tests**
 
-1) Local provider `getVersion(id)` returns BLAKE3 for file.
-2) Service `getVersion(id)` returns DB `providerVersion` and does not recompute content.
+1. Local provider `getVersion(id)` returns BLAKE3 for file.
+2. Service `getVersion(id)` returns DB `providerVersion` and does not recompute content.
 
 **Step 2: Run tests to verify they fail**
 
 Run:
+
 - `bun test packages/vfs/src/provider/local/local.provider.test.ts --filter "getVersion"`
 - `bun test packages/vfs/src/vfs.integration.test.ts --filter "getVersion"`
 
@@ -161,6 +166,7 @@ async getVersion(input) {
 **Step 4: Run tests to verify they pass**
 
 Run:
+
 - `bun test packages/vfs/src/provider/local/local.provider.test.ts`
 - `bun test packages/vfs/src/vfs.integration.test.ts`
 
@@ -176,12 +182,14 @@ git commit -m "feat(vfs): add getVersion for local provider and service"
 ### Task 4: Route service dispatch into fast metadata queue + debounced content queue
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.service.ts`
 - Test: `packages/vfs/src/vfs.service.runtime.test.ts`
 
 **Step 1: Write the failing tests**
 
 Add tests for queue routing:
+
 - metadata-only event: fast listener receives quickly.
 - content-only event: content listener receives after debounce.
 - both true: both queues receive.
@@ -195,6 +203,7 @@ Expected: FAIL with missing split dispatch behavior.
 **Step 3: Write minimal implementation**
 
 In service:
+
 - Keep DB compaction write path.
 - Add internal two-stage dispatch:
 
@@ -227,6 +236,7 @@ git commit -m "feat(vfs): split event dispatch into metadata and content queues"
 ### Task 5: Align change-origin semantics for local provider updates and add-path behavior
 
 **Files:**
+
 - Modify: `packages/vfs/src/vfs.service.ts`
 - Modify: `packages/vfs/src/vfs.syncer.ts`
 - Test: `packages/vfs/src/vfs.service.runtime.test.ts`
@@ -235,12 +245,14 @@ git commit -m "feat(vfs): split event dispatch into metadata and content queues"
 **Step 1: Write the failing tests**
 
 Add tests asserting:
+
 - Local provider update emits/compacts as `metadataChanged=true`, `contentUpdated=false`.
 - Add emits `metadataChanged=true`, `contentUpdated=true`.
 
 **Step 2: Run tests to verify they fail**
 
 Run:
+
 - `bun test packages/vfs/src/vfs.service.runtime.test.ts --filter "local update semantics"`
 - `bun test packages/vfs/src/vfs.syncer.test.ts --filter "add semantics"`
 
@@ -255,6 +267,7 @@ Expected: FAIL with old flag derivation behavior.
 **Step 4: Run tests to verify they pass**
 
 Run:
+
 - `bun test packages/vfs/src/vfs.service.runtime.test.ts`
 - `bun test packages/vfs/src/vfs.syncer.test.ts`
 
@@ -270,6 +283,7 @@ git commit -m "feat(vfs): enforce local update and add event flag semantics"
 ### Task 6: End-to-end regression run
 
 **Files:**
+
 - Test only; no source changes expected.
 
 **Step 1: Run full relevant suite**

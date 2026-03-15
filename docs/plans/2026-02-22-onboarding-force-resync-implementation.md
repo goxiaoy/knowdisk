@@ -13,6 +13,7 @@
 ### Task 1: Add onboarding config model + migration defaults
 
 **Files:**
+
 - Modify: `src/core/config/config.types.ts`
 - Modify: `src/core/config/config.service.ts`
 - Modify: `src/mainview/services/config.service.ts`
@@ -35,7 +36,9 @@ Expected: FAIL because `onboarding` is missing.
 **Step 3: Write minimal implementation**
 
 ```ts
-interface AppConfig { onboarding: { completed: boolean } }
+interface AppConfig {
+  onboarding: { completed: boolean };
+}
 // defaults: completed false
 // migration: completed true when sources.length > 0 for existing users
 ```
@@ -55,6 +58,7 @@ git commit -m "feat: add onboarding config state and migration"
 ### Task 2: Add app-level onboarding gate and shell routing
 
 **Files:**
+
 - Modify: `src/mainview/App.tsx`
 - Create: `src/mainview/components/onboarding/OnboardingPage.tsx`
 - Create: `src/mainview/components/onboarding/SourceSelectionStep.tsx`
@@ -99,6 +103,7 @@ git commit -m "feat: add onboarding flow and app gate"
 ### Task 3: Implement onboarding step 1 (required source)
 
 **Files:**
+
 - Modify: `src/mainview/components/onboarding/SourceSelectionStep.tsx`
 - Modify: `src/mainview/services/bun.rpc.ts`
 - Test: `src/mainview/components/onboarding/OnboardingPage.test.tsx`
@@ -120,7 +125,7 @@ Expected: FAIL due to missing guard.
 
 ```tsx
 const canNext = sources.length > 0;
-<button disabled={!canNext}>Next</button>
+<button disabled={!canNext}>Next</button>;
 ```
 
 **Step 4: Run test to verify it passes**
@@ -138,6 +143,7 @@ git commit -m "feat: require at least one source in onboarding step 1"
 ### Task 4: Implement onboarding step 2 (defaults + continue)
 
 **Files:**
+
 - Modify: `src/mainview/components/onboarding/ModelSetupStep.tsx`
 - Modify: `src/mainview/components/onboarding/OnboardingPage.tsx`
 - Modify: `src/mainview/components/settings/SettingsPage.tsx`
@@ -180,6 +186,7 @@ git commit -m "feat: complete onboarding with default model settings"
 ### Task 5: Add vector destroy capability and force resync backend API
 
 **Files:**
+
 - Modify: `src/core/vector/vector.repository.types.ts`
 - Modify: `src/core/vector/vector.repository.ts`
 - Modify: `src/bun/app.container.ts`
@@ -224,6 +231,7 @@ git commit -m "feat: add backend force resync rpc and vector destroy"
 ### Task 6: Add Home Force Resync button UX
 
 **Files:**
+
 - Modify: `src/mainview/components/home/HomePage.tsx`
 - Test: `src/mainview/components/home/HomePage.test.tsx`
 
@@ -244,7 +252,9 @@ Expected: FAIL because button/handler is missing.
 **Step 3: Write minimal implementation**
 
 ```tsx
-<button disabled={resyncing} onClick={onForceResync}>Force Resync</button>
+<button disabled={resyncing} onClick={onForceResync}>
+  Force Resync
+</button>
 ```
 
 **Step 4: Run test to verify it passes**
@@ -262,6 +272,7 @@ git commit -m "feat: add home force resync action"
 ### Task 7: Full verification and cleanup
 
 **Files:**
+
 - Modify: any touched files if fixes needed
 
 **Step 1: Run focused suites**
@@ -277,10 +288,13 @@ Expected: tests pass; if Bun native panic appears post-run, record as known runt
 **Step 3: Manual smoke checks**
 
 Run:
+
 ```bash
 bun run dev
 ```
+
 Expected:
+
 - fresh profile enters onboarding,
 - step 1 requires source,
 - step 2 continue works without edits,

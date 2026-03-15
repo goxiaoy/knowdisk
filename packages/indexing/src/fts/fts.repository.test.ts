@@ -13,11 +13,11 @@ describe("fts repository", () => {
 
     const db = new Database(dbPath, { readonly: true });
     const tables = db
-      .query("SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table') ORDER BY name")
+      .query(
+        "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table') ORDER BY name"
+      )
       .all() as Array<{ name: string }>;
-    const columns = db
-      .query("PRAGMA table_info(index_chunks)")
-      .all() as Array<{ name: string }>;
+    const columns = db.query("PRAGMA table_info(index_chunks)").all() as Array<{ name: string }>;
 
     expect(tables.map((item) => item.name)).toContain("index_chunks");
     expect(tables.map((item) => item.name)).toContain("index_chunks_fts");
@@ -103,12 +103,8 @@ describe("fts repository", () => {
       }),
     ]);
 
-    expect((await repo.search("alpha", { topK: 5, titleOnly: true }))[0]?.chunkId).toBe(
-      "chunk-1",
-    );
-    expect((await repo.search("sqlite", { topK: 5, titleOnly: true }))[0]?.chunkId).toBe(
-      "chunk-2",
-    );
+    expect((await repo.search("alpha", { topK: 5, titleOnly: true }))[0]?.chunkId).toBe("chunk-1");
+    expect((await repo.search("sqlite", { topK: 5, titleOnly: true }))[0]?.chunkId).toBe("chunk-2");
     expect(await repo.search("irrelevant", { topK: 5, titleOnly: true })).toHaveLength(0);
 
     repo.close();

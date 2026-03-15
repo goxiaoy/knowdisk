@@ -12,7 +12,7 @@ describe("parser vfs read stage", () => {
     });
 
     await expect(service.materializeNode({ nodeId: "missing" })).rejects.toThrow(
-      "Node not found: missing",
+      "Node not found: missing"
     );
   });
 
@@ -26,7 +26,7 @@ describe("parser vfs read stage", () => {
     });
 
     await expect(service.materializeNode({ nodeId: "folder-1" })).rejects.toThrow(
-      "Node is not a file: folder-1",
+      "Node is not a file: folder-1"
     );
   });
 
@@ -48,10 +48,7 @@ describe("parser vfs read stage", () => {
   });
 });
 
-function createVfsStub(input?: {
-  node?: VfsNode | null;
-  streamText?: string;
-}): VfsOperationCore {
+function createVfsStub(input?: { node?: VfsNode | null; streamText?: string }): VfsOperationCore {
   return {
     async listChildren() {
       return { items: [] };
@@ -71,9 +68,7 @@ function createVfsStub(input?: {
   };
 }
 
-function createNode(
-  input: Partial<VfsNode> & Pick<VfsNode, "nodeId">,
-): VfsNode {
+function createNode(input: Partial<VfsNode> & Pick<VfsNode, "nodeId">): VfsNode {
   return {
     nodeId: input.nodeId,
     mountId: input.mountId ?? "mount-1",

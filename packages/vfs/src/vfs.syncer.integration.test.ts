@@ -22,7 +22,9 @@ async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<b
   return predicate();
 }
 
-async function walkLocalFs(root: string): Promise<Map<string, { kind: "file" | "folder"; size: number | null }>> {
+async function walkLocalFs(
+  root: string
+): Promise<Map<string, { kind: "file" | "folder"; size: number | null }>> {
   const out = new Map<string, { kind: "file" | "folder"; size: number | null }>();
   const queue: string[] = [root];
   while (queue.length > 0) {
@@ -82,7 +84,7 @@ describe("vfs syncer integration", () => {
               provider,
               mount,
             })
-          ).map((entry) => [entry.sourceRef, entry]),
+          ).map((entry) => [entry.sourceRef, entry])
         );
         const dbNodes = repo
           .listNodesByMountId(mount.mountId)
@@ -103,7 +105,7 @@ describe("vfs syncer integration", () => {
         rmSync(dir, { recursive: true, force: true });
       }
     },
-    5 * 60 * 1000,
+    5 * 60 * 1000
   );
 
   test("local provider fullSync and watch stay aligned with filesystem changes", async () => {
@@ -145,7 +147,7 @@ describe("vfs syncer integration", () => {
         repo
           .listNodesByMountId(mount.mountId)
           .filter((node) => node.deletedAtMs === null)
-          .map((node) => [node.sourceRef, node]),
+          .map((node) => [node.sourceRef, node])
       );
       expect(dbMap1.size).toBe(fsMap1.size);
       for (const [sourceRef, f] of fsMap1.entries()) {
@@ -182,7 +184,7 @@ describe("vfs syncer integration", () => {
         repo
           .listNodesByMountId(mount.mountId)
           .filter((node) => node.deletedAtMs === null)
-          .map((node) => [node.sourceRef, node]),
+          .map((node) => [node.sourceRef, node])
       );
       expect(dbMap2.size).toBe(fsMap2.size);
       for (const [sourceRef, f] of fsMap2.entries()) {

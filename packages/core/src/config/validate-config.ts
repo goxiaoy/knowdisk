@@ -1,9 +1,11 @@
 import type { CoreConfig, OpenAiProviderConfig, QwenProviderConfig } from "./config.types";
 
-export function validateCoreConfig(
-  config: CoreConfig,
-): { ok: boolean; errors: string[] } {
+export function validateCoreConfig(config: CoreConfig): { ok: boolean; errors: string[] } {
   const errors: string[] = [];
+
+  if (config.basePath.trim().length === 0) {
+    errors.push("basePath is required");
+  }
 
   if (config.logger.name.trim().length === 0) {
     errors.push("logger.name is required");
@@ -59,7 +61,7 @@ export function validateCoreConfig(
 function validateOpenAiProvider(
   errors: string[],
   config: OpenAiProviderConfig | undefined,
-  consumer: string,
+  consumer: string
 ) {
   if (!config || config.endpoint.trim().length === 0) {
     errors.push(`providers.openai.endpoint is required for ${consumer}`);
@@ -72,7 +74,7 @@ function validateOpenAiProvider(
 function validateQwenProvider(
   errors: string[],
   config: QwenProviderConfig | undefined,
-  consumer: string,
+  consumer: string
 ) {
   if (!config || config.endpoint.trim().length === 0) {
     errors.push(`providers.qwen.endpoint is required for ${consumer}`);

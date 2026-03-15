@@ -13,6 +13,7 @@
 ### Task 1: Bootstrap the workspace package contract
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `packages/parser/package.json`
 - Create: `packages/parser/src/index.ts`
@@ -46,6 +47,7 @@ git commit -m "feat: bootstrap parser workspace package"
 ### Task 2: Define parser types and constructor validation
 
 **Files:**
+
 - Create: `packages/parser/src/parser.types.ts`
 - Create: `packages/parser/src/parser.service.ts`
 - Modify: `packages/parser/src/index.ts`
@@ -54,6 +56,7 @@ git commit -m "feat: bootstrap parser workspace package"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - construct the service with `vfs`, `basePath`, and `logger`
 - reject empty `basePath`
 - expose `parseNode`, `materializeNode`, and `getCachePaths`
@@ -66,6 +69,7 @@ Expected: FAIL because constructor and types do not exist yet.
 **Step 3: Write minimal implementation**
 
 Add:
+
 - `ParseDocument`
 - `ParseSection`
 - `ParseChunk`
@@ -90,6 +94,7 @@ git commit -m "feat: add parser service contract"
 ### Task 3: Add VFS read and node validation
 
 **Files:**
+
 - Modify: `packages/parser/src/parser.service.ts`
 - Test: `packages/parser/src/parser.service.test.ts`
 - Test: `packages/parser/src/parser.read.test.ts`
@@ -97,6 +102,7 @@ git commit -m "feat: add parser service contract"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - load node metadata by `nodeId`
 - reject missing nodes
 - reject non-file nodes
@@ -113,6 +119,7 @@ Expected: FAIL because read helpers are not implemented.
 **Step 3: Write minimal implementation**
 
 Implement internal helpers for:
+
 - `getNodeOrThrow`
 - `readNodeBuffer`
 - stream-to-buffer conversion
@@ -134,6 +141,7 @@ git commit -m "feat: add parser vfs read stage"
 ### Task 4: Add markdown cache layout and manifest handling
 
 **Files:**
+
 - Modify: `packages/parser/src/parser.service.ts`
 - Create: `packages/parser/src/parser.cache.ts`
 - Test: `packages/parser/src/parser.cache.test.ts`
@@ -141,6 +149,7 @@ git commit -m "feat: add parser vfs read stage"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - create `<basePath>/<mountId>/<nodeId>/`
 - write `document.md` and `manifest.json`
 - reuse cached markdown when `providerVersion` matches
@@ -157,6 +166,7 @@ Expected: FAIL because cache read/write helpers do not exist.
 **Step 3: Write minimal implementation**
 
 Implement:
+
 - cache directory creation
 - manifest serialization
 - markdown cache read/write
@@ -177,6 +187,7 @@ git commit -m "feat: add parser markdown cache"
 ### Task 5: Add markdown conversion abstraction with `markitdown-ts`
 
 **Files:**
+
 - Create: `packages/parser/src/converter.ts`
 - Modify: `packages/parser/src/parser.service.ts`
 - Modify: `packages/parser/src/parser.types.ts`
@@ -185,6 +196,7 @@ git commit -m "feat: add parser markdown cache"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - call the converter with a `Buffer`
 - capture returned markdown and title
 - allow dependency injection for converter stubs
@@ -202,6 +214,7 @@ Expected: FAIL because converter abstraction is missing.
 Add a converter interface and a default converter wrapper around `markitdown-ts`.
 
 Update the service so `materializeNode` performs:
+
 - cache lookup
 - markdown conversion on miss
 - cache write after conversion
@@ -221,6 +234,7 @@ git commit -m "feat: add markdown conversion stage"
 ### Task 6: Add remark-based section splitting
 
 **Files:**
+
 - Create: `packages/parser/src/section-splitter.ts`
 - Modify: `packages/parser/src/parser.service.ts`
 - Test: `packages/parser/src/section-splitter.test.ts`
@@ -228,6 +242,7 @@ git commit -m "feat: add markdown conversion stage"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - create a synthetic preamble section for content before the first heading
 - create sections for headings
 - preserve heading depth
@@ -260,6 +275,7 @@ git commit -m "feat: add parser section splitting"
 ### Task 7: Add LangChain text splitting and final chunk emission
 
 **Files:**
+
 - Create: `packages/parser/src/text-splitter.ts`
 - Modify: `packages/parser/src/parser.service.ts`
 - Test: `packages/parser/src/text-splitter.test.ts`
@@ -268,6 +284,7 @@ git commit -m "feat: add parser section splitting"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - split large section text into multiple chunks
 - preserve section metadata on every chunk
 - skip whitespace-only chunks
@@ -284,6 +301,7 @@ Expected: FAIL because final chunk emission is not implemented.
 **Step 3: Write minimal implementation**
 
 Implement:
+
 - splitter abstraction
 - section-to-chunk transformation
 - metadata propagation to `ParseChunk`
@@ -304,6 +322,7 @@ git commit -m "feat: emit parser chunks from markdown sections"
 ### Task 8: Add skipped and error chunk behavior with logging
 
 **Files:**
+
 - Modify: `packages/parser/src/parser.service.ts`
 - Modify: `packages/parser/src/parser.types.ts`
 - Test: `packages/parser/src/parser.error.test.ts`
@@ -311,6 +330,7 @@ git commit -m "feat: emit parser chunks from markdown sections"
 **Step 1: Write the failing test**
 
 Add tests that:
+
 - return one skipped chunk for empty markdown
 - return one skipped chunk for unsupported content
 - return one error chunk when conversion throws
@@ -327,6 +347,7 @@ Expected: FAIL because error chunk fallback does not exist.
 **Step 3: Write minimal implementation**
 
 Implement service-level error translation so parse failures produce:
+
 - `status: "skipped"` or `status: "error"`
 - empty `text`
 - populated source metadata
@@ -349,6 +370,7 @@ git commit -m "feat: add parser error chunk fallback"
 ### Task 9: Verify package exports and full parser test suite
 
 **Files:**
+
 - Modify: `packages/parser/package.json`
 - Modify: `packages/parser/src/index.ts`
 - Test: `packages/parser/src/*.test.ts`
@@ -381,6 +403,7 @@ git commit -m "feat: finalize parser package exports"
 ### Task 10: Final verification and docs sync
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
 - Modify: `docs/plans/2026-03-10-parser-package-design.md`

@@ -16,7 +16,7 @@ describe("local model task selection", () => {
             headers: {
               "content-type": "application/json",
             },
-          },
+          }
         );
       }
       return new Response("test", {

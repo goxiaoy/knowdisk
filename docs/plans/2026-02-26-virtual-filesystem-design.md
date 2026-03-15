@@ -186,23 +186,27 @@ export interface VfsSyncScheduler {
 ## 5. Metadata Sync Flow
 
 1. Mount startup:
+
 - register mount config
 - initialize provider adapter
 - start watch if supported
 - schedule reconcile job
 
 2. watch-capable provider:
+
 - consume provider events
 - debounce per sourceRef
 - enqueue metadata upsert/delete jobs
 - periodic reconcile for repair
 
 3. reconcile-only provider:
+
 - no watch stream
 - periodic list/diff
 - enqueue repair jobs
 
 4. local mount:
+
 - reuse existing local watch + debounce + reconcile pipeline
 - upsert into `vfs_nodes`
 

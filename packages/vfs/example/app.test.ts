@@ -27,7 +27,7 @@ function mockHfProvider(): VfsProviderAdapter {
 async function readUntil(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   pattern: string,
-  timeoutMs = 2_000,
+  timeoutMs = 2_000
 ) {
   const decoder = new TextDecoder();
   let text = "";
@@ -88,26 +88,27 @@ describe("vfs example app", () => {
       expect(pageHtml).toContain("<th>Modify Time</th>");
       expect(pageHtml).toContain("<th>Provider Version</th>");
       expect(pageHtml).toContain("<th>Actions</th>");
-      expect(pageHtml).toContain("id=\"createKind\"");
+      expect(pageHtml).toContain('id="createKind"');
       expect(Array.isArray(state.mounts)).toBe(true);
       expect(state.mounts.length).toBe(2);
       expect(
-        state.mounts.some(
-          (mount: { mountId: string }) =>
-            mount.mountId === "hf-tiny-random-bert",
-        ),
+        state.mounts.some((mount: { mountId: string }) => mount.mountId === "hf-tiny-random-bert")
       ).toBe(true);
       expect(
-        state.mounts.some((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert"),
+        state.mounts.some((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert")
       ).toBe(true);
-      const localMount = state.mounts.find((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert");
+      const localMount = state.mounts.find(
+        (mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert"
+      );
       expect(localMount?.mountNodeId).toEqual(expect.any(String));
       expect(localMount?.operations).toEqual({
         create: true,
         rename: true,
         delete: true,
       });
-      const hfMount = state.mounts.find((mount: { mountId: string }) => mount.mountId === "hf-tiny-random-bert");
+      const hfMount = state.mounts.find(
+        (mount: { mountId: string }) => mount.mountId === "hf-tiny-random-bert"
+      );
       expect(hfMount?.operations).toEqual({
         create: false,
         rename: false,
@@ -118,14 +119,14 @@ describe("vfs example app", () => {
       const deadline = Date.now() + 2_000;
       while (Date.now() < deadline) {
         const listRes = await fetch(
-          `${baseUrl}/api/list?parentNodeId=${encodeURIComponent(localMount.mountNodeId)}&limit=50`,
+          `${baseUrl}/api/list?parentNodeId=${encodeURIComponent(localMount.mountNodeId)}&limit=50`
         );
         expect(listRes.status).toBe(200);
         listed = await listRes.json();
         if (
           listed.items.some(
             (item: { name: string; kind: string }) =>
-              item.name === "hello.txt" && item.kind === "file",
+              item.name === "hello.txt" && item.kind === "file"
           )
         ) {
           break;
@@ -136,14 +137,14 @@ describe("vfs example app", () => {
       expect(
         listed.items.some(
           (item: { name: string; kind: string }) =>
-            item.name === "hello.txt" && item.kind === "file",
-        ),
+            item.name === "hello.txt" && item.kind === "file"
+        )
       ).toBe(true);
       const hello = listed.items.find((item: { name: string }) => item.name === "hello.txt");
       expect(hello?.nodeId).toEqual(expect.any(String));
 
       const metadataRes = await fetch(
-        `${baseUrl}/api/metadata?nodeId=${encodeURIComponent(hello.nodeId)}`,
+        `${baseUrl}/api/metadata?nodeId=${encodeURIComponent(hello.nodeId)}`
       );
       expect(metadataRes.status).toBe(200);
       const metadataPayload = await metadataRes.json();
@@ -152,11 +153,11 @@ describe("vfs example app", () => {
           nodeId: hello.nodeId,
           name: "hello.txt",
           kind: "file",
-        }),
+        })
       );
 
       const badListRes = await fetch(
-        `${baseUrl}/api/list?parentNodeId=${encodeURIComponent("invalid-node-id")}&limit=50`,
+        `${baseUrl}/api/list?parentNodeId=${encodeURIComponent("invalid-node-id")}&limit=50`
       );
       expect(badListRes.status).toBe(404);
       const badListPayload = await badListRes.json();

@@ -13,6 +13,7 @@
 ### Task 1: Create isolated worktree and verify baseline
 
 **Files:**
+
 - Modify: `.gitignore` only if `.worktrees/` is not ignored
 - Test: baseline repository status and package test suite
 
@@ -46,6 +47,7 @@ git commit -m "chore: ignore project worktrees"
 ### Task 2: Remove the legacy host app and tests
 
 **Files:**
+
 - Delete: `src/core/**`
 - Delete: `src/mainview/**`
 - Delete: `src/bun/**`
@@ -90,6 +92,7 @@ git commit -m "refactor(app): remove legacy host implementation"
 ### Task 3: Rebuild the Electrobun host bootstrap
 
 **Files:**
+
 - Create: `src/bun/index.ts`
 - Create: `src/types/electrobun.d.ts`
 - Modify: `electrobun.config.ts` if entry paths need alignment
@@ -130,6 +133,7 @@ git commit -m "feat(app): add electrobun host bootstrap"
 ### Task 4: Rebuild the React renderer shell with shadcn/ui
 
 **Files:**
+
 - Create: `components.json`
 - Create: `src/renderer/main.tsx`
 - Create: `src/renderer/App.tsx`
@@ -178,6 +182,7 @@ git commit -m "feat(app): add shadcn renderer shell"
 ### Task 5: Align scripts, lint, and build
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: any root config required by the new shell
 
@@ -210,6 +215,7 @@ git commit -m "chore(app): align build and lint for reinitialized shell"
 ### Task 6: Final verification and cleanup
 
 **Files:**
+
 - Review all modified files
 
 **Step 1: Run package tests**

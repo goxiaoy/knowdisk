@@ -34,25 +34,22 @@ describe("huggingface vfs provider", () => {
       provider.listChildren({
         parentId: null,
         limit: 10,
-      }),
-    ).rejects.toThrow('providerExtra.model must be a non-empty string');
+      })
+    ).rejects.toThrow("providerExtra.model must be a non-empty string");
 
     const badEndpointProvider = createHuggingFaceVfsProvider(
-      makeMount({ endpoint: "   ", model: "x/y" }),
+      makeMount({ endpoint: "   ", model: "x/y" })
     );
     await expect(
       badEndpointProvider.createReadStream?.({
         id: "onnx/model.onnx",
-      }) ?? Promise.resolve(null as never),
-    ).rejects.toThrow('providerExtra.endpoint must be a non-empty string');
+      }) ?? Promise.resolve(null as never)
+    ).rejects.toThrow("providerExtra.endpoint must be a non-empty string");
   });
 
   test("listChildren lists direct children from huggingface siblings", async () => {
     const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
-    const mockFetch: typeof fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    const mockFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls.push({ url: String(input), init });
       return new Response(
         JSON.stringify({
@@ -63,7 +60,7 @@ describe("huggingface vfs provider", () => {
             { rfilename: "README.md", size: 999 },
           ],
         }),
-        { status: 200, headers: { "content-type": "application/json" } },
+        { status: 200, headers: { "content-type": "application/json" } }
       );
     }) as typeof fetch;
 
@@ -102,10 +99,7 @@ describe("huggingface vfs provider", () => {
       },
     });
     const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
-    const mockFetch: typeof fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    const mockFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls.push({ url: String(input), init });
       return new Response(stream, { status: 200 });
     }) as typeof fetch;
@@ -122,7 +116,7 @@ describe("huggingface vfs provider", () => {
 
     expect(fetchCalls).toHaveLength(1);
     expect(fetchCalls[0]?.url).toBe(
-      "https://huggingface.co/org/my%20model/resolve/main/onnx/model.onnx",
+      "https://huggingface.co/org/my%20model/resolve/main/onnx/model.onnx"
     );
     expect(result).toBe(stream);
   });
@@ -134,10 +128,7 @@ describe("huggingface vfs provider", () => {
       },
     });
     const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
-    const mockFetch: typeof fetch = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    const mockFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       fetchCalls.push({ url: String(input), init });
       return new Response(stream, { status: 206 });
     }) as typeof fetch;
@@ -170,7 +161,7 @@ describe("huggingface vfs provider", () => {
     await expect(
       provider.createReadStream?.({
         id: "README.md",
-      }) ?? Promise.resolve(null as never),
+      }) ?? Promise.resolve(null as never)
     ).rejects.toThrow('id is not allowed by whitelist: "README.md"');
   });
 
@@ -191,7 +182,7 @@ describe("huggingface vfs provider", () => {
             { rfilename: "README.md", size: 999 },
           ],
         }),
-        { status: 200, headers: { "content-type": "application/json" } },
+        { status: 200, headers: { "content-type": "application/json" } }
       );
     }) as typeof fetch;
     const mount = makeMount({
@@ -210,7 +201,7 @@ describe("huggingface vfs provider", () => {
         name: "model.onnx",
         kind: "file",
         size: 456,
-      }),
+      })
     );
     expect(fetchCalls.some((call) => call.init?.method === "HEAD")).toBe(true);
 
@@ -222,10 +213,10 @@ describe("huggingface vfs provider", () => {
 
   test("writes provider operation logs", async () => {
     const mockFetch: typeof fetch = (async () => {
-      return new Response(
-        JSON.stringify({ siblings: [{ rfilename: "config.json", size: 10 }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ siblings: [{ rfilename: "config.json", size: 10 }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     }) as typeof fetch;
     const mock = createMockLogger();
     const mount = makeMount({
@@ -244,9 +235,8 @@ describe("huggingface vfs provider", () => {
 
     expect(
       mock.records.some(
-        (record) =>
-          record.level === "info" && record.msg.includes("huggingface listChildren"),
-      ),
+        (record) => record.level === "info" && record.msg.includes("huggingface listChildren")
+      )
     ).toBe(true);
   });
 });

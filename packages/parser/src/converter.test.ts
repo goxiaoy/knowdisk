@@ -9,9 +9,7 @@ import { createParserService } from "@knowdisk/parser";
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 describe("markdown conversion stage", () => {
@@ -51,10 +49,7 @@ async function createTempDir() {
   return dir;
 }
 
-function createVfsStub(input: {
-  node: VfsNode;
-  streamText: string;
-}): VfsOperationCore {
+function createVfsStub(input: { node: VfsNode; streamText: string }): VfsOperationCore {
   return {
     async listChildren() {
       return { items: [] };
@@ -83,8 +78,7 @@ function createNode(input: Partial<VfsNode> & Pick<VfsNode, "nodeId">): VfsNode 
     size: input.size ?? 12,
     mtimeMs: input.mtimeMs ?? 123,
     sourceRef: input.sourceRef ?? "docs/file.docx",
-    providerVersion:
-      input.providerVersion === undefined ? "v1" : input.providerVersion,
+    providerVersion: input.providerVersion === undefined ? "v1" : input.providerVersion,
     deletedAtMs: input.deletedAtMs ?? null,
     createdAtMs: input.createdAtMs ?? 1,
     updatedAtMs: input.updatedAtMs ?? 1,

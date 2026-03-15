@@ -9,12 +9,14 @@ Replace the current host app under `src/` with a fresh Electrobun + shadcn/ui sh
 This redesign only applies to the application host layer in `src/` and the root build configuration needed to boot it. It does not integrate any of the existing package libraries yet.
 
 In scope:
+
 - Remove the current `src/` implementation.
 - Rebuild a minimal Electrobun app shell.
 - Rebuild the renderer as a React + Vite app using shadcn/ui primitives.
 - Keep `packages/core`, `packages/model`, `packages/indexing`, `packages/parser`, and `packages/vfs` unchanged.
 
 Out of scope:
+
 - Reconnecting existing package services to the new shell.
 - Preserving old `src/core` behavior.
 - Migrating old tests for app-level features.
@@ -22,6 +24,7 @@ Out of scope:
 ## Recommended Approach
 
 Use a minimal host reset rather than a feature-complete rewrite. The new app should only provide:
+
 - an Electrobun main process entry,
 - a React renderer entry,
 - a basic application shell UI,
@@ -45,6 +48,7 @@ The rebuilt `src/` should contain only:
   - Electrobun-related ambient types needed by the new shell
 
 The following current areas are intentionally removed:
+
 - `src/mainview/**`
 - `src/core/**`
 - the existing `src/bun/**`
@@ -53,6 +57,7 @@ The following current areas are intentionally removed:
 ## Configuration Strategy
 
 Reuse the existing root workspace and most root config where practical:
+
 - keep `package.json`,
 - keep `electrobun.config.ts`,
 - keep Tailwind/PostCSS/Vite config and adjust only what the new renderer needs,
@@ -63,6 +68,7 @@ This avoids unnecessary churn outside the host app reset.
 ## UI Direction
 
 The new renderer starts as a clean shell, not a business app. It should include:
+
 - a simple desktop frame layout,
 - a primary content panel,
 - a lightweight sidebar or header for navigation affordance,
@@ -75,12 +81,14 @@ The UI should use shadcn/ui primitives and avoid carrying over the old page stru
 Because `src/` is being reset, host-app tests tied to the old implementation should be removed or rewritten as part of the reset. Package tests remain the safety net.
 
 Required verification:
+
 - `bun install`
 - `bun run lint`
 - `bun test packages/core/src packages/model/src packages/indexing/src packages/parser/src packages/vfs/src`
 - `bun run build`
 
 Optional manual verification:
+
 - `bun run dev`
 
 ## Execution Notes

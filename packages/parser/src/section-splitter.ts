@@ -13,7 +13,9 @@ type HeadingNode = {
 };
 
 type RootNode = {
-  children: Array<HeadingNode | { position?: { start?: { offset?: number }; end?: { offset?: number } } }>;
+  children: Array<
+    HeadingNode | { position?: { start?: { offset?: number }; end?: { offset?: number } } }
+  >;
 };
 
 export function splitMarkdownIntoSections(markdown: string) {
@@ -32,8 +34,7 @@ export function splitMarkdownIntoSections(markdown: string) {
   const headingIndexes = tree.children
     .map((node, index) => ({ node, index }))
     .filter(
-      (entry): entry is { node: HeadingNode; index: number } =>
-        entry.node.type === "heading",
+      (entry): entry is { node: HeadingNode; index: number } => entry.node.type === "heading"
     );
 
   if (headingIndexes.length === 0) {
@@ -81,10 +82,7 @@ export function splitMarkdownIntoSections(markdown: string) {
     const sectionMarkdown = markdown.slice(start, end).trim();
     const heading = toString(current).trim();
 
-    while (
-      depthStack.length > 0 &&
-      depthStack[depthStack.length - 1] >= current.depth
-    ) {
+    while (depthStack.length > 0 && depthStack[depthStack.length - 1] >= current.depth) {
       depthStack.pop();
       headingStack.pop();
     }

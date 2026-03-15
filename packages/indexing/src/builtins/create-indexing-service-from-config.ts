@@ -12,7 +12,7 @@ export function createIndexingServiceFromConfig(
     ftsRepository: Parameters<typeof createIndexingService>[0]["ftsRepository"];
     vectorRepository: Parameters<typeof createIndexingService>[0]["vectorRepository"];
     defaults?: Parameters<typeof createIndexingService>[0]["defaults"];
-  },
+  }
 ) {
   const config = container.resolve<CoreConfig>("CoreConfig");
   const embeddingRegistry = createEmbeddingRegistry(container);
@@ -37,9 +37,7 @@ export function createIndexingServiceFromConfig(
           : undefined,
     },
     reranker:
-      config.reranker.enabled && config.reranker.provider === "local"
-        ? { type: "local" }
-        : null,
+      config.reranker.enabled && config.reranker.provider === "local" ? { type: "local" } : null,
     defaults: input.defaults,
   });
 }

@@ -9,9 +9,7 @@ import { createParserService } from "@knowdisk/parser";
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
 describe("parser markdown cache", () => {
@@ -134,10 +132,7 @@ async function createTempDir() {
   return dir;
 }
 
-function createCountingVfs(input: {
-  node: VfsNode;
-  streamText: string;
-}): VfsOperationCore & {
+function createCountingVfs(input: { node: VfsNode; streamText: string }): VfsOperationCore & {
   node: VfsNode;
   streamText: string;
   readCount: number;
@@ -164,9 +159,7 @@ function createCountingVfs(input: {
   };
 }
 
-function createNode(
-  input: Partial<VfsNode> & Pick<VfsNode, "nodeId" | "mountId">,
-): VfsNode {
+function createNode(input: Partial<VfsNode> & Pick<VfsNode, "nodeId" | "mountId">): VfsNode {
   return {
     nodeId: input.nodeId,
     mountId: input.mountId,
@@ -176,8 +169,7 @@ function createNode(
     size: input.size ?? 12,
     mtimeMs: input.mtimeMs ?? 123,
     sourceRef: input.sourceRef ?? "docs/file.txt",
-    providerVersion:
-      input.providerVersion === undefined ? "v1" : input.providerVersion,
+    providerVersion: input.providerVersion === undefined ? "v1" : input.providerVersion,
     deletedAtMs: input.deletedAtMs ?? null,
     createdAtMs: input.createdAtMs ?? 1,
     updatedAtMs: input.updatedAtMs ?? 1,
