@@ -1,4 +1,5 @@
 export { createLoggerService } from "./logger";
+export * from "./config";
 
 export function createDefaultCoreConfig() {
   throw new Error("Not implemented");
