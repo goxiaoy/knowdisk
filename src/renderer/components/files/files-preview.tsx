@@ -10,13 +10,13 @@ type FilesPreviewProps = {
 
 export function FilesPreview({ previewTitle, previewMarkdown, loadingPreview, error }: FilesPreviewProps) {
   return (
-    <Card>
+    <Card className="flex h-full min-h-0 flex-col">
       <CardHeader className="mb-3 border-b border-slate-100 pb-3">
         <CardTitle className="text-lg text-slate-900">{previewTitle ?? "Markdown Preview"}</CardTitle>
         {error ? <p className="mt-1 text-xs text-rose-600">{error}</p> : null}
       </CardHeader>
 
-      <CardContent className="h-[calc(100%-56px)] overflow-auto p-4 pt-0">
+      <CardContent className="min-h-0 flex-1 overflow-auto p-4 pt-0">
         {loadingPreview ? (
           <p className="text-sm text-slate-500">Parsing markdown...</p>
         ) : previewMarkdown ? (

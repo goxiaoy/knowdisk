@@ -1,4 +1,4 @@
-export { defaultMarkdownConverter } from "./converter";
+export { defaultMarkdownConverter, isParserSupportedFile } from "./converter";
 export { createParserService } from "./parser.service";
 export { defaultTextSplitter } from "./text-splitter";
 export type {

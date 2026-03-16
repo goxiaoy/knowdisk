@@ -1,6 +1,26 @@
 import { extname } from "node:path";
 import type { MarkdownConverter } from "./parser.types";
 
+const UNSUPPORTED_VIDEO_EXTENSIONS = new Set([
+  ".avi",
+  ".flv",
+  ".m4v",
+  ".mkv",
+  ".mov",
+  ".mp4",
+  ".mpeg",
+  ".mpg",
+  ".mts",
+  ".ts",
+  ".webm",
+  ".wmv",
+]);
+
+export function isParserSupportedFile(input: { name: string; sourceRef?: string | null }): boolean {
+  const fileExtension = extname(input.name || input.sourceRef || "").toLowerCase();
+  return !UNSUPPORTED_VIDEO_EXTENSIONS.has(fileExtension);
+}
+
 type MarkItDownInstance = {
   convertBuffer: (
     buffer: Buffer,

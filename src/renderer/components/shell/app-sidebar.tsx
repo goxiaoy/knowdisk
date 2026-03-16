@@ -1,12 +1,15 @@
-import { FileText, Folder, MessageCircle, Search, SlidersHorizontal } from "lucide-react";
+import { Folder, MessageCircle, Search, SlidersHorizontal } from "lucide-react";
+import type { RendererIndexStatus } from "../../../shared/index-status";
 import type { RendererModelStatus } from "../../../shared/model-status";
+import type { RendererVectorDbStatus } from "../../../shared/vector-db-status";
 import type { RendererVfsStatus } from "../../../shared/vfs-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { IndexStatusIndicator } from "./index-status-indicator";
 import { SidebarNavItem } from "./sidebar-nav-item";
 import { StatusIndicator } from "./status-indicator";
+import { VectorDbStatusIndicator } from "./vector-db-status-indicator";
 import { VfsStatusIndicator } from "./vfs-status-indicator";
 import type { MainRoute } from "./types";
 
@@ -19,26 +22,33 @@ export function AppSidebar({
   route,
   onNavigate,
   modelStatus,
+  indexStatus,
   vfsStatus,
+  vectorDbStatus,
 }: {
   route: MainRoute;
   onNavigate: (route: MainRoute) => void;
   modelStatus: RendererModelStatus;
+  indexStatus: RendererIndexStatus;
   vfsStatus: RendererVfsStatus;
+  vectorDbStatus: RendererVectorDbStatus;
 }) {
   return (
-    <Card className="flex min-h-[calc(100vh-2rem)] flex-col rounded-3xl p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] md:min-h-[calc(100vh-2rem)] md:p-5">
-      <div className="flex items-center justify-between pb-4">
+    <aside
+      className="z-10 flex h-full min-h-0 flex-col overflow-visible rounded-[28px] p-3 md:p-4"
+      data-testid="app-sidebar"
+    >
+      <div className="flex items-start justify-between pb-3">
         <div>
           <p className="text-lg font-semibold text-slate-900">KnowDisk</p>
           <p className="text-xs text-slate-500">Desktop workspace</p>
         </div>
-        <Button className="rounded-xl" size="icon" variant="outline" type="button">
+        <Button className="rounded-xl" size="icon" variant="ghost" type="button">
           <SlidersHorizontal className="h-4 w-4" />
         </Button>
       </div>
 
-      <div className="space-y-1 border-b border-slate-100 pb-4">
+      <div className="space-y-1 pb-3" data-testid="app-sidebar-primary">
         {primaryItems.map(({ icon, label, route: itemRoute }) => (
           <SidebarNavItem
             key={itemRoute}
@@ -50,7 +60,10 @@ export function AppSidebar({
         ))}
       </div>
 
-      <div className="pt-4">
+      <div
+        className="mt-3 min-h-0 flex-1 border-t border-slate-200/80 pt-3"
+        data-testid="app-sidebar-knowledge"
+      >
         <Badge className="mb-2 uppercase tracking-[0.18em] text-slate-500">Knowledge Base</Badge>
         <Button
           className={cn(
@@ -59,6 +72,7 @@ export function AppSidebar({
               ? "bg-slate-100 text-slate-900 hover:bg-slate-100"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
           )}
+          data-testid="sidebar-files-nav"
           onClick={() => onNavigate("/files")}
           size="sm"
           variant="ghost"
@@ -66,14 +80,18 @@ export function AppSidebar({
         >
           <Folder className="h-4 w-4" />
           <span>Files</span>
-          <FileText className="ml-auto h-4 w-4 text-slate-400" />
         </Button>
       </div>
 
-      <div className="mt-auto flex items-center gap-2 pt-4">
-        <VfsStatusIndicator status={vfsStatus} />
+      <div
+        className="relative mt-auto flex items-center gap-2 border-t border-slate-200/80 pt-3"
+        data-testid="app-sidebar-status"
+      >
         <StatusIndicator status={modelStatus} />
+        <VfsStatusIndicator status={vfsStatus} />
+        <IndexStatusIndicator status={indexStatus} />
+        <VectorDbStatusIndicator status={vectorDbStatus} />
       </div>
-    </Card>
+    </aside>
   );
 }

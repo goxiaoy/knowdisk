@@ -170,6 +170,77 @@ describe("vfs integration", () => {
     ctx.cleanup();
   });
 
+  test("mountInternal uses config.name for mount root node name", async () => {
+    const ctx = setup();
+    const mount = await ctx.service.mountInternal("explicit-id", {
+      name: "My Docs",
+      providerType: "mock",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
+    expect(mountNode).toBeDefined();
+    expect(mountNode?.name).toBe("My Docs");
+    ctx.cleanup();
+  });
+
+  test("service rename supports mount node", async () => {
+    const ctx = setup();
+    const mount = await ctx.service.mountInternal("explicit-id", {
+      name: "Before",
+      providerType: "mock",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    const mountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
+    expect(mountNode).toBeDefined();
+    const renamed = await ctx.service.rename({
+      id: mountNode!.nodeId,
+      name: "After",
+    });
+    expect(renamed.name).toBe("After");
+    const rootsAfter = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    const mountNodeAfter = rootsAfter.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
+    expect(mountNodeAfter?.name).toBe("After");
+    ctx.cleanup();
+  });
+
+  test("service delete unmounts mount nodes", async () => {
+    const ctx = setup();
+    const mount = await ctx.service.mountInternal("explicit-id", {
+      name: "Mounted",
+      providerType: "mock",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const rootsBefore = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    const mountNode = rootsBefore.items.find(
+      (item) => item.kind === "mount" && item.mountId === mount.mountId
+    );
+    expect(mountNode).toBeDefined();
+
+    await ctx.service.delete({ id: mountNode!.nodeId });
+
+    const rootsAfter = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    expect(rootsAfter.items.some((item) => item.mountId === mount.mountId)).toBe(false);
+    expect(ctx.repo.getNodeMountExtByMountId(mount.mountId)).toBeNull();
+    ctx.cleanup();
+  });
+
   test("service getVersion reads providerVersion from metadata db", async () => {
     const ctx = setup();
     const mount = await ctx.service.mount({

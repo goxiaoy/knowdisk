@@ -6,17 +6,17 @@ describe("indexing service delete", () => {
     const deleted: string[] = [];
     const service = createIndexingService(createDeps(deleted));
 
-    await service.delete({ nodeId: "node-1" });
+    await service.deleteNode({ nodeId: "node-1" });
 
-    expect(deleted).toEqual(["fts:node-1", "vector:node-1"]);
+    expect(deleted).toEqual(["parser:node-1", "fts:node-1", "vector:node-1"]);
   });
 
   test("deleting a missing node is a no-op", async () => {
     const deleted: string[] = [];
     const service = createIndexingService(createDeps(deleted));
 
-    await expect(service.delete({ nodeId: "missing" })).resolves.toBeUndefined();
-    expect(deleted).toEqual(["fts:missing", "vector:missing"]);
+    await expect(service.deleteNode({ nodeId: "missing" })).resolves.toBeUndefined();
+    expect(deleted).toEqual(["parser:missing", "fts:missing", "vector:missing"]);
   });
 });
 
@@ -34,6 +34,24 @@ function createDeps(deleted: string[]) {
       },
       level: "info",
     } as never,
+    parser: {
+      parseNode() {
+        return {
+          async *[Symbol.asyncIterator]() {},
+        };
+      },
+      async clear({ nodeId }: { nodeId: string }) {
+        deleted.push(`parser:${nodeId}`);
+      },
+    },
+    vfs: {
+      async getMetadata() {
+        return null;
+      },
+      async walkChildren() {
+        return { items: [], source: "local" as const };
+      },
+    },
     ftsRepository: {
       async replaceNodeChunks() {},
       async deleteByNodeId(nodeId: string) {

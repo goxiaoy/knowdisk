@@ -2,6 +2,7 @@ import { Cpu } from "lucide-react";
 import type { RendererModelStatus } from "../../../shared/model-status";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { StatusTooltip } from "./status-tooltip";
 
 function phaseStyle(phase: RendererModelStatus["phase"], available: boolean) {
   if (!available) {
@@ -49,16 +50,16 @@ function TaskRow({ label, state, progressPct }: { label: string; state: string; 
   const visualPct = Math.max(0, Math.min(100, progressPct));
 
   return (
-    <Card className="rounded-xl border-slate-100 bg-slate-50/70 shadow-none">
+    <Card className="shadow-none rounded-xl border-slate-100 bg-slate-50/70">
       <CardContent className="px-2.5 py-2">
-      <div className="mb-1 flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-sm font-medium text-slate-700">{label}</span>
         <span className="text-xs text-slate-500">{formatTaskState(state)}</span>
       </div>
       <div className="h-1.5 w-full rounded-full bg-slate-200">
-        <div className="h-full rounded-full bg-slate-500 transition-all duration-300" style={{ width: `${visualPct}%` }} />
+        <div className="h-full transition-all duration-300 rounded-full bg-slate-500" style={{ width: `${visualPct}%` }} />
       </div>
-      <div className="mt-1 text-right text-xs font-medium text-slate-600">{visualPct}%</div>
+      <div className="mt-1 text-xs font-medium text-right text-slate-600">{visualPct}%</div>
       </CardContent>
     </Card>
   );
@@ -72,7 +73,7 @@ export function StatusIndicator({ status }: { status: RendererModelStatus }) {
   const dashOffset = circumference * (1 - progress / 100);
 
   return (
-    <div className="group relative">
+    <div className="relative group">
       <button
         aria-label="Background model task status"
         className={cn(
@@ -84,7 +85,7 @@ export function StatusIndicator({ status }: { status: RendererModelStatus }) {
       >
         <svg
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 -rotate-90"
+          className="absolute inset-0 -rotate-90 pointer-events-none"
           viewBox="0 0 40 40"
         >
           <circle
@@ -105,12 +106,11 @@ export function StatusIndicator({ status }: { status: RendererModelStatus }) {
             strokeWidth="3"
           />
         </svg>
-        <Cpu className="h-4 w-4" />
+        <Cpu className="w-4 h-4" />
       </button>
 
-      <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 opacity-0 shadow-[0_12px_28px_rgba(15,23,42,0.12)] transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Model Tasks</p>
+      <StatusTooltip title="Model Status">
+        <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-medium text-slate-700">{status.progressPct}%</span>
         </div>
 
@@ -130,7 +130,7 @@ export function StatusIndicator({ status }: { status: RendererModelStatus }) {
             />
           </div>
         )}
-      </div>
+      </StatusTooltip>
     </div>
   );
 }

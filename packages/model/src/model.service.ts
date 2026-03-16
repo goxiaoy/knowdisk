@@ -387,6 +387,20 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     );
   }
 
+  async function hasCompleteModelFiles(spec: LocalTaskSpec): Promise<boolean> {
+    const manifestPath = join(modelRoot(spec), ".knowdisk-manifest.json");
+    if (!(await pathExists(manifestPath))) {
+      return false;
+    }
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { files?: string[] };
+    for (const file of manifest.files ?? []) {
+      if (!(await pathExists(join(modelRoot(spec), file)))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   async function ensureScope(scope: LocalTaskKind | "all") {
     lastScope = scope;
     logger.info({ scope }, "model ensure started");
@@ -437,6 +451,21 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         },
       }));
       for (const spec of specs) {
+        if (await hasCompleteModelFiles(spec)) {
+          updateTask(spec.id, (task) => ({
+            ...task,
+            state: "verifying",
+          }));
+          await verifyModelIntegrity(spec);
+          updateTask(spec.id, (task) => ({
+            ...task,
+            state: "ready",
+            progressPct: 100,
+          }));
+          logger.info({ scope, kind: spec.kind, model: spec.model }, "model verify completed");
+          continue;
+        }
+
         logger.info({ scope, kind: spec.kind, model: spec.model }, "model download started");
         const files = await fetchRepoFiles(spec);
         const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
@@ -551,17 +580,8 @@ export function createModelService(input: CreateModelServiceInput): ModelService
   }
 
   async function ensureModelFiles(spec: LocalTaskSpec) {
-    const manifestPath = join(modelRoot(spec), ".knowdisk-manifest.json");
-    if (!(await pathExists(manifestPath))) {
+    if (!(await hasCompleteModelFiles(spec))) {
       await ensureScope(spec.kind);
-      return;
-    }
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { files?: string[] };
-    for (const file of manifest.files ?? []) {
-      if (!(await pathExists(join(modelRoot(spec), file)))) {
-        await ensureScope(spec.kind);
-        return;
-      }
     }
   }
 

@@ -5,6 +5,7 @@ export type VfsNodeRequiredField = "size" | "providerVersion" | "mtimeMs";
 export const MetadataAllField: VfsNodeRequiredField[] = ["size", "providerVersion", "mtimeMs"];
 
 export type VfsMountConfig = {
+  name?: string;
   providerType: string;
   providerExtra: Record<string, unknown>;
   autoSync?: boolean;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createVectorRepository } from "./vector.repository";
@@ -28,6 +28,7 @@ describe("vector repository", () => {
     const rows = await repo.search([1, 0], { topK: 2 });
     expect(rows[0]?.chunkId).toBe("chunk-1");
     expect(rows.some((item) => item.chunkId === "chunk-2")).toBe(true);
+    expect(await repo.getChunkCount()).toBe(2);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });
@@ -44,6 +45,7 @@ describe("vector repository", () => {
 
     const rows = await repo.search([1, 0], { topK: 5 });
     expect(rows.map((item) => item.chunkId)).toEqual(["chunk-2"]);
+    expect(await repo.getChunkCount()).toBe(1);
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });
@@ -78,6 +80,29 @@ describe("vector repository", () => {
     repo.close();
     rmSync(dir, { recursive: true, force: true });
   });
+
+  test("recreates a corrupted zvec collection on open", async () => {
+    const { dir, collectionPath, repo } = makeRepo();
+
+    await repo.replaceNodeChunks([createRow({ chunkId: "chunk-1", embedding: [1, 0] })]);
+    repo.close();
+    corruptVectorIndex(collectionPath);
+
+    const recovered = createVectorRepository({ collectionPath });
+    expect(recovered.consumeRecoveryState()).toEqual({ recovered: true });
+    expect(recovered.consumeRecoveryState()).toEqual({ recovered: false });
+
+    await expect(recovered.search([1, 0], { topK: 1 })).resolves.toEqual([]);
+    expect(await recovered.getChunkCount()).toBe(0);
+
+    await recovered.replaceNodeChunks([createRow({ chunkId: "chunk-2", embedding: [0, 1] })]);
+    await expect(recovered.search([0, 1], { topK: 1 })).resolves.toMatchObject([
+      { chunkId: "chunk-2" },
+    ]);
+
+    recovered.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 function makeRepo() {
@@ -105,4 +130,17 @@ function createRow(overrides: Partial<VectorChunkRow> = {}): VectorChunkRow {
     updatedAt: overrides.updatedAt ?? "2026-03-15T00:00:00.000Z",
     embedding: overrides.embedding ?? [1, 0],
   };
+}
+
+function corruptVectorIndex(collectionPath: string): void {
+  const indexFile = readdirSync(join(collectionPath, "0")).find((name) =>
+    name.startsWith("embedding.index.")
+  );
+  if (!indexFile) {
+    throw new Error("embedding index file not found");
+  }
+  const indexPath = join(collectionPath, "0", indexFile);
+  const buffer = readFileSync(indexPath);
+  buffer[0] = (buffer[0] + 1) % 255;
+  writeFileSync(indexPath, buffer);
 }

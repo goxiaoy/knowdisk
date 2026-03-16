@@ -15,14 +15,15 @@ export function MarkdownViewer({ markdown }: { markdown: string }) {
     let active = true;
 
     const load = async () => {
-      const [{ Milkdown, useEditor }, core, { commonmark }, { nord }] = await Promise.all([
+      const [{ Milkdown, MilkdownProvider, useEditor }, core, { commonmark }, { nord }] =
+        await Promise.all([
         import("@milkdown/react"),
         import("@milkdown/kit/core"),
         import("@milkdown/kit/preset/commonmark"),
         import("@milkdown/theme-nord"),
-      ]);
+        ]);
 
-      const DynamicRenderer = ({ markdown: value }: MilkdownRendererProps) => {
+      const DynamicRendererInner = ({ markdown: value }: MilkdownRendererProps) => {
         const editor = useEditor(
           (root) =>
             core.Editor.make()
@@ -44,6 +45,12 @@ export function MarkdownViewer({ markdown }: { markdown: string }) {
 
         return <Milkdown />;
       };
+
+      const DynamicRenderer = ({ markdown: value }: MilkdownRendererProps) => (
+        <MilkdownProvider>
+          <DynamicRendererInner markdown={value} />
+        </MilkdownProvider>
+      );
 
       if (active) {
         setRenderer(() => DynamicRenderer);

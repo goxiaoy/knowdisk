@@ -66,6 +66,7 @@ export type VfsNodeEventHooks = {
 
 export type VfsService = VfsOperationCore & {
   subscribeNodeChanges: (listener: (row: VfsNode) => void) => () => void;
+  getQueueProgressByMountId: (mountId: string) => { pendingUnits: number };
   subscribeSyncerEvents?: (
     listener: (event: { mountId: string; event: VfsSyncerEvent }) => void
   ) => () => void;

@@ -1,4 +1,4 @@
-import type { VfsProviderAdapter } from "./vfs.provider.types";
+import type { VfsOperationCore } from "./vfs.service.types";
 import { complete, type VfsNode, type VfsNodeRequiredField } from "./vfs.types";
 
 export type WalkProviderEntry = VfsNode & {
@@ -8,7 +8,7 @@ export type WalkProviderEntry = VfsNode & {
 const itemProviderId = (item: VfsNode): string => item.nodeId || item.sourceRef;
 
 export type WalkProviderInput = {
-  provider: VfsProviderAdapter;
+  provider: Pick<VfsOperationCore, "listChildren" | "getMetadata" | "getVersion">;
   parentId?: string | null;
   limit?: number;
   requiredFields?: VfsNodeRequiredField[];
@@ -78,7 +78,7 @@ export function walk(
 }
 export async function enrichMetadataIfNeeded(
   item: VfsNode,
-  provider: VfsProviderAdapter,
+  provider: Pick<VfsOperationCore, "getMetadata" | "getVersion">,
   requiredFields: VfsNodeRequiredField[]
 ): Promise<VfsNode> {
   if (item.kind !== "file" || complete(item, requiredFields)) {

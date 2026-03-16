@@ -9,13 +9,16 @@ export type FileTreeNode = {
 
 export type ListFilesNodesRequest = {
   parentNodeId: string | null;
+  cursor?: string;
+  limit?: number;
 };
 
 export type ListFilesNodesResponse = {
   items: FileTreeNode[];
+  nextCursor?: string;
 };
 
-export type PickAndMountLocalDirectoryResponse =
+export type PickLocalDirectoryResponse =
   | {
       ok: true;
       cancelled: true;
@@ -23,8 +26,21 @@ export type PickAndMountLocalDirectoryResponse =
   | {
       ok: true;
       cancelled: false;
-      mountId: string;
       directory: string;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+export type MountLocalDirectoryRequest = {
+  directory: string;
+};
+
+export type MountLocalDirectoryResponse =
+  | {
+      ok: true;
+      mountId: string;
     }
   | {
       ok: false;
@@ -40,6 +56,63 @@ export type GetFileMarkdownResponse =
       ok: true;
       markdown: string;
       title: string | null;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+export type RenameFileNodeRequest = {
+  nodeId: string;
+  name: string;
+};
+
+export type RenameFileNodeResponse =
+  | {
+      ok: true;
+      node: FileTreeNode;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+export type DeleteFileNodeRequest = {
+  nodeId: string;
+};
+
+export type DeleteFileNodeResponse =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
+export type FileNodeMetadata = {
+  nodeId: string;
+  mountId: string;
+  parentId: string | null;
+  name: string;
+  kind: FileTreeNodeKind;
+  size: number | null;
+  mtimeMs: number | null;
+  sourceRef: string;
+  providerVersion: string | null;
+  deletedAtMs: number | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type GetFileNodeMetadataRequest = {
+  nodeId: string;
+};
+
+export type GetFileNodeMetadataResponse =
+  | {
+      ok: true;
+      metadata: FileNodeMetadata;
     }
   | {
       ok: false;

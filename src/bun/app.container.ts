@@ -11,6 +11,7 @@ import {
   createFtsRepository,
   createIndexingServiceFromConfig,
   createVectorRepository,
+  type VectorRepository,
 } from "@knowdisk/indexing";
 import { createModelService } from "@knowdisk/model";
 import { createParserService, type ParserService } from "@knowdisk/parser";
@@ -23,20 +24,7 @@ import {
 } from "@knowdisk/vfs";
 import type { Logger } from "pino";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
-
-type IndexingService = {
-  index: (input: {
-    node: {
-      nodeId: string;
-      mountId: string;
-      sourceRef: string;
-      name: string;
-      providerVersion: string | null;
-    };
-    chunks: AsyncIterable<unknown>;
-  }) => Promise<{ indexed: number }>;
-  delete: (input: { nodeId: string }) => Promise<void>;
-};
+type IndexingService = ReturnType<typeof createIndexingServiceFromConfig>;
 
 type ModelService = ReturnType<typeof createModelService>;
 
@@ -71,6 +59,8 @@ export type AppContainer = {
   vfs: VfsService;
   parser: ParserService;
   indexing: IndexingService;
+  vectorRepository: VectorRepository;
+  close(): Promise<void>;
 };
 
 const TOKENS = {
@@ -175,34 +165,47 @@ export function createAppContainer(input?: {
     vfs,
     parser,
     indexing,
+    vectorRepository,
+    async close() {
+      const errors: Error[] = [];
+      try {
+        await vfs.close();
+      } catch (error) {
+        errors.push(
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
+      for (const close of [
+        () => vfsRepository.close(),
+        () => ftsRepository.close(),
+        () => vectorRepository.close(),
+      ]) {
+        try {
+          close();
+        } catch (error) {
+          errors.push(
+            error instanceof Error ? error : new Error(String(error))
+          );
+        }
+      }
+      if (errors.length > 0) {
+        throw new AggregateError(errors, "failed to close application resources");
+      }
+    },
   };
 }
 
 export function createVfsIndexingHooks(input: {
-  parser: Pick<ParserService, "parseNode" | "clear">;
-  indexing: Pick<IndexingService, "index" | "delete">;
+  indexing: Pick<IndexingService, "indexNode" | "deleteNode">;
   logger: Pick<Logger, "error">;
 }): VfsNodeEventHooks {
-  const parseAndIndex = async (node: {
-    nodeId: string;
-    mountId: string;
-    sourceRef: string;
-    name: string;
-    providerVersion: string | null;
-  }) => {
-    await input.indexing.index({
-      node,
-      chunks: input.parser.parseNode({ nodeId: node.nodeId }),
-    });
-  };
-
   return {
     async afterUpdateContent(ctx) {
       if (ctx.nextNode?.kind !== "file") {
         return;
       }
       try {
-        await parseAndIndex(ctx.nextNode);
+        await input.indexing.indexNode({ nodeId: ctx.nextNode.nodeId });
       } catch (error) {
         input.logger.error(
           {
@@ -218,8 +221,7 @@ export function createVfsIndexingHooks(input: {
         return;
       }
       try {
-        await input.parser.clear({ nodeId: ctx.prevNode.nodeId });
-        await input.indexing.delete({ nodeId: ctx.prevNode.nodeId });
+        await input.indexing.deleteNode({ nodeId: ctx.prevNode.nodeId });
       } catch (error) {
         input.logger.error(
           {
@@ -236,11 +238,13 @@ export function createVfsIndexingHooks(input: {
 export function initializeAppRuntime(app: AppContainer): () => void {
   const offHooks = app.vfs.registerNodeEventHooks(
     createVfsIndexingHooks({
-      parser: app.parser,
       indexing: app.indexing,
       logger: app.logger,
     })
   );
+  if (app.vectorRepository.consumeRecoveryState().recovered) {
+    void app.indexing.rebuildAllFromLocalNodes();
+  }
   return () => {
     offHooks();
   };

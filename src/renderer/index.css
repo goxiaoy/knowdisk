@@ -36,3 +36,36 @@ body {
   outline: none;
   white-space: pre-wrap;
 }
+
+.filetree-marquee-wrap {
+  overflow: hidden;
+}
+
+.filetree-marquee-track {
+  display: inline-flex;
+  min-width: 100%;
+  gap: 2rem;
+}
+
+.filetree-marquee-text {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.filetree-marquee-ghost {
+  padding-right: 1rem;
+}
+
+.filetree-row:hover .filetree-marquee-track {
+  animation: filetree-marquee 8s linear infinite;
+}
+
+@keyframes filetree-marquee {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(calc(-50% - 1rem));
+  }
+}

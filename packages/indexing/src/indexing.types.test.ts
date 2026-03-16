@@ -59,10 +59,24 @@ describe("indexing types", () => {
 
   it("supports the indexing service contract", async () => {
     const service: IndexingService = {
-      async index(_input) {
+      async indexNode(_input) {
         return { indexed: 1 };
       },
-      async delete(_input) {},
+      async deleteNode(_input) {},
+      async rebuildAllFromLocalNodes() {},
+      getStatus() {
+        return {
+          getSnapshot: () => ({
+            phase: "idle",
+            scope: null,
+            processedFiles: 0,
+            totalFiles: 0,
+            activeNodeName: null,
+            error: "",
+          }),
+          subscribe: () => () => {},
+        };
+      },
       async search(_query, _opts) {
         return {
           hybrid: [],
@@ -80,8 +94,8 @@ describe("indexing types", () => {
       },
     };
 
-    expect(typeof service.index).toBe("function");
-    expect(await service.index(createIndexInput())).toEqual({ indexed: 1 });
+    expect(typeof service.indexNode).toBe("function");
+    expect(await service.indexNode({ nodeId: "node-1" })).toEqual({ indexed: 1 });
     expect(await service.search("q")).toHaveProperty("hybrid");
   });
 
@@ -108,13 +122,6 @@ describe("indexing types", () => {
     expect(await reranker.rerank("q", [createHit()], { topK: 1 })).toHaveLength(1);
   });
 });
-
-function createIndexInput(): Parameters<IndexingService["index"]>[0] {
-  return {
-    node: createNode(),
-    chunks: createChunks([createChunk()]),
-  };
-}
 
 function createHit(): SearchHit {
   return {
@@ -212,6 +219,20 @@ const _inputShape: CreateIndexingServiceInput = {
     },
     level: "info",
   } as unknown as Logger,
+  parser: {
+    parseNode() {
+      return createChunks([createChunk()]);
+    },
+    async clear() {},
+  },
+  vfs: {
+    async getMetadata() {
+      return createNode();
+    },
+    async walkChildren() {
+      return { items: [createNode()], source: "local" as const };
+    },
+  },
   ftsRepository: {
     async replaceNodeChunks() {},
     async deleteByNodeId() {},

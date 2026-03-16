@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
+  type ZVecCollection,
   ZVecCollectionSchema,
   ZVecCreateAndOpen,
   ZVecDataType,
@@ -16,8 +17,11 @@ const VECTOR_FIELD = "embedding";
 export function createVectorRepository(opts: { collectionPath: string }): VectorRepository {
   const collectionPath = resolve(opts.collectionPath);
   mkdirSync(dirname(collectionPath), { recursive: true });
-  let collection = existsSync(collectionPath) ? ZVecOpen(collectionPath) : null;
+  let collection: ZVecCollection | null = null;
   let currentDimension: number | null = null;
+  let recovered = false;
+
+  openExistingCollectionIfPresent();
 
   return {
     async replaceNodeChunks(rows) {
@@ -41,36 +45,75 @@ export function createVectorRepository(opts: { collectionPath: string }): Vector
         currentDimension = dimension;
       }
 
-      collection.upsertSync(
-        rows.map((row) => ({
-          id: row.chunkId,
-          vectors: {
-            [VECTOR_FIELD]: row.embedding,
-          },
-          fields: {
-            nodeId: row.nodeId,
-            mountId: row.mountId,
-            sourceRef: row.sourceRef,
-            name: row.name,
-            title: row.title ?? "",
-            heading: row.heading ?? "",
-            text: row.text,
-            chunkIndex: String(row.chunkIndex),
-            sectionPath: JSON.stringify(row.sectionPath),
-            charStart: row.charStart === null ? "" : String(row.charStart),
-            charEnd: row.charEnd === null ? "" : String(row.charEnd),
-            tokenEstimate: row.tokenEstimate === null ? "" : String(row.tokenEstimate),
-            updatedAt: row.updatedAt,
-          },
-        }))
-      );
+      try {
+        collection.upsertSync(
+          rows.map((row) => ({
+            id: row.chunkId,
+            vectors: {
+              [VECTOR_FIELD]: row.embedding,
+            },
+            fields: {
+              nodeId: row.nodeId,
+              mountId: row.mountId,
+              sourceRef: row.sourceRef,
+              name: row.name,
+              title: row.title ?? "",
+              heading: row.heading ?? "",
+              text: row.text,
+              chunkIndex: String(row.chunkIndex),
+              sectionPath: JSON.stringify(row.sectionPath),
+              charStart: row.charStart === null ? "" : String(row.charStart),
+              charEnd: row.charEnd === null ? "" : String(row.charEnd),
+              tokenEstimate: row.tokenEstimate === null ? "" : String(row.tokenEstimate),
+              updatedAt: row.updatedAt,
+            },
+          }))
+        );
+      } catch (error) {
+        if (!isRecoverableIndexError(error)) {
+          throw error;
+        }
+        resetCollection();
+        collection = ZVecCreateAndOpen(collectionPath, createSchema(dimension));
+        currentDimension = dimension;
+        collection.upsertSync(
+          rows.map((row) => ({
+            id: row.chunkId,
+            vectors: {
+              [VECTOR_FIELD]: row.embedding,
+            },
+            fields: {
+              nodeId: row.nodeId,
+              mountId: row.mountId,
+              sourceRef: row.sourceRef,
+              name: row.name,
+              title: row.title ?? "",
+              heading: row.heading ?? "",
+              text: row.text,
+              chunkIndex: String(row.chunkIndex),
+              sectionPath: JSON.stringify(row.sectionPath),
+              charStart: row.charStart === null ? "" : String(row.charStart),
+              charEnd: row.charEnd === null ? "" : String(row.charEnd),
+              tokenEstimate: row.tokenEstimate === null ? "" : String(row.tokenEstimate),
+              updatedAt: row.updatedAt,
+            },
+          }))
+        );
+      }
     },
 
     async deleteByNodeId(nodeId) {
       if (!collection) {
         return;
       }
-      collection.deleteByFilterSync(`nodeId = '${escapeFilterValue(nodeId)}'`);
+      try {
+        collection.deleteByFilterSync(`nodeId = '${escapeFilterValue(nodeId)}'`);
+      } catch (error) {
+        if (!isRecoverableIndexError(error)) {
+          throw error;
+        }
+        resetCollection();
+      }
     },
 
     async search(queryVector, opts) {
@@ -82,28 +125,60 @@ export function createVectorRepository(opts: { collectionPath: string }): Vector
           `Query vector dimension mismatch: expected ${currentDimension}, received ${queryVector.length}`
         );
       }
-      const rows = collection.querySync({
-        fieldName: VECTOR_FIELD,
-        vector: queryVector,
-        topk: opts.topK,
-        outputFields: [
-          "nodeId",
-          "mountId",
-          "sourceRef",
-          "name",
-          "title",
-          "heading",
-          "text",
-          "chunkIndex",
-          "sectionPath",
-          "charStart",
-          "charEnd",
-          "tokenEstimate",
-          "updatedAt",
-        ],
-      });
+      let rows;
+      try {
+        rows = collection.querySync({
+          fieldName: VECTOR_FIELD,
+          vector: queryVector,
+          topk: opts.topK,
+          outputFields: [
+            "nodeId",
+            "mountId",
+            "sourceRef",
+            "name",
+            "title",
+            "heading",
+            "text",
+            "chunkIndex",
+            "sectionPath",
+            "charStart",
+            "charEnd",
+            "tokenEstimate",
+            "updatedAt",
+          ],
+        });
+      } catch (error) {
+        if (!isRecoverableIndexError(error)) {
+          throw error;
+        }
+        resetCollection();
+        currentDimension = queryVector.length;
+        collection = ZVecCreateAndOpen(collectionPath, createSchema(queryVector.length));
+        return [];
+      }
 
       return rows.map((row) => toSearchHit(row));
+    },
+
+    async getChunkCount() {
+      if (!collection) {
+        return 0;
+      }
+      try {
+        return collection.stats.docCount ?? 0;
+      } catch (error) {
+        if (!isRecoverableIndexError(error)) {
+          throw error;
+        }
+        resetCollection();
+        return 0;
+      }
+    },
+
+    consumeRecoveryState() {
+      const snapshot = { recovered };
+      recovered = false;
+      return snapshot;
     },
 
     close() {
@@ -112,6 +187,30 @@ export function createVectorRepository(opts: { collectionPath: string }): Vector
       currentDimension = null;
     },
   };
+
+  function openExistingCollectionIfPresent(): void {
+    if (!existsSync(collectionPath)) {
+      return;
+    }
+    try {
+      collection = ZVecOpen(collectionPath);
+      currentDimension = getCollectionDimension(collection);
+    } catch (error) {
+      if (!isRecoverableIndexError(error)) {
+        throw error;
+      }
+      resetCollection();
+      recovered = true;
+    }
+  }
+
+  function resetCollection(): void {
+    collection?.closeSync();
+    collection = null;
+    currentDimension = null;
+    recovered = true;
+    rmSync(collectionPath, { recursive: true, force: true });
+  }
 }
 
 function createSchema(dimension: number): ZVecCollectionSchema {
@@ -194,4 +293,24 @@ function normalizeNullableString(value: unknown): string | null {
 
 function escapeFilterValue(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
+}
+
+function getCollectionDimension(collection: ZVecCollection): number | null {
+  try {
+    return collection.schema.vector(VECTOR_FIELD).dimension;
+  } catch {
+    return null;
+  }
+}
+
+function isRecoverableIndexError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("failed to open index") ||
+    message.includes("vector indexer not found") ||
+    message.includes("invalid checksum")
+  );
 }

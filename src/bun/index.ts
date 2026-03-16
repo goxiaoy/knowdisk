@@ -1,22 +1,44 @@
 import type { ModelDownloadStatus } from "@knowdisk/model";
 import type { VfsNode, VfsSyncerEvent } from "@knowdisk/vfs";
-import { BrowserWindow, Utils, defineElectrobunRPC } from "electrobun/bun";
+import { basename } from "node:path";
+import Electrobun, {
+  BrowserWindow,
+  Utils,
+  defineElectrobunRPC,
+} from "electrobun/bun";
 import type {
+  DeleteFileNodeRequest,
+  DeleteFileNodeResponse,
   FileTreeNode,
   GetFileMarkdownRequest,
   GetFileMarkdownResponse,
+  GetFileNodeMetadataRequest,
+  GetFileNodeMetadataResponse,
   ListFilesNodesRequest,
   ListFilesNodesResponse,
-  PickAndMountLocalDirectoryResponse,
+  MountLocalDirectoryRequest,
+  MountLocalDirectoryResponse,
+  PickLocalDirectoryResponse,
+  RenameFileNodeRequest,
+  RenameFileNodeResponse,
 } from "../shared/files";
+import { type RendererIndexStatus } from "../shared/index-status";
 import { clampPct, type RendererModelStatus } from "../shared/model-status";
 import {
   FALLBACK_VFS_STATUS,
-  clampVfsPct,
   type RendererVfsMountStatus,
   type RendererVfsStatus,
 } from "../shared/vfs-status";
+import { type RendererVectorDbStatus } from "../shared/vector-db-status";
+import { isParserSupportedFile } from "@knowdisk/parser";
 import { createAppContainer, initializeAppRuntime } from "./app.container";
+import { isMissingRpcSendTransportError } from "./rpc-transport";
+import {
+  applyMountNodeChange,
+  applyVfsSyncerEvent,
+  recomputeVfsStatus as buildRendererVfsStatus,
+  refreshVfsMountPendingUnits,
+} from "./vfs-status";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -33,17 +55,41 @@ type AppRPCSchema = {
         params: undefined;
         response: RendererVfsStatus;
       };
+      getIndexStatus: {
+        params: undefined;
+        response: RendererIndexStatus;
+      };
       listFilesNodes: {
         params: ListFilesNodesRequest;
         response: ListFilesNodesResponse;
       };
-      pickAndMountLocalDirectory: {
+      pickLocalDirectory: {
         params: undefined;
-        response: PickAndMountLocalDirectoryResponse;
+        response: PickLocalDirectoryResponse;
+      };
+      mountLocalDirectory: {
+        params: MountLocalDirectoryRequest;
+        response: MountLocalDirectoryResponse;
       };
       getFileMarkdown: {
         params: GetFileMarkdownRequest;
         response: GetFileMarkdownResponse;
+      };
+      getFileNodeMetadata: {
+        params: GetFileNodeMetadataRequest;
+        response: GetFileNodeMetadataResponse;
+      };
+      deleteFileNode: {
+        params: DeleteFileNodeRequest;
+        response: DeleteFileNodeResponse;
+      };
+      renameFileNode: {
+        params: RenameFileNodeRequest;
+        response: RenameFileNodeResponse;
+      };
+      getVectorDbStatus: {
+        params: undefined;
+        response: RendererVectorDbStatus;
       };
     };
     messages: Record<never, never>;
@@ -89,8 +135,9 @@ async function hydrateMountedVfsStatus(): Promise<void> {
       }
       vfsMountStatus.set(node.mountId, {
         mountId: node.mountId,
+        name: node.name,
         phase: "idle",
-        progressPct: 100,
+        pendingUnits: 0,
         error: "",
       });
     }
@@ -103,67 +150,26 @@ async function hydrateMountedVfsStatus(): Promise<void> {
 }
 
 function recomputeVfsStatus(): RendererVfsStatus {
-  const mounts = [...vfsMountStatus.values()].sort((a, b) => a.mountId.localeCompare(b.mountId));
-  const syncing = mounts.filter((item) => item.phase === "metadata" || item.phase === "content");
-  const failed = mounts.find((item) => item.phase === "error");
-  const phase: RendererVfsStatus["phase"] = failed ? "error" : syncing.length > 0 ? "syncing" : "idle";
-  const progressPct =
-    syncing.length > 0
-      ? clampVfsPct(
-          syncing.reduce((sum, item) => sum + clampVfsPct(item.progressPct), 0) / Math.max(syncing.length, 1)
-        )
-      : mounts.length > 0
-        ? 100
-        : 0;
+  return buildRendererVfsStatus([...vfsMountStatus.values()]);
+}
 
-  return {
-    available: true,
-    phase,
-    progressPct,
-    error: failed?.error ?? "",
-    syncingMounts: syncing.length,
-    mounts,
-  };
+async function computeCurrentVfsStatus(): Promise<RendererVfsStatus> {
+  const mounts = await refreshVfsMountPendingUnits([...vfsMountStatus.values()], (mountId) =>
+    app.vfs.getQueueProgressByMountId(mountId)
+  );
+  for (const mount of mounts) {
+    vfsMountStatus.set(mount.mountId, mount);
+  }
+  vfsStatus = buildRendererVfsStatus(mounts);
+  return vfsStatus;
 }
 
 function updateVfsMountStatus(mountId: string, event: VfsSyncerEvent): void {
-  const current: RendererVfsMountStatus = vfsMountStatus.get(mountId) ?? {
-    mountId,
-    phase: "idle",
-    progressPct: 0,
-    error: "",
-  };
-
-  if (event.type === "status") {
-    const nextPhase = event.payload.isSyncing ? event.payload.phase : "idle";
-    vfsMountStatus.set(mountId, {
-      ...current,
-      phase: nextPhase,
-      progressPct: nextPhase === "idle" ? 100 : current.progressPct,
-      error: "",
-    });
+  const current = vfsMountStatus.get(mountId);
+  if (!current) {
     return;
   }
-
-  if (event.type === "metadata_progress") {
-    const pct = event.payload.total > 0 ? (event.payload.processed / event.payload.total) * 100 : 0;
-    vfsMountStatus.set(mountId, {
-      ...current,
-      phase: "metadata",
-      progressPct: clampVfsPct(pct),
-      error: "",
-    });
-    return;
-  }
-
-  const pct =
-    event.payload.totalSize > 0 ? (event.payload.downloadedBytes / event.payload.totalSize) * 100 : 0;
-  vfsMountStatus.set(mountId, {
-    ...current,
-    phase: "content",
-    progressPct: clampVfsPct(pct),
-    error: "",
-  });
+  vfsMountStatus.set(mountId, applyVfsSyncerEvent(current, event));
 }
 
 function mapModelStatus(status: ModelDownloadStatus): RendererModelStatus {
@@ -195,6 +201,19 @@ function mapModelStatus(status: ModelDownloadStatus): RendererModelStatus {
   };
 }
 
+function mapIndexStatus(): RendererIndexStatus {
+  const status = app.indexing.getStatus().getSnapshot();
+  return {
+    available: true,
+    phase: status.phase,
+    scope: status.scope,
+    processedFiles: status.processedFiles,
+    totalFiles: status.totalFiles,
+    activeNodeName: status.activeNodeName ?? "",
+    error: status.error,
+  };
+}
+
 function mapNode(node: VfsNode): FileTreeNode {
   return {
     nodeId: node.nodeId,
@@ -204,29 +223,34 @@ function mapNode(node: VfsNode): FileTreeNode {
   };
 }
 
-async function listFilesNodes(input: ListFilesNodesRequest): Promise<ListFilesNodesResponse> {
-  let cursor: { mode: "local" | "remote"; token: string } | undefined;
-  const items: VfsNode[] = [];
-
-  while (true) {
-    const page = await app.vfs.walkChildren({
-      parentNodeId: input.parentNodeId,
-      limit: 200,
-      cursor,
-    });
-    items.push(...page.items);
-    if (!page.nextCursor) {
-      break;
-    }
-    cursor = page.nextCursor;
+function parseCursor(raw?: string): { mode: "local" | "remote"; token: string } | undefined {
+  if (!raw) {
+    return undefined;
   }
+  try {
+    const parsed = JSON.parse(raw) as { mode?: string; token?: string };
+    if ((parsed.mode === "local" || parsed.mode === "remote") && typeof parsed.token === "string") {
+      return { mode: parsed.mode, token: parsed.token };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
 
+async function listFilesNodes(input: ListFilesNodesRequest): Promise<ListFilesNodesResponse> {
+  const page = await app.vfs.walkChildren({
+    parentNodeId: input.parentNodeId,
+    limit: Math.max(20, Math.min(500, input.limit ?? 120)),
+    cursor: parseCursor(input.cursor),
+  });
   return {
-    items: items.map(mapNode),
+    items: page.items.map(mapNode),
+    nextCursor: page.nextCursor ? JSON.stringify(page.nextCursor) : undefined,
   };
 }
 
-async function pickAndMountLocalDirectory(): Promise<PickAndMountLocalDirectoryResponse> {
+async function pickLocalDirectory(): Promise<PickLocalDirectoryResponse> {
   try {
     const selected = await Utils.openFileDialog({
       canChooseFiles: false,
@@ -242,7 +266,35 @@ async function pickAndMountLocalDirectory(): Promise<PickAndMountLocalDirectoryR
       };
     }
 
+    return {
+      ok: true,
+      cancelled: false,
+      directory,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function mountLocalDirectory(
+  input: MountLocalDirectoryRequest
+): Promise<MountLocalDirectoryResponse> {
+  try {
+    const directory = input.directory.trim();
+    if (!directory) {
+      return {
+        ok: false,
+        error: "directory is required",
+      };
+    }
+
+    const normalizedDir = directory.replace(/[\\/]+$/, "");
+    const mountName = basename(normalizedDir) || normalizedDir;
     const mount = await app.vfs.mount({
+      name: mountName,
       providerType: "local",
       providerExtra: { directory },
       autoSync: true,
@@ -251,30 +303,10 @@ async function pickAndMountLocalDirectory(): Promise<PickAndMountLocalDirectoryR
       metadataTtlSec: 30,
       reconcileIntervalMs: 600_000,
     });
-    vfsMountStatus.set(mount.mountId, {
-      mountId: mount.mountId,
-      phase: "idle",
-      progressPct: 0,
-      error: "",
-    });
-    vfsStatus = recomputeVfsStatus();
-    try {
-      rpc.send.vfsStatusUpdated(vfsStatus);
-    } catch (error) {
-      app.logger.error(
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "failed to push vfs status update after mount"
-      );
-    }
-    await app.vfs.triggerReconcile(mount.mountId);
 
     return {
       ok: true,
-      cancelled: false,
       mountId: mount.mountId,
-      directory,
     };
   } catch (error) {
     return {
@@ -299,6 +331,12 @@ async function getFileMarkdown(input: GetFileMarkdownRequest): Promise<GetFileMa
         error: "selected node is not a file",
       };
     }
+    if (!isParserSupportedFile(node)) {
+      return {
+        ok: false,
+        error: "preview is not available for this file type",
+      };
+    }
 
     const document = await app.parser.materializeNode({ nodeId: input.nodeId });
     return {
@@ -312,6 +350,87 @@ async function getFileMarkdown(input: GetFileMarkdownRequest): Promise<GetFileMa
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+async function getFileNodeMetadata(
+  input: GetFileNodeMetadataRequest
+): Promise<GetFileNodeMetadataResponse> {
+  try {
+    const node = await app.vfs.getMetadata({ id: input.nodeId });
+    if (!node) {
+      return {
+        ok: false,
+        error: "node not found",
+      };
+    }
+
+    return {
+      ok: true,
+      metadata: {
+        nodeId: node.nodeId,
+        mountId: node.mountId,
+        parentId: node.parentId,
+        name: node.name,
+        kind: node.kind,
+        size: node.size,
+        mtimeMs: node.mtimeMs,
+        sourceRef: node.sourceRef,
+        providerVersion: node.providerVersion,
+        deletedAtMs: node.deletedAtMs,
+        createdAtMs: node.createdAtMs,
+        updatedAtMs: node.updatedAtMs,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function deleteFileNode(input: DeleteFileNodeRequest): Promise<DeleteFileNodeResponse> {
+  try {
+    await app.vfs.delete({ id: input.nodeId });
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function renameFileNode(input: RenameFileNodeRequest): Promise<RenameFileNodeResponse> {
+  const nextName = input.name.trim();
+  if (!nextName) {
+    return {
+      ok: false,
+      error: "name is required",
+    };
+  }
+  try {
+    const renamed = await app.vfs.rename({
+      id: input.nodeId,
+      name: nextName,
+    });
+    return {
+      ok: true,
+      node: mapNode(renamed),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function getVectorDbStatus(): Promise<RendererVectorDbStatus> {
+  return {
+    available: true,
+    chunkCount: await app.vectorRepository.getChunkCount(),
+  };
 }
 
 void hydrateMountedVfsStatus().catch((error) => {
@@ -329,45 +448,24 @@ const rpc = defineElectrobunRPC<AppRPCSchema>("bun", {
       getModelStatus() {
         return mapModelStatus(app.modelService.getStatus().getSnapshot());
       },
-      getVfsStatus() {
-        return vfsStatus;
+      async getVfsStatus() {
+        return computeCurrentVfsStatus();
+      },
+      getIndexStatus() {
+        return mapIndexStatus();
       },
       listFilesNodes,
-      pickAndMountLocalDirectory,
+      pickLocalDirectory,
+      mountLocalDirectory,
       getFileMarkdown,
+      getFileNodeMetadata,
+      deleteFileNode,
+      renameFileNode,
+      getVectorDbStatus,
     },
     messages: {},
   },
 });
-
-const stopModelStatusSubscription = app.modelService.getStatus().subscribe((status) => {
-  try {
-    rpc.send.modelStatusUpdated(mapModelStatus(status));
-  } catch (error) {
-    app.logger.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "failed to push model status update to renderer"
-    );
-  }
-});
-
-const stopVfsStatusSubscription =
-  app.vfs.subscribeSyncerEvents?.(({ mountId, event }) => {
-    updateVfsMountStatus(mountId, event);
-    vfsStatus = recomputeVfsStatus();
-    try {
-      rpc.send.vfsStatusUpdated(vfsStatus);
-    } catch (error) {
-      app.logger.error(
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "failed to push vfs status update to renderer"
-      );
-    }
-  }) ?? (() => {});
 
 void app.modelService.ensureRequiredModels().catch((error) => {
   const status = app.modelService.getStatus().getSnapshot();
@@ -408,10 +506,92 @@ const mainWindow = new BrowserWindow({
   rpc,
 });
 
-mainWindow.on("close", () => {
+const stopModelStatusSubscription = app.modelService.getStatus().subscribe((status) => {
+  try {
+    rpc.send.modelStatusUpdated(mapModelStatus(status));
+  } catch (error) {
+    if (isMissingRpcSendTransportError(error)) {
+      return;
+    }
+    app.logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "failed to push model status update to renderer"
+    );
+  }
+});
+
+const stopVfsStatusSubscription =
+  app.vfs.subscribeSyncerEvents?.(({ mountId, event }) => {
+    updateVfsMountStatus(mountId, event);
+    vfsStatus = recomputeVfsStatus();
+    try {
+      rpc.send.vfsStatusUpdated(vfsStatus);
+    } catch (error) {
+      if (isMissingRpcSendTransportError(error)) {
+        return;
+      }
+      app.logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "failed to push vfs status update to renderer"
+      );
+    }
+  }) ?? (() => {});
+
+const stopVfsNodeChangesSubscription = app.vfs.subscribeNodeChanges((node) => {
+  const nextMounts = applyMountNodeChange([...vfsMountStatus.values()], node);
+  if (nextMounts.length === vfsMountStatus.size && node.kind !== "mount") {
+    return;
+  }
+  vfsMountStatus.clear();
+  for (const mount of nextMounts) {
+    vfsMountStatus.set(mount.mountId, mount);
+  }
+  vfsStatus = recomputeVfsStatus();
+  try {
+    rpc.send.vfsStatusUpdated(vfsStatus);
+  } catch (error) {
+    if (isMissingRpcSendTransportError(error)) {
+      return;
+    }
+    app.logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "failed to push vfs mount node change to renderer"
+    );
+  }
+});
+
+let shutdownPromise: Promise<void> | null = null;
+
+const shutdown = (): Promise<void> => {
+  if (shutdownPromise) {
+    return shutdownPromise;
+  }
   stopModelStatusSubscription();
   stopVfsStatusSubscription();
+  stopVfsNodeChangesSubscription();
   stopRuntimeHooks();
-  void app.vfs.close();
-  Utils.quit();
+  shutdownPromise = app.close().catch((error) => {
+    app.logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "failed to close application resources"
+    );
+  });
+  return shutdownPromise;
+};
+
+Electrobun.events.on("before-quit", (event: { response?: { allow: boolean } }) => {
+  if (!shutdownPromise) {
+    event.response = { allow: false };
+    void shutdown().finally(() => {
+      Utils.quit();
+    });
+  }
 });

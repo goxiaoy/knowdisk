@@ -25,6 +25,8 @@ export function createIndexingServiceFromConfig(
 
   return createIndexingService({
     logger: input.logger,
+    parser: container.resolve("ParserService"),
+    vfs: container.resolve("VfsService"),
     ftsRepository: input.ftsRepository,
     vectorRepository: input.vectorRepository,
     embeddingRegistry,

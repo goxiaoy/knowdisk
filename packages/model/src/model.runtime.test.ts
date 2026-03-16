@@ -66,6 +66,61 @@ describe("model runtime acquisition", () => {
     expect(rerankerLoader).toHaveBeenCalledTimes(1);
   });
 
+  it("reuses cached models on the next startup without downloading again", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "knowdisk-model-reuse-"));
+    tempDirs.push(dir);
+    const fetchImpl = mock(createFetchStub());
+    const firstEmbeddingLoader = mock(async () => async () => ({ data: [1] }));
+    const firstRerankerLoader = mock(async () => ({
+      async tokenizePairs() {
+        return {};
+      },
+      async score() {
+        return [1];
+      },
+    }));
+
+    const firstService = createModelService({
+      logger: createLoggerService({ level: "silent" }),
+      config: createDefaultCoreConfig(),
+      cacheDir: dir,
+      deps: {
+        fetch: fetchImpl,
+        loadEmbeddingExtractor: firstEmbeddingLoader,
+        loadRerankerRuntime: firstRerankerLoader,
+      },
+    });
+
+    await firstService.ensureRequiredModels();
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+
+    const secondEmbeddingLoader = mock(async () => async () => ({ data: [2] }));
+    const secondRerankerLoader = mock(async () => ({
+      async tokenizePairs() {
+        return {};
+      },
+      async score() {
+        return [2];
+      },
+    }));
+    const secondService = createModelService({
+      logger: createLoggerService({ level: "silent" }),
+      config: createDefaultCoreConfig(),
+      cacheDir: dir,
+      deps: {
+        fetch: fetchImpl,
+        loadEmbeddingExtractor: secondEmbeddingLoader,
+        loadRerankerRuntime: secondRerankerLoader,
+      },
+    });
+
+    await secondService.ensureRequiredModels();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    expect(secondEmbeddingLoader).toHaveBeenCalledTimes(1);
+    expect(secondRerankerLoader).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects embedding runtime when embedding provider is not local", async () => {
     const config = createDefaultCoreConfig();
     config.embedding.provider = "openai";

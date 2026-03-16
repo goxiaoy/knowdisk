@@ -239,11 +239,11 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("insert/list/delete node events refreshes id on conflict and deletes by id", () => {
+  test("insert/list/delete node events refreshes id on conflict and deletes by event rows", () => {
     const { dir, repo } = makeRepo();
     expect("listNodeEvents" in repo).toBe(false);
     expect("subscribeNodeChanges" in repo).toBe(true);
-    expect("subscribeNodeEventsQueued" in repo).toBe(true);
+    expect("subscribeNodeEventsChanged" in repo).toBe(true);
     repo.insertNodeEvents([
       {
         sourceRef: "s1",
@@ -361,7 +361,10 @@ describe("vfs repository", () => {
       "add",
     ]);
 
-    repo.deleteNodeEventsByIds([withDelete[0]!.id, withDelete[2]!.id]);
+    repo.deleteNodeEvents([
+      { id: withDelete[0]!.id, mountId: withDelete[0]!.mountId },
+      { id: withDelete[2]!.id, mountId: withDelete[2]!.mountId },
+    ]);
     const remained = repo.listNodeEventsByMountId("m1");
     expect(remained).toEqual([
       {
@@ -401,11 +404,11 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("subscribeNodeEventsQueued receives queued row", () => {
+  test("subscribeNodeEventsChanged receives affected mount id on insert and delete", () => {
     const { dir, repo } = makeRepo();
-    const rows: VfsNodeEventRow[] = [];
-    const unsubscribe = repo.subscribeNodeEventsQueued((row) => {
-      rows.push(row);
+    const mountIds: string[] = [];
+    const unsubscribe = repo.subscribeNodeEventsChanged((mountId) => {
+      mountIds.push(mountId);
     });
 
     repo.insertNodeEvents([
@@ -418,17 +421,10 @@ describe("vfs repository", () => {
         createdAtMs: 1,
       },
     ]);
+    const inserted = repo.listNodeEventsByMountId("m1");
+    repo.deleteNodeEvents([{ id: inserted[0]!.id, mountId: inserted[0]!.mountId }]);
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toEqual({
-      id: expect.any(String),
-      sourceRef: "s1",
-      mountId: "m1",
-      parentId: "p1",
-      type: "add",
-      node: null,
-      createdAtMs: 1,
-    });
+    expect(mountIds).toEqual(["m1", "m1"]);
 
     unsubscribe();
     repo.close();
@@ -477,6 +473,109 @@ describe("vfs repository", () => {
     ]);
 
     unsubscribe();
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("computes queue progress by mount in db layer using distinct source refs", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertNodes([
+      {
+        nodeId: "mount-node-1",
+        mountId: "m1",
+        parentId: null,
+        name: "m1",
+        kind: "mount",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      {
+        nodeId: "n1",
+        mountId: "m1",
+        parentId: "mount-node-1",
+        name: "a.md",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "a.md",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      {
+        nodeId: "n2",
+        mountId: "m1",
+        parentId: "mount-node-1",
+        name: "b",
+        kind: "folder",
+        size: null,
+        mtimeMs: 1,
+        sourceRef: "b",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      {
+        nodeId: "n3",
+        mountId: "m1",
+        parentId: "mount-node-1",
+        name: "deleted.md",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "deleted.md",
+        providerVersion: "v1",
+        deletedAtMs: 2,
+        createdAtMs: 1,
+        updatedAtMs: 2,
+      },
+    ]);
+    repo.insertNodeEvents([
+      {
+        sourceRef: "a.md",
+        mountId: "m1",
+        parentId: "mount-node-1",
+        type: "update_content",
+        node: null,
+        createdAtMs: 3,
+      },
+      {
+        sourceRef: "b",
+        mountId: "m1",
+        parentId: "mount-node-1",
+        type: "update_metadata",
+        node: null,
+        createdAtMs: 4,
+      },
+      {
+        sourceRef: "a.md",
+        mountId: "m1",
+        parentId: "mount-node-1",
+        type: "delete",
+        node: null,
+        createdAtMs: 5,
+      },
+      {
+        sourceRef: "new.md",
+        mountId: "m1",
+        parentId: "mount-node-1",
+        type: "add",
+        node: null,
+        createdAtMs: 6,
+      },
+    ]);
+
+    expect(repo.getQueueProgressByMountId("m1")).toEqual({
+      pendingUnits: 3,
+    });
+
     repo.close();
     rmSync(dir, { recursive: true, force: true });
   });

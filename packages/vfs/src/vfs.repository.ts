@@ -17,7 +17,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
   const db = new Database(opts.dbPath, { create: true });
   migrate(db);
   const nodeChangesListeners = new Set<(row: VfsNode) => void>();
-  const nodeEventsListeners = new Set<(row: VfsNodeEventRow) => void>();
+  const nodeEventsChangedListeners = new Set<(mountId: string) => void>();
 
   return {
     close() {
@@ -31,10 +31,10 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       };
     },
 
-    subscribeNodeEventsQueued(listener) {
-      nodeEventsListeners.add(listener);
+    subscribeNodeEventsChanged(listener) {
+      nodeEventsChangedListeners.add(listener);
       return () => {
-        nodeEventsListeners.delete(listener);
+        nodeEventsChangedListeners.delete(listener);
       };
     },
 
@@ -394,10 +394,14 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         }
       });
       tx(rows);
-      if (nodeEventsListeners.size > 0) {
-        for (const row of insertedRows) {
-          for (const listener of nodeEventsListeners) {
-            listener(row);
+      notifyNodeEventsChanged(insertedRows.map((row) => row.mountId));
+      function notifyNodeEventsChanged(mountIds: string[]): void {
+        if (nodeEventsChangedListeners.size === 0) {
+          return;
+        }
+        for (const mountId of new Set(mountIds)) {
+          for (const listener of nodeEventsChangedListeners) {
+            listener(mountId);
           }
         }
       }
@@ -431,17 +435,39 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       return rows.map(mapNodeEventRow);
     },
 
-    deleteNodeEventsByIds(ids: string[]) {
-      if (ids.length === 0) {
+    getQueueProgressByMountId(mountId: string) {
+      const pendingUnitsRow = db
+        .query(
+          `SELECT COUNT(DISTINCT source_ref) AS pendingUnits
+           FROM vfs_node_events
+           WHERE mount_id = ?`
+        )
+        .get(mountId) as { pendingUnits: number } | null;
+
+      return {
+        pendingUnits: pendingUnitsRow?.pendingUnits ?? 0,
+      };
+    },
+
+    deleteNodeEvents(rows: Array<Pick<VfsNodeEventRow, "id" | "mountId">>) {
+      if (rows.length === 0) {
         return;
       }
       const stmt = db.query(`DELETE FROM vfs_node_events WHERE id = ?`);
-      const tx = db.transaction((items: string[]) => {
-        for (const id of items) {
-          stmt.run(id);
+      const tx = db.transaction((items: Array<Pick<VfsNodeEventRow, "id" | "mountId">>) => {
+        for (const row of items) {
+          stmt.run(row.id);
         }
       });
-      tx(ids);
+      tx(rows);
+      if (nodeEventsChangedListeners.size === 0) {
+        return;
+      }
+      for (const mountId of new Set(rows.map((row) => row.mountId))) {
+        for (const listener of nodeEventsChangedListeners) {
+          listener(mountId);
+        }
+      }
     },
   };
 }

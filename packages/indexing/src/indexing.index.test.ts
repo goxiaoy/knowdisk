@@ -5,19 +5,15 @@ import type { VfsNode } from "@knowdisk/vfs";
 import type { CreateIndexingServiceInput, SearchHit } from "./indexing.types";
 import { createIndexingService } from "./indexing.service";
 
-describe("indexing service index", () => {
-  test("indexes one node from AsyncIterable<ParseChunk>", async () => {
+describe("indexing service index flows", () => {
+  test("indexNode parses through parser and writes both repositories", async () => {
     const ctx = createHarness();
 
-    const result = await ctx.service.index({
-      node: createNode(),
-      chunks: createChunks([
-        createChunk({ chunkIndex: 0, text: "alpha chunk" }),
-        createChunk({ chunkIndex: 1, text: "beta chunk" }),
-      ]),
-    });
+    const result = await ctx.service.indexNode({ nodeId: "node-1" });
 
     expect(result).toEqual({ indexed: 2 });
+    expect(ctx.parseCalls).toEqual(["node-1"]);
+    expect(ctx.metadataCalls).toEqual(["node-1"]);
     expect(ctx.ftsReplaceCalls).toHaveLength(1);
     expect(ctx.vectorReplaceCalls).toHaveLength(1);
     expect(ctx.vectorReplaceCalls[0]?.[0]?.embedding).toEqual([11, 0]);
@@ -27,12 +23,9 @@ describe("indexing service index", () => {
     ]);
   });
 
-  test("skips non-ok chunks", async () => {
-    const ctx = createHarness();
-
-    const result = await ctx.service.index({
-      node: createNode(),
-      chunks: createChunks([
+  test("indexNode skips non-ok chunks", async () => {
+    const ctx = createHarness({
+      chunks: [
         createChunk({ chunkIndex: 0, text: "alpha chunk", status: "ok" }),
         createChunk({ chunkIndex: 1, text: "skip me", status: "skipped" }),
         createChunk({
@@ -41,28 +34,54 @@ describe("indexing service index", () => {
           status: "error",
           error: { code: "parse_failed", message: "boom" },
         }),
-      ]),
+      ],
     });
+
+    const result = await ctx.service.indexNode({ nodeId: "node-1" });
 
     expect(result).toEqual({ indexed: 1 });
     expect(ctx.ftsReplaceCalls[0]).toHaveLength(1);
     expect(ctx.vectorReplaceCalls[0]).toHaveLength(1);
   });
 
-  test("replaces old rows for the same nodeId", async () => {
-    const ctx = createHarness();
-
-    await ctx.service.index({
-      node: createNode(),
-      chunks: createChunks([createChunk({ chunkIndex: 0, text: "alpha chunk" })]),
+  test("rebuildAllFromLocalNodes tracks rebuilding progress and skips unsupported files", async () => {
+    const ctx = createHarness({
+      roots: [createMountNode()],
+      childrenByParent: {
+        "mount-1": [
+          createNode(),
+          createNode({
+            nodeId: "video-1",
+            name: "clip.mkv",
+            sourceRef: "docs/clip.mkv",
+          }),
+        ],
+      },
     });
 
-    expect(ctx.deletedNodeIds).toEqual(["node-1", "node-1"]);
+    const snapshots: string[] = [];
+    ctx.service.getStatus().subscribe((status) => {
+      snapshots.push(
+        `${status.phase}:${status.scope ?? "none"}:${status.processedFiles}/${status.totalFiles}:${status.activeNodeName ?? "-"}`
+      );
+    });
+
+    await ctx.service.rebuildAllFromLocalNodes();
+
+    expect(ctx.parseCalls).toEqual(["node-1"]);
+    expect(snapshots).toContain("rebuilding:full:0/1:-");
+    expect(snapshots).toContain("idle:none:1/1:-");
   });
 });
 
-function createHarness() {
+function createHarness(input?: {
+  chunks?: ParseChunk[];
+  roots?: VfsNode[];
+  childrenByParent?: Record<string, VfsNode[]>;
+}) {
   const deletedNodeIds: string[] = [];
+  const parseCalls: string[] = [];
+  const metadataCalls: string[] = [];
   const ftsReplaceCalls: CreateIndexingServiceInput["ftsRepository"]["replaceNodeChunks"] extends (
     rows: infer T
   ) => Promise<void>
@@ -73,9 +92,35 @@ function createHarness() {
   ) => Promise<void>
     ? T[]
     : never = [];
+  const node = createNode();
+  const chunks =
+    input?.chunks ??
+    [createChunk({ chunkIndex: 0, text: "alpha chunk" }), createChunk({ chunkIndex: 1, text: "beta chunk" })];
 
   const service = createIndexingService({
     logger: createLoggerStub(),
+    parser: {
+      parseNode({ nodeId }) {
+        parseCalls.push(nodeId);
+        return createChunks(chunks);
+      },
+      async clear() {},
+    },
+    vfs: {
+      async getMetadata({ id }) {
+        metadataCalls.push(id);
+        return id === node.nodeId ? node : null;
+      },
+      async walkChildren({ parentNodeId }) {
+        if (parentNodeId === null) {
+          return { items: input?.roots ?? [createMountNode()], source: "local" as const };
+        }
+        return {
+          items: input?.childrenByParent?.[parentNodeId] ?? [node],
+          source: "local" as const,
+        };
+      },
+    },
     ftsRepository: {
       async replaceNodeChunks(rows) {
         ftsReplaceCalls.push(rows);
@@ -120,6 +165,8 @@ function createHarness() {
   return {
     service,
     deletedNodeIds,
+    parseCalls,
+    metadataCalls,
     ftsReplaceCalls,
     vectorReplaceCalls,
   };
@@ -135,20 +182,37 @@ function createChunks(items: ParseChunk[]): AsyncIterable<ParseChunk> {
   };
 }
 
-function createNode(): VfsNode {
+function createMountNode(): VfsNode {
   return {
-    nodeId: "node-1",
+    nodeId: "mount-1",
     mountId: "mount-1",
     parentId: null,
-    name: "readme.md",
-    kind: "file",
-    size: 100,
-    mtimeMs: 1,
-    sourceRef: "docs/readme.md",
-    providerVersion: "rev-1",
+    name: "Docs",
+    kind: "mount",
+    size: null,
+    mtimeMs: null,
+    sourceRef: "",
+    providerVersion: null,
     deletedAtMs: null,
     createdAtMs: 1,
     updatedAtMs: 1,
+  };
+}
+
+function createNode(overrides: Partial<VfsNode> = {}): VfsNode {
+  return {
+    nodeId: overrides.nodeId ?? "node-1",
+    mountId: overrides.mountId ?? "mount-1",
+    parentId: overrides.parentId ?? "mount-1",
+    name: overrides.name ?? "readme.md",
+    kind: overrides.kind ?? "file",
+    size: overrides.size ?? 100,
+    mtimeMs: overrides.mtimeMs ?? 1,
+    sourceRef: overrides.sourceRef ?? "docs/readme.md",
+    providerVersion: overrides.providerVersion ?? "rev-1",
+    deletedAtMs: overrides.deletedAtMs ?? null,
+    createdAtMs: overrides.createdAtMs ?? 1,
+    updatedAtMs: overrides.updatedAtMs ?? 1,
   };
 }
 

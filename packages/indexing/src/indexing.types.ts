@@ -1,7 +1,9 @@
-import type { ParseChunk } from "@knowdisk/parser";
-import type { VfsNode } from "@knowdisk/vfs";
+import type { ParseChunk, ParserService } from "@knowdisk/parser";
+import type { VfsNode, VfsService } from "@knowdisk/vfs";
 import type { Logger } from "pino";
 import type { DependencyContainer } from "tsyringe";
+import type { FtsRepository } from "./fts";
+import type { VectorRepository } from "./vector";
 
 export const INDEXING_TYPES_READY = true;
 
@@ -75,60 +77,21 @@ export type SearchResultSet = {
   };
 };
 
+export type IndexingStatus = {
+  phase: "idle" | "indexing" | "rebuilding" | "error";
+  scope: "incremental" | "full" | null;
+  processedFiles: number;
+  totalFiles: number;
+  activeNodeName: string | null;
+  error: string;
+};
+
 export type CreateIndexingServiceInput = {
   logger: Logger;
-  ftsRepository: {
-    replaceNodeChunks: (
-      rows: Array<{
-        chunkId: string;
-        nodeId: string;
-        mountId: string;
-        sourceRef: string;
-        name: string;
-        title: string | null;
-        heading: string | null;
-        sectionId: string | null;
-        sectionPath: string[];
-        text: string;
-        markdown: string | null;
-        chunkIndex: number;
-        tokenEstimate: number | null;
-        charStart: number | null;
-        charEnd: number | null;
-        providerVersion: string | null;
-        parserId: string;
-        parserVersion: string;
-        converterId: string;
-        converterVersion: string;
-        updatedAt: string;
-      }>
-    ) => Promise<void>;
-    deleteByNodeId: (nodeId: string) => Promise<void>;
-    search: (query: string, opts: { topK: number; titleOnly?: boolean }) => Promise<SearchHit[]>;
-  };
-  vectorRepository: {
-    replaceNodeChunks: (
-      rows: Array<{
-        chunkId: string;
-        nodeId: string;
-        mountId: string;
-        sourceRef: string;
-        name: string;
-        title: string | null;
-        heading: string | null;
-        text: string;
-        chunkIndex: number;
-        sectionPath: string[];
-        charStart: number | null;
-        charEnd: number | null;
-        tokenEstimate: number | null;
-        updatedAt: string;
-        embedding: number[];
-      }>
-    ) => Promise<void>;
-    deleteByNodeId: (nodeId: string) => Promise<void>;
-    search: (queryVector: number[], opts: { topK: number }) => Promise<SearchHit[]>;
-  };
+  parser: Pick<ParserService, "parseNode" | "clear">;
+  vfs: Pick<VfsService, "getMetadata" | "walkChildren">;
+  ftsRepository: FtsRepository;
+  vectorRepository: Pick<VectorRepository, "replaceNodeChunks" | "deleteByNodeId" | "search">;
   embeddingRegistry: EmbeddingRegistry;
   rerankerRegistry?: RerankerRegistry;
   embedding: {
@@ -145,11 +108,13 @@ export type CreateIndexingServiceInput = {
 };
 
 export type IndexingService = {
-  index: (input: {
-    node: VfsNode;
-    chunks: AsyncIterable<ParseChunk>;
-  }) => Promise<{ indexed: number }>;
-  delete: (input: { nodeId: string }) => Promise<void>;
+  indexNode: (input: { nodeId: string }) => Promise<{ indexed: number }>;
+  deleteNode: (input: { nodeId: string }) => Promise<void>;
+  rebuildAllFromLocalNodes: () => Promise<void>;
+  getStatus: () => {
+    getSnapshot: () => IndexingStatus;
+    subscribe: (listener: (status: IndexingStatus) => void) => () => void;
+  };
   search: (
     query: string,
     opts?: { topK?: number; titleOnly?: boolean }

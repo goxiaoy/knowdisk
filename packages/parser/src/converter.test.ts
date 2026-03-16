@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Logger } from "pino";
 import type { VfsNode, VfsOperationCore } from "@knowdisk/vfs";
-import { createParserService } from "@knowdisk/parser";
+import { createParserService, isParserSupportedFile } from "@knowdisk/parser";
 
 const tempDirs: string[] = [];
 
@@ -13,6 +13,11 @@ afterEach(async () => {
 });
 
 describe("markdown conversion stage", () => {
+  test("rejects video extensions as unsupported parser input", () => {
+    expect(isParserSupportedFile({ name: "clip.mkv", sourceRef: "videos/clip.mkv" })).toBe(false);
+    expect(isParserSupportedFile({ name: "guide.md", sourceRef: "docs/guide.md" })).toBe(true);
+  });
+
   test("uses the injected converter result for markdown and title", async () => {
     const basePath = await createTempDir();
     const service = createParserService({

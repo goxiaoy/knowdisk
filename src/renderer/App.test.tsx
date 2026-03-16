@@ -18,6 +18,8 @@ it("defaults to chat route and shows knowledge base files", () => {
   expect(hasText("Files")).toBe(true);
   expect(tree.findByProps({ "data-testid": "global-status-indicator" })).toBeTruthy();
   expect(tree.findByProps({ "data-testid": "global-vfs-status-indicator" })).toBeTruthy();
+  expect(tree.findByProps({ "data-testid": "global-index-status-indicator" })).toBeTruthy();
+  expect(tree.findByProps({ "data-testid": "global-vectordb-status-indicator" })).toBeTruthy();
 });
 
 it("renders search panel and keeps global status indicator", () => {

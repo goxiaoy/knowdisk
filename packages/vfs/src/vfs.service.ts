@@ -40,8 +40,8 @@ export function createVfsService(deps: {
   const syncers = new Map<string, { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }>();
   let nextHookRegistrationId = 1;
 
-  deps.repository.subscribeNodeEventsQueued((row) => {
-    deps.repository.deletePageCacheByMountId(row.mountId);
+  deps.repository.subscribeNodeEventsChanged((mountId) => {
+    deps.repository.deletePageCacheByMountId(mountId);
   });
 
   const mountFromExt = (ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>): VfsMount => {
@@ -176,6 +176,9 @@ export function createVfsService(deps: {
     subscribeNodeChanges(listener) {
       return deps.repository.subscribeNodeChanges(listener);
     },
+    getQueueProgressByMountId(mountId) {
+      return deps.repository.getQueueProgressByMountId(mountId);
+    },
     subscribeSyncerEvents(listener) {
       syncerEventListeners.add(listener);
       return () => {
@@ -228,6 +231,7 @@ export function createVfsService(deps: {
     },
 
     async mountInternal(mountId: string, config: VfsMountConfig) {
+      const mountName = config.name?.trim() || mountId;
       const mount: VfsMount = {
         mountId,
         ...config,
@@ -243,7 +247,7 @@ export function createVfsService(deps: {
           nodeId: mountNodeId,
           mountId: mount.mountId,
           parentId: null,
-          name: mount.mountId,
+          name: mountName,
           kind: "mount",
           size: null,
           mtimeMs: null,
@@ -427,8 +431,20 @@ export function createVfsService(deps: {
       if (!node) {
         throw new Error(`Node not found: ${input.id}`);
       }
+      const nextName = input.name.trim();
+      if (!nextName) {
+        throw new Error("name is required");
+      }
       if (node.kind === "mount") {
-        throw new Error(`Mount rename is not supported: ${input.id}`);
+        const now = nowMs();
+        deps.repository.upsertNodes([
+          {
+            ...node,
+            name: nextName,
+            updatedAtMs: now,
+          },
+        ]);
+        return deps.repository.getNodeById(node.nodeId) ?? { ...node, name: nextName, updatedAtMs: now };
       }
       const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
       if (!ext) {
@@ -441,7 +457,7 @@ export function createVfsService(deps: {
       }
       const renamed = await provider.rename({
         id: node.sourceRef,
-        name: input.name,
+        name: nextName,
       });
       const now = nowMs();
       const renamedNode = toRepositoryNode({
@@ -468,7 +484,8 @@ export function createVfsService(deps: {
         throw new Error(`Node not found: ${input.id}`);
       }
       if (node.kind === "mount") {
-        throw new Error(`Use unmount for mount node: ${input.id}`);
+        await this.unmount(node.mountId);
+        return;
       }
       const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
       if (!ext) {

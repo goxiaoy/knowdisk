@@ -44,7 +44,7 @@ export type VfsNodeEventRow = {
 export type VfsRepository = {
   close: () => void;
   subscribeNodeChanges: (listener: (row: VfsNode) => void) => () => void;
-  subscribeNodeEventsQueued: (listener: (row: VfsNodeEventRow) => void) => () => void;
+  subscribeNodeEventsChanged: (listener: (mountId: string) => void) => () => void;
 
   upsertNodeMountExt: (row: VfsNodeMountExtRow) => void;
   listNodeMountExts: () => VfsNodeMountExtRow[];
@@ -62,5 +62,8 @@ export type VfsRepository = {
   deletePageCacheByMountId: (mountId: string) => void;
   insertNodeEvents: (rows: Array<Omit<VfsNodeEventRow, "id">>) => void;
   listNodeEventsByMountId: (mountId: string, limit?: number) => VfsNodeEventRow[];
-  deleteNodeEventsByIds: (ids: string[]) => void;
+  getQueueProgressByMountId: (mountId: string) => {
+    pendingUnits: number;
+  };
+  deleteNodeEvents: (rows: Array<Pick<VfsNodeEventRow, "id" | "mountId">>) => void;
 };

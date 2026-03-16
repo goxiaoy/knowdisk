@@ -252,6 +252,13 @@ describe("vfs syncer", () => {
         queued.some((event) => event.sourceRef === "f.txt" && event.type === "update_content")
       ).toBe(true);
       expect(events.some((e) => e.type === "download_progress")).toBe(false);
+      expect(
+        events.some(
+          (event) =>
+            event.type === "queue_progress" &&
+            (event.payload as { pendingUnits: number }).pendingUnits === 1
+        )
+      ).toBe(true);
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });
@@ -317,7 +324,10 @@ describe("vfs syncer", () => {
         nowMs: () => 3000,
       });
 
+      const events: Array<{ type: string; payload: unknown }> = [];
+      const off = syncer.subscribe((event) => events.push(event));
       await syncer.fullSync();
+      off();
 
       expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([
         expect.objectContaining({
@@ -327,6 +337,100 @@ describe("vfs syncer", () => {
         }),
       ]);
       expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
+      expect(
+        events.some(
+          (event) =>
+            event.type === "queue_progress" &&
+            (event.payload as { pendingUnits: number }).pendingUnits === 1
+        )
+      ).toBe(true);
+    } finally {
+      repo.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("startWatching refreshes queue progress when queued event is deleted externally", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-external-delete-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    try {
+      const mount = makeMount({ syncContent: true });
+      repo.upsertNodes([
+        {
+          nodeId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          mountId: mount.mountId,
+          parentId: null,
+          name: mount.mountId,
+          kind: "mount",
+          size: null,
+          mtimeMs: null,
+          sourceRef: "",
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        },
+      ]);
+      repo.insertNodeEvents([
+        {
+          sourceRef: "f.txt",
+          mountId: mount.mountId,
+          parentId: createVfsNodeId({ mountId: mount.mountId, sourceRef: "" }),
+          type: "update_content",
+          node: null,
+          createdAtMs: 2,
+        },
+      ]);
+      const provider: VfsProviderAdapter = {
+        type: "mock",
+        capabilities: { watch: true },
+        async listChildren() {
+          return { items: [] };
+        },
+        async getMetadata() {
+          return null;
+        },
+        async createReadStream() {
+          return new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("abcdef"));
+              controller.close();
+            },
+          });
+        },
+        async watch() {
+          return {
+            close: async () => {},
+          };
+        },
+      };
+      const syncer = createVfsSyncer({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 3000,
+      });
+      const events: Array<{ type: string; payload: unknown }> = [];
+      const off = syncer.subscribe((event) => events.push(event));
+
+      await syncer.startWatching();
+      const queued = repo.listNodeEventsByMountId(mount.mountId);
+      repo.deleteNodeEvents([{ id: queued[0]!.id, mountId: mount.mountId }]);
+
+      const refreshed = await waitUntil(
+        () =>
+          events.some(
+            (event) =>
+              event.type === "queue_progress" &&
+              (event.payload as { pendingUnits: number }).pendingUnits === 0
+          ),
+        500
+      );
+      await syncer.stopWatching();
+      off();
+
+      expect(refreshed).toBe(true);
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });

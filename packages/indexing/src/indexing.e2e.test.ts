@@ -57,6 +57,23 @@ describe("indexing package e2e", () => {
 
     const service = createIndexingService({
       logger: createLoggerStub(),
+      parser: {
+        parseNode() {
+          return createChunks([
+            createChunk({ chunkIndex: 0, text: "alpha indexing overview", title: "Alpha" }),
+            createChunk({ chunkIndex: 1, text: "beta appendix", title: "Beta" }),
+          ]);
+        },
+        async clear() {},
+      },
+      vfs: {
+        async getMetadata() {
+          return node;
+        },
+        async walkChildren() {
+          return { items: [node], source: "local" as const };
+        },
+      },
       ftsRepository,
       vectorRepository,
       embeddingRegistry,
@@ -73,13 +90,7 @@ describe("indexing package e2e", () => {
     });
 
     const node = createNode();
-    const indexed = await service.index({
-      node,
-      chunks: createChunks([
-        createChunk({ chunkIndex: 0, text: "alpha indexing overview", title: "Alpha" }),
-        createChunk({ chunkIndex: 1, text: "beta appendix", title: "Beta" }),
-      ]),
-    });
+    const indexed = await service.indexNode({ nodeId: node.nodeId });
     const result = await service.search("alpha", { topK: 2 });
 
     expect(indexed).toEqual({ indexed: 2 });
@@ -129,6 +140,23 @@ describe("indexing package e2e", () => {
         };
       },
     });
+    const node = createNode();
+    child.registerInstance("ParserService", {
+      parseNode() {
+        return createChunks([
+          createChunk({ chunkIndex: 0, text: "local provider hello", title: "Local" }),
+        ]);
+      },
+      async clear() {},
+    });
+    child.registerInstance("VfsService", {
+      async getMetadata() {
+        return node;
+      },
+      async walkChildren() {
+        return { items: [node], source: "local" as const };
+      },
+    });
 
     const ftsRepository = createFtsRepository({
       dbPath: join(dir, "builtins.db"),
@@ -145,12 +173,7 @@ describe("indexing package e2e", () => {
       defaults: { topK: 5 },
     });
 
-    await service.index({
-      node: createNode(),
-      chunks: createChunks([
-        createChunk({ chunkIndex: 0, text: "local provider hello", title: "Local" }),
-      ]),
-    });
+    await service.indexNode({ nodeId: node.nodeId });
 
     const result = await service.search("hello");
 

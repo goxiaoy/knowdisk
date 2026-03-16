@@ -53,6 +53,22 @@ function createDeps(
       },
       level: "info",
     } as never,
+    parser: {
+      parseNode() {
+        return {
+          async *[Symbol.asyncIterator]() {},
+        };
+      },
+      async clear() {},
+    },
+    vfs: {
+      async getMetadata() {
+        return null;
+      },
+      async walkChildren() {
+        return { items: [], source: "local" as const };
+      },
+    },
     ftsRepository: {
       async replaceNodeChunks() {},
       async deleteByNodeId() {},

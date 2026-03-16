@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ import { createDefaultCoreConfig } from "@knowdisk/core";
 import {
   createAppContainer,
   createVfsIndexingHooks,
+  initializeAppRuntime,
   type AppContainerDeps,
   type AppContainerPaths,
 } from "./app.container";
@@ -30,8 +31,38 @@ describe("createAppContainer", () => {
       clear: async () => {},
     };
     const indexingService = {
-      index: async () => ({ indexed: 0 }),
-      delete: async () => {},
+      indexNode: async () => ({ indexed: 0 }),
+      deleteNode: async () => {},
+      rebuildAllFromLocalNodes: async () => {},
+      getStatus: () => ({
+        getSnapshot: () => ({
+          phase: "idle" as const,
+          scope: null,
+          processedFiles: 0,
+          totalFiles: 0,
+          activeNodeName: null,
+          error: "",
+        }),
+        subscribe: () => () => {},
+      }),
+      search: async () => ({
+        hybrid: [],
+        fts: [],
+        vector: [],
+        reranked: [],
+        meta: {
+          query: "",
+          topK: 5,
+          titleOnly: false,
+          embeddingProvider: "stub",
+          rerankerProvider: null,
+        },
+      }),
+    };
+    const vectorRepository = {
+      getChunkCount: async () => 0,
+      consumeRecoveryState: () => ({ recovered: false }),
+      close() {},
     };
     const modelService = {
       ensureRequiredModels: async () => {},
@@ -88,7 +119,7 @@ describe("createAppContainer", () => {
       },
       createVectorRepository: (input) => {
         calls.indexingVectorPath = input.collectionPath;
-        return { close() {} } as never;
+        return vectorRepository as never;
       },
       createIndexingServiceFromConfig: (container) => {
         calls.indexingContainer = container;
@@ -122,60 +153,196 @@ describe("createAppContainer", () => {
     expect(app.container.resolve("VfsService")).toBe(vfsService);
     expect(app.container.resolve("ParserService")).toBe(parserService);
     expect(app.container.resolve("IndexingService")).toBe(indexingService);
+    expect(app.vectorRepository).toBe(vectorRepository);
+  });
+
+  it("closes vfs and indexing repositories during shutdown", async () => {
+    const closed: string[] = [];
+    const app = createAppContainer({
+      container: rootContainer.createChildContainer(),
+      coreConfig: (() => {
+        const config = createDefaultCoreConfig();
+        config.basePath = mkdtempSync(join(tmpdir(), "knowdisk-app-close-"));
+        return config;
+      })(),
+      deps: {
+        createLoggerService: () =>
+          ({
+            error() {},
+            info() {},
+          }) as never,
+        createVfsRepository: () =>
+          ({
+            close() {
+              closed.push("vfsRepository");
+            },
+          }) as never,
+        createVfsProviderRegistry: () => ({} as never),
+        createVfsService: () =>
+          ({
+            registerNodeEventHooks: () => () => {},
+            close: async () => {
+              closed.push("vfs");
+            },
+          }) as never,
+        createParserService: () =>
+          ({
+            parseNode: () => ({
+              async *[Symbol.asyncIterator]() {},
+            }),
+            clear: async () => {},
+          }) as never,
+        createFtsRepository: () =>
+          ({
+            close() {
+              closed.push("fts");
+            },
+          }) as never,
+        createVectorRepository: () =>
+          ({
+            getChunkCount: async () => 0,
+            consumeRecoveryState: () => ({ recovered: false }),
+            close() {
+              closed.push("vector");
+            },
+          }) as never,
+        createIndexingServiceFromConfig: () =>
+          ({
+            indexNode: async () => ({ indexed: 0 }),
+            deleteNode: async () => {},
+            rebuildAllFromLocalNodes: async () => {},
+            getStatus: () => ({
+              getSnapshot: () => ({
+                phase: "idle" as const,
+                scope: null,
+                processedFiles: 0,
+                totalFiles: 0,
+                activeNodeName: null,
+                error: "",
+              }),
+              subscribe: () => () => {},
+            }),
+            search: async () => ({
+              hybrid: [],
+              fts: [],
+              vector: [],
+              reranked: [],
+              meta: {
+                query: "",
+                topK: 5,
+                titleOnly: false,
+                embeddingProvider: "stub",
+                rerankerProvider: null,
+              },
+            }),
+          }) as never,
+        createModelService: () =>
+          ({
+            ensureRequiredModels: async () => {},
+            getLocalEmbeddingExtractor: async () => {
+              throw new Error("not implemented");
+            },
+            getLocalRerankerRuntime: async () => {
+              throw new Error("not implemented");
+            },
+            retryNow: async () => ({ ok: true }),
+            redownloadEmbeddingModel: async () => ({ ok: true }),
+            redownloadRerankerModel: async () => ({ ok: true }),
+            getStatus: () => ({
+              getSnapshot: () => ({
+                phase: "idle" as const,
+                lastStartedAt: "",
+                lastFinishedAt: "",
+                progressPct: 0,
+                error: "",
+                tasks: { embedding: null, reranker: null },
+                retry: {
+                  attempt: 0,
+                  maxAttempts: 0,
+                  backoffMs: [],
+                  nextRetryAt: "",
+                  exhausted: false,
+                },
+              }),
+              subscribe: () => () => {},
+            }),
+          }) as never,
+      },
+    });
+
+    await app.close();
+
+    expect(closed).toEqual(["vfs", "vfsRepository", "fts", "vector"]);
   });
 });
 
 describe("createVfsIndexingHooks", () => {
+  it("skips parse/index for unsupported video files", async () => {
+    const calls: string[] = [];
+    const hooks = createVfsIndexingHooks({
+      indexing: {
+        indexNode: async ({ nodeId }) => {
+          calls.push(`index:${nodeId}`);
+          return { indexed: 0 };
+        },
+        deleteNode: async ({ nodeId }) => {
+          calls.push(`delete:${nodeId}`);
+        },
+      },
+      logger: {
+        error: () => {},
+      },
+    });
+
+    await hooks.afterUpdateContent?.({
+      mount: {
+        mountId: "m1",
+        providerType: "local",
+        providerExtra: {},
+        autoSync: true,
+        syncMetadata: true,
+        syncContent: true,
+        metadataTtlSec: 0,
+        reconcileIntervalMs: 1000,
+      },
+      event: {
+        eventId: "e-video",
+        sourceRef: "videos/clip.mkv",
+        mountId: "m1",
+        parentId: null,
+        type: "update_content",
+        nodeJson: "",
+        createdAtMs: Date.now(),
+      },
+      prevNode: null,
+      nextNode: {
+        nodeId: "video-1",
+        mountId: "m1",
+        parentId: null,
+        name: "clip.mkv",
+        kind: "file",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "videos/clip.mkv",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: Date.now(),
+        updatedAtMs: Date.now(),
+      },
+    });
+
+    expect(calls).toEqual(["index:video-1"]);
+  });
+
   it("parses/indexes updated files and clears/deletes removed files", async () => {
     const calls: string[] = [];
     const hooks = createVfsIndexingHooks({
-      parser: {
-        parseNode: ({ nodeId }) => {
-          calls.push(`parse:${nodeId}`);
-          return {
-            async *[Symbol.asyncIterator]() {
-              yield {
-                chunkIndex: 0,
-                text: "chunk",
-                markdown: "chunk",
-                title: null,
-                heading: null,
-                sectionId: null,
-                sectionPath: [],
-                charStart: null,
-                charEnd: null,
-                tokenEstimate: null,
-                source: {
-                  nodeId,
-                  mountId: "m1",
-                  sourceRef: "s1",
-                  name: "f1",
-                  kind: "file" as const,
-                  size: null,
-                  mtimeMs: null,
-                  providerVersion: null,
-                },
-                parse: {
-                  parserId: "p",
-                  parserVersion: "1",
-                  converterId: "c",
-                  converterVersion: "1",
-                },
-                status: "ok" as const,
-              };
-            },
-          };
-        },
-        clear: async ({ nodeId }) => {
-          calls.push(`clear:${nodeId}`);
-        },
-      },
       indexing: {
-        index: async ({ node }) => {
-          calls.push(`index:${node.nodeId}`);
+        indexNode: async ({ nodeId }) => {
+          calls.push(`index:${nodeId}`);
           return { indexed: 1 };
         },
-        delete: async ({ nodeId }) => {
+        deleteNode: async ({ nodeId }) => {
           calls.push(`delete:${nodeId}`);
         },
       },
@@ -258,6 +425,79 @@ describe("createVfsIndexingHooks", () => {
       nextNode: null,
     });
 
-    expect(calls).toEqual(["parse:n1", "index:n1", "clear:n1", "delete:n1"]);
+    expect(calls).toEqual(["index:n1", "delete:n1"]);
   });
 });
+
+describe("initializeAppRuntime", () => {
+  it("starts a background full reindex when vector storage was recovered", async () => {
+    const calls: string[] = [];
+    let resolveWalk: (() => void) | null = null;
+    const walkReady = new Promise<void>((resolve) => {
+      resolveWalk = resolve;
+    });
+
+    const stop = initializeAppRuntime({
+      vfs: {
+        registerNodeEventHooks: () => () => {},
+        walkChildren: mock(async () => ({ items: [], source: "local" as const })),
+      } as never,
+      indexing: {
+        indexNode: async () => ({ indexed: 0 }),
+        deleteNode: async () => {},
+        rebuildAllFromLocalNodes: async () => {
+          calls.push("rebuild");
+          await walkReady;
+          calls.push("rebuilt");
+        },
+        getStatus: () => ({
+          getSnapshot: () => ({
+            phase: "idle" as const,
+            scope: null,
+            processedFiles: 0,
+            totalFiles: 0,
+            activeNodeName: null,
+            error: "",
+          }),
+          subscribe: () => () => {},
+        }),
+        search: async () => ({
+          hybrid: [],
+          fts: [],
+          vector: [],
+          reranked: [],
+          meta: {
+            query: "",
+            topK: 5,
+            titleOnly: false,
+            embeddingProvider: "stub",
+            rerankerProvider: null,
+          },
+        }),
+      } as never,
+      logger: {
+        error: () => {},
+      } as never,
+      vectorRepository: {
+        consumeRecoveryState: () => ({ recovered: true }),
+      } as never,
+    } as never);
+
+    resolveWalk?.();
+    await waitFor(() => calls.includes("rebuilt"));
+
+    expect(calls).toEqual(["rebuild", "rebuilt"]);
+
+    stop();
+  });
+});
+
+async function waitFor(predicate: () => boolean, timeoutMs = 200): Promise<void> {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error("waitFor timeout");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}

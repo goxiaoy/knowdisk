@@ -18,6 +18,12 @@ export type VfsSyncerEvent =
       };
     }
   | {
+      type: "queue_progress";
+      payload: {
+        pendingUnits: number;
+      };
+    }
+  | {
       type: "metadata_progress";
       payload: {
         total: number;
@@ -150,6 +156,16 @@ export function createVfsSyncer(input: {
     input.mount.providerType === "local" &&
     (input.mount.providerExtra.syncName === false ||
       input.mount.providerExtra.syncName === "false");
+
+  function emitQueueProgress(): void {
+    const { pendingUnits } = input.repository.getQueueProgressByMountId(input.mount.mountId);
+    emit({
+      type: "queue_progress",
+      payload: {
+        pendingUnits,
+      },
+    });
+  }
 
   function toNode(item: VfsNode, now: number): VfsNode {
     const nodeId = createVfsNodeId({
@@ -350,9 +366,9 @@ export function createVfsSyncer(input: {
           node,
         });
       }
-      if (eventRows.length > 0) {
-        input.repository.insertNodeEvents(eventRows);
-      }
+    if (eventRows.length > 0) {
+      input.repository.insertNodeEvents(eventRows);
+    }
       await runNodeEventsHandler({
         allowContentSync: false,
         includeContentUpdates: false,
@@ -444,7 +460,11 @@ export function createVfsSyncer(input: {
       return;
     }
     nodeEventsSubscribed = true;
-    stopNodeEventsSub = input.repository.subscribeNodeEventsQueued(() => {
+    stopNodeEventsSub = input.repository.subscribeNodeEventsChanged((mountId) => {
+      if (mountId !== input.mount.mountId) {
+        return;
+      }
+      emitQueueProgress();
       if (!nodeEventsRunning) {
         triggerNodeEventsScan(true);
       }
@@ -565,12 +585,13 @@ export function createVfsSyncer(input: {
               },
               "syncer nodeEvents handler failed"
             );
-            input.repository.deleteNodeEventsByIds([event.id]);
+            input.repository.deleteNodeEvents([{ id: event.id, mountId: event.mountId }]);
             continue;
           }
-          input.repository.deleteNodeEventsByIds([event.id]);
+          input.repository.deleteNodeEvents([{ id: event.id, mountId: event.mountId }]);
         }
       }
+      emitQueueProgress();
     } finally {
       nodeEventsRunning = false;
       if (nodeEventsImmediateRequested && nodeEventsSubscribed) {
@@ -742,6 +763,7 @@ export function createVfsSyncer(input: {
       });
     }
     input.repository.insertNodeEvents(rows);
+    emitQueueProgress();
   }
 
   function appendNodeEventsFromDiff(

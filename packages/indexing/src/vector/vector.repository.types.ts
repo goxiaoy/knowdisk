@@ -22,5 +22,7 @@ export type VectorRepository = {
   replaceNodeChunks: (rows: VectorChunkRow[]) => Promise<void>;
   deleteByNodeId: (nodeId: string) => Promise<void>;
   search: (queryVector: number[], opts: { topK: number }) => Promise<SearchHit[]>;
+  getChunkCount: () => Promise<number>;
+  consumeRecoveryState: () => { recovered: boolean };
   close: () => void;
 };

@@ -24,6 +24,22 @@ describe("createIndexingServiceFromConfig", () => {
         };
       },
     });
+    container.registerInstance("ParserService", {
+      parseNode() {
+        return {
+          async *[Symbol.asyncIterator]() {},
+        };
+      },
+      async clear() {},
+    });
+    container.registerInstance("VfsService", {
+      async getMetadata() {
+        return null;
+      },
+      async walkChildren() {
+        return { items: [], source: "local" as const };
+      },
+    });
 
     const service = createIndexingServiceFromConfig(container, {
       logger: createLoggerService({ level: "silent" }),
