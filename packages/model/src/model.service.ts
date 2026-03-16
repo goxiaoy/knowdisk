@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   CreateModelServiceInput,
@@ -79,6 +79,7 @@ export function selectPreferredRepoFiles(
 }
 
 export function createModelService(input: CreateModelServiceInput): ModelService {
+  const logger = input.logger;
   const emitter = new EventEmitter();
   const fetchImpl = input.deps?.fetch ?? fetch;
   const setTimeoutImpl = input.deps?.setTimeout ?? setTimeout;
@@ -249,14 +250,88 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     downloadedState: { value: number }
   ) {
     const destination = join(modelRoot(spec), file.path);
+    const partPath = `${destination}.part`;
     await mkdir(dirname(destination), { recursive: true });
-    const response = await fetchImpl(`${spec.hfEndpoint}/${spec.model}/resolve/main/${file.path}`);
+
+    const knownRemoteSize = file.size > 0 ? file.size : 0;
+
+    try {
+      const current = await stat(destination);
+      if (current.size > 0 && (knownRemoteSize === 0 || current.size === knownRemoteSize)) {
+        downloadedState.value += knownRemoteSize > 0 ? knownRemoteSize : current.size;
+        updateTask(spec.id, (task) => ({
+          ...task,
+          state: "downloading",
+          downloadedBytes: downloadedState.value,
+          totalBytes,
+          progressPct:
+            totalBytes > 0
+              ? Math.min(100, Math.round((downloadedState.value / totalBytes) * 100))
+              : 100,
+        }));
+        return;
+      }
+    } catch {
+      // destination missing, continue
+    }
+
+    let resumedBytes = 0;
+    try {
+      const existingPart = await stat(partPath);
+      resumedBytes = existingPart.size > 0 ? existingPart.size : 0;
+    } catch {
+      resumedBytes = 0;
+    }
+
+    if (knownRemoteSize > 0 && resumedBytes >= knownRemoteSize) {
+      await rename(partPath, destination);
+      downloadedState.value += knownRemoteSize;
+      updateTask(spec.id, (task) => ({
+        ...task,
+        state: "downloading",
+        downloadedBytes: downloadedState.value,
+        totalBytes,
+        progressPct:
+          totalBytes > 0
+            ? Math.min(100, Math.round((downloadedState.value / totalBytes) * 100))
+            : 100,
+      }));
+      return;
+    }
+
+    const headers =
+      resumedBytes > 0
+        ? ({
+            Range: `bytes=${resumedBytes}-`,
+          } satisfies Record<string, string>)
+        : undefined;
+    const response = await fetchImpl(`${spec.hfEndpoint}/${spec.model}/resolve/main/${file.path}`, {
+      headers,
+    });
     if (!response.ok) {
       throw new Error(`Failed to download ${file.path}: ${response.status} ${response.statusText}`);
     }
+
+    const supportsRange = resumedBytes > 0 && response.status === 206;
+    if (resumedBytes > 0 && !supportsRange) {
+      resumedBytes = 0;
+    }
+
     const buffer = Buffer.from(await response.arrayBuffer());
-    await writeFile(destination, buffer);
-    downloadedState.value += buffer.length;
+    await writeFile(partPath, buffer, {
+      flag: resumedBytes > 0 ? "a" : "w",
+    });
+
+    const complete = await stat(partPath);
+    const mergedSize = complete.size;
+    const effectiveSize =
+      knownRemoteSize > 0 && mergedSize > knownRemoteSize ? knownRemoteSize : mergedSize;
+    if (knownRemoteSize > 0 && mergedSize < knownRemoteSize) {
+      throw new Error(`Incomplete download for ${file.path}: ${mergedSize}/${knownRemoteSize}`);
+    }
+
+    await rename(partPath, destination);
+    downloadedState.value += Math.max(0, effectiveSize - resumedBytes);
     updateTask(spec.id, (task) => ({
       ...task,
       state: "downloading",
@@ -288,6 +363,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
 
   async function ensureScope(scope: LocalTaskKind | "all") {
     lastScope = scope;
+    logger.info({ scope }, "model ensure started");
     if (retryTimer) {
       clearTimeoutImpl(retryTimer);
       retryTimer = null;
@@ -309,6 +385,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
 
     const specs = buildSpecs(scope);
     if (specs.length === 0) {
+      logger.info({ scope }, "model ensure skipped: no local models enabled");
       updateStatus((current) => ({
         ...current,
         phase: "completed",
@@ -321,6 +398,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     try {
       updateStatus((current) => ({ ...current, phase: "running" }));
       for (const spec of specs) {
+        logger.info({ scope, kind: spec.kind, model: spec.model }, "model download started");
         const files = await fetchRepoFiles(spec);
         const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
         const downloadedState = { value: 0 };
@@ -344,6 +422,16 @@ export function createModelService(input: CreateModelServiceInput): ModelService
           totalBytes,
           progressPct: 100,
         }));
+        logger.info(
+          {
+            scope,
+            kind: spec.kind,
+            model: spec.model,
+            files: files.length,
+            bytes: totalBytes,
+          },
+          "model download completed"
+        );
       }
       updateStatus((current) => ({
         ...current,
@@ -357,6 +445,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
           exhausted: false,
         },
       }));
+      logger.info({ scope }, "model ensure completed");
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       for (const spec of specs) {
@@ -384,10 +473,31 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         },
       }));
       if (!exhausted) {
+        logger.warn(
+          {
+            scope,
+            attempt: nextAttempt,
+            maxAttempts: MODEL_RETRY_MAX_ATTEMPTS,
+            retryInMs: delay,
+            nextRetryAt,
+            error: message,
+          },
+          "model ensure failed, retry scheduled"
+        );
         retryTimer = setTimeoutImpl(() => {
           retryTimer = null;
           void ensureScope(lastScope ?? "all").catch(() => {});
         }, delay);
+      } else {
+        logger.error(
+          {
+            scope,
+            attempt: nextAttempt,
+            maxAttempts: MODEL_RETRY_MAX_ATTEMPTS,
+            error: message,
+          },
+          "model ensure failed, retry exhausted"
+        );
       }
       throw error;
     }
@@ -611,17 +721,20 @@ export function createModelService(input: CreateModelServiceInput): ModelService
       }
     },
     async retryNow() {
+      logger.info({ scope: lastScope ?? "all" }, "model retryNow triggered");
       await ensureScope(lastScope ?? "all");
       return { ok: true };
     },
     async redownloadEmbeddingModel() {
       const spec = pickSpec("embedding");
+      logger.info({ kind: spec.kind, model: spec.model }, "model redownload triggered");
       await rm(modelRoot(spec), { recursive: true, force: true });
       await ensureScope("embedding");
       return { ok: true };
     },
     async redownloadRerankerModel() {
       const spec = pickSpec("reranker");
+      logger.info({ kind: spec.kind, model: spec.model }, "model redownload triggered");
       await rm(modelRoot(spec), { recursive: true, force: true });
       await ensureScope("reranker");
       return { ok: true };

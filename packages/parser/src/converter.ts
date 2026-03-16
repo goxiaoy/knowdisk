@@ -1,8 +1,23 @@
 import { extname } from "node:path";
-import { MarkItDown } from "markitdown-ts";
 import type { MarkdownConverter } from "./parser.types";
 
-const markItDown = new MarkItDown();
+type MarkItDownInstance = {
+  convertBuffer: (
+    buffer: Buffer,
+    options: {
+      file_extension: string;
+    }
+  ) => Promise<{ title?: string | null; markdown?: string | null } | null | undefined>;
+};
+
+let markItDownPromise: Promise<MarkItDownInstance> | null = null;
+
+async function getMarkItDown(): Promise<MarkItDownInstance> {
+  if (!markItDownPromise) {
+    markItDownPromise = import("markitdown-ts").then(({ MarkItDown }) => new MarkItDown());
+  }
+  return markItDownPromise;
+}
 
 export const defaultMarkdownConverter: MarkdownConverter = {
   id: "markitdown-ts",
@@ -22,6 +37,7 @@ export const defaultMarkdownConverter: MarkdownConverter = {
       };
     }
 
+    const markItDown = await getMarkItDown();
     const result = await markItDown.convertBuffer(input.buffer, {
       file_extension: fileExtension,
     });

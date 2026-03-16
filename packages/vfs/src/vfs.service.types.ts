@@ -6,6 +6,7 @@ import type {
   WalkChildrenOutput,
 } from "./vfs.types";
 import type { VfsNodeEventRow } from "./vfs.repository.types";
+import type { VfsSyncerEvent } from "./vfs.syncer";
 
 export type ListChildrenResult = {
   items: VfsNode[];
@@ -65,6 +66,9 @@ export type VfsNodeEventHooks = {
 
 export type VfsService = VfsOperationCore & {
   subscribeNodeChanges: (listener: (row: VfsNode) => void) => () => void;
+  subscribeSyncerEvents?: (
+    listener: (event: { mountId: string; event: VfsSyncerEvent }) => void
+  ) => () => void;
   registerNodeEventHooks: (hooks: VfsNodeEventHooks) => () => void;
   start: () => Promise<void>;
   close: () => Promise<void>;

@@ -17,8 +17,11 @@ export * from "./huggingface";
 export * from "./local";
 
 function resolveLogger(container: DependencyContainer): Logger | undefined {
-  if (!container.isRegistered("logger", true)) {
-    return undefined;
+  if (container.isRegistered("LoggerService", true)) {
+    return container.resolve<Logger>("LoggerService");
   }
-  return container.resolve<Logger>("logger");
+  if (container.isRegistered("logger", true)) {
+    return container.resolve<Logger>("logger");
+  }
+  return undefined;
 }

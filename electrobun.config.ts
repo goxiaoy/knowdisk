@@ -20,6 +20,7 @@ export default {
       "dist/index.html": "views/app/index.html",
       "dist/assets": "views/app/assets",
       "node_modules/@huggingface/transformers": "node_modules/@huggingface/transformers",
+      "vendor/node_modules/@zvec/bindings-darwin-arm64": "node_modules/@zvec/bindings-darwin-arm64",
       //   "node_modules/onnxruntime-node": "node_modules/onnxruntime-node",
       //   "node_modules/onnxruntime-web": "node_modules/onnxruntime-web",
       //   "node_modules/onnxruntime-common": "node_modules/onnxruntime-common",

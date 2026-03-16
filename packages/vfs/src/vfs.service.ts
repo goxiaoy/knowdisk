@@ -9,7 +9,12 @@ import {
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
-import { createVfsSyncer, type VfsSyncer, type VfsSyncerHookRunner } from "./vfs.syncer";
+import {
+  createVfsSyncer,
+  type VfsSyncer,
+  type VfsSyncerEvent,
+  type VfsSyncerHookRunner,
+} from "./vfs.syncer";
 import type { VfsNodeEventHooks, VfsService } from "./vfs.service.types";
 import type {
   VfsMount,
@@ -31,6 +36,7 @@ export function createVfsService(deps: {
   const reconcileTimers = new Map<string, ReturnType<typeof setInterval>>();
   const reconcileRunning = new Set<string>();
   const nodeEventHooks = new Map<number, VfsNodeEventHooks>();
+  const syncerEventListeners = new Set<(event: { mountId: string; event: VfsSyncerEvent }) => void>();
   const syncers = new Map<string, { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }>();
   let nextHookRegistrationId = 1;
 
@@ -86,7 +92,11 @@ export function createVfsService(deps: {
       logger: deps.logger,
       nowMs,
     });
-    const stopSub = syncer.subscribe(() => {});
+    const stopSub = syncer.subscribe((event) => {
+      for (const listener of syncerEventListeners) {
+        listener({ mountId: mount.mountId, event });
+      }
+    });
     syncers.set(mount.mountId, { mount, syncer, stopSub });
     return syncer;
   };
@@ -165,6 +175,12 @@ export function createVfsService(deps: {
   return {
     subscribeNodeChanges(listener) {
       return deps.repository.subscribeNodeChanges(listener);
+    },
+    subscribeSyncerEvents(listener) {
+      syncerEventListeners.add(listener);
+      return () => {
+        syncerEventListeners.delete(listener);
+      };
     },
 
     registerNodeEventHooks(hooks) {

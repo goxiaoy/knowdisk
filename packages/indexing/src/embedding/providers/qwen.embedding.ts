@@ -53,6 +53,11 @@ export function createQwenEmbeddingProvider(container: DependencyContainer): Emb
 
 function resolveFetch(container: DependencyContainer): typeof fetch {
   try {
+    return container.resolve<typeof fetch>("Fetch");
+  } catch {
+    // fall through to legacy token and global fetch
+  }
+  try {
     return container.resolve<typeof fetch>("fetch");
   } catch {
     return fetch;

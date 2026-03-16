@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createDefaultCoreConfig, createLoggerService } from "@knowdisk/core";
 import { createModelService } from "./index";
 
@@ -31,6 +31,150 @@ afterEach(async () => {
 });
 
 describe("model retry and progress", () => {
+  it("persists partial chunks and resumes after stream interruption", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "knowdisk-model-stream-resume-"));
+    tempDirs.push(dir);
+
+    const config = createDefaultCoreConfig();
+    config.providers.huggingface = {
+      endpoint: "https://models.example.com",
+    };
+    config.reranker.enabled = false;
+
+    let downloadAttempt = 0;
+    const fetchImpl = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/models/onnx-community/gte-multilingual-base")) {
+        return jsonResponse({
+          siblings: [{ rfilename: "onnx/model.onnx", size: 8 }],
+        });
+      }
+
+      downloadAttempt += 1;
+      if (downloadAttempt === 1) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("test"));
+            controller.error(new Error("stream interrupted"));
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: {
+            "content-length": "8",
+            "content-type": "application/octet-stream",
+          },
+        });
+      }
+
+      const headers = new Headers(init?.headers);
+      if (headers.get("range") !== "bytes=4-") {
+        throw new Error("missing resume range header");
+      }
+      return new Response("done", {
+        status: 206,
+        headers: {
+          "content-length": "4",
+          "content-range": "bytes 4-7/8",
+          "content-type": "application/octet-stream",
+        },
+      });
+    });
+
+    const service = createModelService({
+      logger: createLoggerService({ level: "silent" }),
+      config,
+      cacheDir: dir,
+      deps: {
+        fetch: fetchImpl,
+        setTimeout: ((_fn: () => void, _delay?: number) => 1) as typeof setTimeout,
+        clearTimeout: ((_timer: number) => {}) as typeof clearTimeout,
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
+      },
+    });
+
+    await expect(service.ensureRequiredModels()).rejects.toThrow("stream interrupted");
+
+    const partial = await readFile(
+      join(
+        dir,
+        "embedding",
+        "onnx-community/gte-multilingual-base",
+        "onnx",
+        "model.onnx.part"
+      ),
+      "utf8"
+    );
+    expect(partial).toBe("test");
+
+    await service.ensureRequiredModels();
+
+    const result = await readFile(
+      join(dir, "embedding", "onnx-community/gte-multilingual-base", "onnx", "model.onnx"),
+      "utf8"
+    );
+    expect(result).toBe("testdone");
+  });
+
+  it("resumes download from existing part file with range request", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "knowdisk-model-resume-"));
+    tempDirs.push(dir);
+
+    const config = createDefaultCoreConfig();
+    config.providers.huggingface = {
+      endpoint: "https://models.example.com",
+    };
+    config.reranker.enabled = false;
+
+    const modelPath = join(
+      dir,
+      "embedding",
+      "onnx-community/gte-multilingual-base",
+      "onnx/model.onnx.part"
+    );
+    await mkdir(dirname(modelPath), { recursive: true });
+    await writeFile(modelPath, "test", "utf8");
+
+    const fetchImpl = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/models/onnx-community/gte-multilingual-base")) {
+        return jsonResponse({
+          siblings: [{ rfilename: "onnx/model.onnx", size: 8 }],
+        });
+      }
+      const headers = new Headers(init?.headers);
+      if (headers.get("range") !== "bytes=4-") {
+        throw new Error("missing range header");
+      }
+      return new Response("done", {
+        status: 206,
+        headers: {
+          "content-length": "4",
+          "content-range": "bytes 4-7/8",
+          "content-type": "application/octet-stream",
+        },
+      });
+    });
+
+    const service = createModelService({
+      logger: createLoggerService({ level: "silent" }),
+      config,
+      cacheDir: dir,
+      deps: {
+        fetch: fetchImpl,
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
+      },
+    });
+
+    await service.ensureRequiredModels();
+
+    const result = await readFile(
+      join(dir, "embedding", "onnx-community/gte-multilingual-base", "onnx", "model.onnx"),
+      "utf8"
+    );
+    expect(result).toBe("testdone");
+  });
+
   it("updates retry metadata when download fails", async () => {
     const dir = await mkdtemp(join(tmpdir(), "knowdisk-model-retry-"));
     tempDirs.push(dir);

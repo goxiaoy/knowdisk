@@ -9,8 +9,9 @@
     "dev": "bun run build && electrobun dev",
     "dev:hmr": "concurrently -k --kill-signal SIGINT --success first \"vite --port 5173\" \"bun run dev\"",
     "hmr": "vite --port 5173",
-    "build": "vite build && electrobun build",
-    "build:prod": "vite build && electrobun build --channel prod",
+    "prepare:native": "[ -d node_modules/.bun/@zvec+bindings-darwin-arm64@0.2.0/node_modules/@zvec/bindings-darwin-arm64 ] && mkdir -p vendor/node_modules/@zvec && rm -rf vendor/node_modules/@zvec/bindings-darwin-arm64 && cp -R node_modules/.bun/@zvec+bindings-darwin-arm64@0.2.0/node_modules/@zvec/bindings-darwin-arm64 vendor/node_modules/@zvec/ || true",
+    "build": "bun run prepare:native && vite build && electrobun build",
+    "build:prod": "bun run prepare:native && vite build && electrobun build --channel prod",
     "start": "bun run dev",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
@@ -21,6 +22,9 @@
     "parser:example": "bun run --cwd packages/parser example"
   },
   "dependencies": {
+    "@knowdisk/core": "workspace:*",
+    "@knowdisk/indexing": "workspace:*",
+    "@knowdisk/model": "workspace:*",
     "@knowdisk/parser": "workspace:*",
     "@knowdisk/vfs": "workspace:*",
     "@huggingface/transformers": "^3.8.1",
