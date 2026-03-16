@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { access, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   CreateModelServiceInput,
@@ -202,6 +202,15 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     if (entries.length === 0) {
       return 100;
     }
+    const totalBytes = entries.reduce((sum, task) => sum + (task?.totalBytes ?? 0), 0);
+    if (totalBytes > 0) {
+      const downloadedBytes = entries.reduce(
+        (sum, task) =>
+          sum + Math.min(task?.downloadedBytes ?? 0, task?.totalBytes ?? task?.downloadedBytes ?? 0),
+        0
+      );
+      return Math.min(100, Math.round((downloadedBytes / totalBytes) * 100));
+    }
     return Math.round(
       entries.reduce((sum, task) => sum + (task?.progressPct ?? 0), 0) / entries.length
     );
@@ -286,16 +295,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     if (knownRemoteSize > 0 && resumedBytes >= knownRemoteSize) {
       await rename(partPath, destination);
       downloadedState.value += knownRemoteSize;
-      updateTask(spec.id, (task) => ({
-        ...task,
-        state: "downloading",
-        downloadedBytes: downloadedState.value,
-        totalBytes,
-        progressPct:
-          totalBytes > 0
-            ? Math.min(100, Math.round((downloadedState.value / totalBytes) * 100))
-            : 100,
-      }));
+      updateTaskProgress(spec.id, downloadedState.value, totalBytes);
       return;
     }
 
@@ -311,36 +311,62 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     if (!response.ok) {
       throw new Error(`Failed to download ${file.path}: ${response.status} ${response.statusText}`);
     }
+    if (!response.body) {
+      throw new Error(`Failed to download ${file.path}: empty response body`);
+    }
 
     const supportsRange = resumedBytes > 0 && response.status === 206;
     if (resumedBytes > 0 && !supportsRange) {
       resumedBytes = 0;
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
-    await writeFile(partPath, buffer, {
-      flag: resumedBytes > 0 ? "a" : "w",
-    });
+    if (resumedBytes > 0) {
+      downloadedState.value += resumedBytes;
+      updateTaskProgress(spec.id, downloadedState.value, totalBytes);
+    }
+
+    const fileHandle = await open(partPath, resumedBytes > 0 ? "a" : "w");
+    try {
+      const reader = response.body.getReader();
+      while (true) {
+        const next = await reader.read();
+        if (next.done) {
+          break;
+        }
+        const chunk = next.value;
+        if (!chunk || chunk.byteLength === 0) {
+          continue;
+        }
+        await fileHandle.write(chunk);
+        downloadedState.value += chunk.byteLength;
+        updateTaskProgress(spec.id, downloadedState.value, totalBytes);
+      }
+    } finally {
+      await fileHandle.close();
+    }
 
     const complete = await stat(partPath);
     const mergedSize = complete.size;
-    const effectiveSize =
-      knownRemoteSize > 0 && mergedSize > knownRemoteSize ? knownRemoteSize : mergedSize;
     if (knownRemoteSize > 0 && mergedSize < knownRemoteSize) {
       throw new Error(`Incomplete download for ${file.path}: ${mergedSize}/${knownRemoteSize}`);
     }
 
     await rename(partPath, destination);
-    downloadedState.value += Math.max(0, effectiveSize - resumedBytes);
-    updateTask(spec.id, (task) => ({
+    updateTaskProgress(spec.id, downloadedState.value, totalBytes);
+  }
+
+  function updateTaskProgress(
+    id: ModelDownloadTask["id"],
+    downloadedBytes: number,
+    totalBytes: number
+  ) {
+    updateTask(id, (task) => ({
       ...task,
       state: "downloading",
-      downloadedBytes: downloadedState.value,
+      downloadedBytes,
       totalBytes,
       progressPct:
-        totalBytes > 0
-          ? Math.min(100, Math.round((downloadedState.value / totalBytes) * 100))
-          : 100,
+        totalBytes > 0 ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : 100,
     }));
   }
 
@@ -396,7 +422,20 @@ export function createModelService(input: CreateModelServiceInput): ModelService
     }
 
     try {
-      updateStatus((current) => ({ ...current, phase: "running" }));
+      updateStatus((current) => ({
+        ...current,
+        phase: "running",
+        tasks: {
+          embedding:
+            current.tasks.embedding && current.tasks.embedding.state === "verifying"
+              ? { ...current.tasks.embedding, state: "waiting" }
+              : current.tasks.embedding,
+          reranker:
+            current.tasks.reranker && current.tasks.reranker.state === "verifying"
+              ? { ...current.tasks.reranker, state: "waiting" }
+              : current.tasks.reranker,
+        },
+      }));
       for (const spec of specs) {
         logger.info({ scope, kind: spec.kind, model: spec.model }, "model download started");
         const files = await fetchRepoFiles(spec);
@@ -404,7 +443,7 @@ export function createModelService(input: CreateModelServiceInput): ModelService
         const downloadedState = { value: 0 };
         updateTask(spec.id, (task) => ({
           ...task,
-          state: "pending",
+          state: "waiting",
           totalBytes,
         }));
         for (const file of files) {

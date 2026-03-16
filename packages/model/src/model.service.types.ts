@@ -2,6 +2,7 @@ import type { CoreConfig, LoggerService } from "@knowdisk/core";
 
 export type ModelDownloadTaskState =
   | "verifying"
+  | "waiting"
   | "pending"
   | "downloading"
   | "ready"

@@ -52,9 +52,14 @@ describe("model retry and progress", () => {
 
       downloadAttempt += 1;
       if (downloadAttempt === 1) {
+        let sent = false;
         const stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode("test"));
+          pull(controller) {
+            if (!sent) {
+              sent = true;
+              controller.enqueue(new TextEncoder().encode("test"));
+              return;
+            }
             controller.error(new Error("stream interrupted"));
           },
         });
@@ -96,13 +101,7 @@ describe("model retry and progress", () => {
     await expect(service.ensureRequiredModels()).rejects.toThrow("stream interrupted");
 
     const partial = await readFile(
-      join(
-        dir,
-        "embedding",
-        "onnx-community/gte-multilingual-base",
-        "onnx",
-        "model.onnx.part"
-      ),
+      join(dir, "embedding", "onnx-community/gte-multilingual-base", "onnx", "model.onnx.part"),
       "utf8"
     );
     expect(partial).toBe("test");
@@ -268,5 +267,90 @@ describe("model retry and progress", () => {
       phase: "completed",
       progressPct: 100,
     });
+  });
+
+  it("weights aggregate progress by total bytes and marks queued tasks as waiting", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "knowdisk-model-weighted-progress-"));
+    tempDirs.push(dir);
+
+    const config = createDefaultCoreConfig();
+    config.providers.huggingface = {
+      endpoint: "https://models.example.com",
+    };
+
+    const snapshots: Array<{
+      phase: string;
+      progressPct: number;
+      embeddingProgress: number;
+      embeddingState: string;
+      rerankerProgress: number;
+      rerankerState: string;
+      rerankerTotal: number;
+    }> = [];
+
+    const fetchImpl = mock(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/models/onnx-community/gte-multilingual-base")) {
+        return jsonResponse({
+          siblings: [{ rfilename: "onnx/model.onnx", size: 4 }],
+        });
+      }
+      if (url.endsWith("/api/models/Xenova/bge-reranker-base")) {
+        return jsonResponse({
+          siblings: [{ rfilename: "onnx/model.onnx", size: 12 }],
+        });
+      }
+      if (url.includes("/onnx-community/gte-multilingual-base/resolve/main/")) {
+        return textResponse("test", 4);
+      }
+      if (url.includes("/Xenova/bge-reranker-base/resolve/main/")) {
+        return textResponse("abcdefghijkl", 12);
+      }
+      throw new Error(`unexpected fetch url: ${url}`);
+    });
+
+    const service = createModelService({
+      logger: createLoggerService({ level: "silent" }),
+      config,
+      cacheDir: dir,
+      deps: {
+        fetch: fetchImpl,
+        loadEmbeddingExtractor: async () => async () => ({ data: [1] }),
+        loadRerankerRuntime: async () => ({
+          async tokenizePairs() {
+            return {};
+          },
+          async score() {
+            return [1];
+          },
+        }),
+      },
+    });
+
+    const unsubscribe = service.getStatus().subscribe((status) => {
+      snapshots.push({
+        phase: status.phase,
+        progressPct: status.progressPct,
+        embeddingProgress: status.tasks.embedding?.progressPct ?? 0,
+        embeddingState: status.tasks.embedding?.state ?? "none",
+        rerankerProgress: status.tasks.reranker?.progressPct ?? 0,
+        rerankerState: status.tasks.reranker?.state ?? "none",
+        rerankerTotal: status.tasks.reranker?.totalBytes ?? 0,
+      });
+    });
+    await service.ensureRequiredModels();
+    unsubscribe();
+
+    const queuedSnapshot = snapshots.find(
+      (snapshot) =>
+        snapshot.phase === "running" &&
+        snapshot.embeddingProgress === 100 &&
+        snapshot.rerankerProgress === 0 &&
+        snapshot.rerankerTotal === 12
+    );
+
+    expect(queuedSnapshot).toBeTruthy();
+    expect(queuedSnapshot?.rerankerState).toBe("waiting");
+    expect(queuedSnapshot?.progressPct).toBe(25);
   });
 });
