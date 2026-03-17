@@ -30,9 +30,10 @@ import {
   type RendererVfsStatus,
 } from "../shared/vfs-status";
 import { type RendererVectorDbStatus } from "../shared/vector-db-status";
-import { createAppContainer, createPythonWorkerCommand } from "./app.container";
+import { createAppContainer } from "./app.container";
 import { buildParserDocumentPath, deriveMarkdownTitle } from "./parser-artifacts";
 import { createPythonWorkerAppRuntime } from "./python-worker-app-runtime";
+import { resolvePythonWorkerCommandForRuntime } from "./python-worker-command";
 import { createPythonWorkerRuntime } from "./python-worker-runtime";
 import { createPythonWorkerStatusStore } from "./python-worker-status";
 import { createPythonWorkerTransport } from "./python-worker-transport";
@@ -109,7 +110,12 @@ type AppRPCSchema = {
 
 const app = createAppContainer();
 const pythonWorkerTransport = createPythonWorkerTransport({
-  command: createPythonWorkerCommand(app.paths),
+  command: resolvePythonWorkerCommandForRuntime({
+    platform: process.platform,
+    isPackaged: process.env.NODE_ENV !== "development",
+    execPath: process.execPath,
+    cwd: process.cwd(),
+  }),
 });
 const pythonWorkerRuntime = createPythonWorkerRuntime({
   transport: pythonWorkerTransport,
