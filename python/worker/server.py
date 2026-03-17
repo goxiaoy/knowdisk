@@ -9,9 +9,11 @@ class PythonWorkerServer:
         self,
         event_sink: Callable[[dict[str, Any]], None],
         bun_request: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+        services: dict[str, Any] | None = None,
     ) -> None:
         self._event_sink = event_sink
         self.bun_client = BunClient(bun_request) if bun_request is not None else None
+        self.services = services or {}
         self.is_running = True
 
     def handle_request(self, frame: dict[str, Any]) -> dict[str, Any]:
@@ -22,6 +24,11 @@ class PythonWorkerServer:
         handlers = {
             "start": self._handle_start,
             "shutdown": self._handle_shutdown,
+            "get_status_snapshot": self._handle_get_status_snapshot,
+            "index_node": self._handle_index_node,
+            "delete_node": self._handle_delete_node,
+            "rebuild_all": self._handle_rebuild_all,
+            "search": self._handle_search,
         }
         handler = handlers.get(method)
         if handler is None:
@@ -59,9 +66,46 @@ class PythonWorkerServer:
         self.is_running = False
         return {"ok": True}
 
+    def _handle_get_status_snapshot(self, params: dict[str, Any]) -> dict[str, Any]:
+        _ = params
+        model_service = self.services["model_service"]
+        index_queue = self.services["index_queue"]
+        index_service = self.services["index_service"]
+        return {
+            "model_status": model_service.snapshot(),
+            "index_status": index_queue.snapshot(),
+            "vector_status": index_service.vector_status_snapshot(),
+        }
+
+    def _handle_index_node(self, params: dict[str, Any]) -> dict[str, Any]:
+        return self.services["index_service"].index_node(params["node"], params["mount"])
+
+    def _handle_delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
+        self.services["index_service"].delete_node(params["nodeId"])
+        return {"ok": True}
+
+    def _handle_rebuild_all(self, params: dict[str, Any]) -> dict[str, Any]:
+        items = params.get("items", [])
+        self.services["index_queue"].rebuild_all(
+            [
+                (
+                    item["node"]["name"],
+                    lambda item=item: self.services["index_service"].index_node(
+                        item["node"], item["mount"]
+                    ),
+                )
+                for item in items
+            ]
+        )
+        return {"ok": True}
+
+    def _handle_search(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+        return self.services["index_service"].search(str(params.get("query", "")))
+
 
 def create_server(
     event_sink: Callable[[dict[str, Any]], None],
     bun_request: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+    services: dict[str, Any] | None = None,
 ) -> PythonWorkerServer:
-    return PythonWorkerServer(event_sink=event_sink, bun_request=bun_request)
+    return PythonWorkerServer(event_sink=event_sink, bun_request=bun_request, services=services)

@@ -46,3 +46,133 @@ def test_unknown_method_returns_error_response():
             "message": "Unknown method: missing",
         },
     }
+
+
+def test_get_status_snapshot_reads_from_attached_services():
+    model_service = type("ModelServiceStub", (), {"snapshot": lambda self: {"phase": "completed"}})()
+    index_queue = type("IndexQueueStub", (), {"snapshot": lambda self: {"phase": "idle"}})()
+    index_service = type(
+        "IndexServiceStub",
+        (),
+        {"vector_status_snapshot": lambda self: {"chunkCount": 3}},
+    )()
+    server = create_server(
+        event_sink=lambda event: None,
+        services={
+            "model_service": model_service,
+            "index_queue": index_queue,
+            "index_service": index_service,
+        },
+    )
+
+    response = server.handle_request({"id": "req-4", "method": "get_status_snapshot", "params": {}})
+
+    assert response == {
+        "id": "req-4",
+        "result": {
+            "model_status": {"phase": "completed"},
+            "index_status": {"phase": "idle"},
+            "vector_status": {"chunkCount": 3},
+        },
+    }
+
+
+def test_index_node_delegates_to_index_service():
+    calls: list[tuple[dict, dict]] = []
+
+    class IndexServiceStub:
+        def index_node(self, node, mount):
+            calls.append((node, mount))
+            return {"indexed": 1}
+
+        def vector_status_snapshot(self):
+            return {"chunkCount": 0}
+
+    server = create_server(
+        event_sink=lambda event: None,
+        services={
+            "model_service": type("ModelServiceStub", (), {"snapshot": lambda self: {}})(),
+            "index_queue": type("IndexQueueStub", (), {"snapshot": lambda self: {}})(),
+            "index_service": IndexServiceStub(),
+        },
+    )
+
+    response = server.handle_request(
+        {
+            "id": "req-5",
+            "method": "index_node",
+            "params": {
+                "node": {"nodeId": "node-1", "name": "a.md"},
+                "mount": {"directory": "/tmp", "contentDir": ""},
+            },
+        }
+    )
+
+    assert response == {"id": "req-5", "result": {"indexed": 1}}
+    assert calls == [
+        (
+            {"nodeId": "node-1", "name": "a.md"},
+            {"directory": "/tmp", "contentDir": ""},
+        )
+    ]
+
+
+def test_delete_node_rebuild_all_and_search_delegate_to_services():
+    deleted: list[str] = []
+    rebuilt: list[list[str]] = []
+    searched: list[str] = []
+
+    class IndexServiceStub:
+        def delete_node(self, node_id):
+            deleted.append(node_id)
+
+        def search(self, query):
+            searched.append(query)
+            return [{"nodeId": "node-1"}]
+
+        def vector_status_snapshot(self):
+            return {"chunkCount": 0}
+
+    class IndexQueueStub:
+        def snapshot(self):
+            return {"phase": "idle"}
+
+        def rebuild_all(self, jobs):
+            rebuilt.append([name for name, _ in jobs])
+
+    server = create_server(
+        event_sink=lambda event: None,
+        services={
+            "model_service": type("ModelServiceStub", (), {"snapshot": lambda self: {}})(),
+            "index_queue": IndexQueueStub(),
+            "index_service": IndexServiceStub(),
+        },
+    )
+
+    delete_response = server.handle_request(
+        {"id": "req-6", "method": "delete_node", "params": {"nodeId": "node-1"}}
+    )
+    rebuild_response = server.handle_request(
+        {
+            "id": "req-7",
+            "method": "rebuild_all",
+            "params": {
+                "items": [
+                    {
+                        "node": {"nodeId": "node-1", "name": "a.md"},
+                        "mount": {"directory": "/tmp", "contentDir": ""},
+                    }
+                ]
+            },
+        }
+    )
+    search_response = server.handle_request(
+        {"id": "req-8", "method": "search", "params": {"query": "hello"}}
+    )
+
+    assert delete_response == {"id": "req-6", "result": {"ok": True}}
+    assert rebuild_response == {"id": "req-7", "result": {"ok": True}}
+    assert search_response == {"id": "req-8", "result": [{"nodeId": "node-1"}]}
+    assert deleted == ["node-1"]
+    assert rebuilt == [["a.md"]]
+    assert searched == ["hello"]
