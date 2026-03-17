@@ -18,6 +18,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "bun test",
+    "prepare:python-runtime": "bun run scripts/prepare-python-runtime.ts",
     "python:setup": "uv sync --project python --extra dev",
     "python:test": "uv run --project python --extra dev pytest python/tests -v",
     "python:worker": "uv run --project python python -m worker",
@@ -25,14 +26,12 @@
     "parser:example": "bun run --cwd packages/parser example"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
     "@knowdisk/core": "workspace:*",
     "@knowdisk/vfs": "workspace:*",
     "@milkdown/kit": "^7.19.0",
     "@milkdown/react": "^7.19.0",
     "@milkdown/theme-nord": "^7.19.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
-    "@zvec/zvec": "^0.2.0",
     "aws-sdk": "^2.1693.0",
     "chokidar": "^5.0.0",
     "class-variance-authority": "^0.7.1",
