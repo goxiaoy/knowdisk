@@ -106,9 +106,6 @@ describe("createPythonWorkerAppRuntime", () => {
                 },
               ],
       } as never,
-      vectorRepository: {
-        consumeRecoveryState: () => ({ recovered: true }),
-      } as never,
       logger: {
         error() {},
       } as never,

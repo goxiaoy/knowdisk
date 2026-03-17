@@ -79,6 +79,7 @@ def test_get_status_snapshot_reads_from_attached_services():
 
 def test_index_node_delegates_to_index_service():
     calls: list[tuple[dict, dict]] = []
+    queued: list[str] = []
 
     class IndexServiceStub:
         def index_node(self, node, mount):
@@ -92,7 +93,17 @@ def test_index_node_delegates_to_index_service():
         event_sink=lambda event: None,
         services={
             "model_service": type("ModelServiceStub", (), {"snapshot": lambda self: {}})(),
-            "index_queue": type("IndexQueueStub", (), {"snapshot": lambda self: {}})(),
+            "index_queue": type(
+                "IndexQueueStub",
+                (),
+                {
+                    "snapshot": lambda self: {},
+                    "enqueue_incremental": lambda self, node_name, job: (
+                        queued.append(node_name),
+                        job(),
+                    )[-1],
+                },
+            )(),
             "index_service": IndexServiceStub(),
         },
     )
@@ -109,6 +120,7 @@ def test_index_node_delegates_to_index_service():
     )
 
     assert response == {"id": "req-5", "result": {"indexed": 1}}
+    assert queued == ["a.md"]
     assert calls == [
         (
             {"nodeId": "node-1", "name": "a.md"},

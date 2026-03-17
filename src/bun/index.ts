@@ -120,7 +120,6 @@ const pythonWorkerAppRuntime = createPythonWorkerAppRuntime({
   request: (method, params) => pythonWorkerTransport.request(method, params),
   vfs: app.vfs,
   vfsRepository: app.vfsRepository,
-  vectorRepository: app.vectorRepository,
   logger: app.logger,
 });
 
@@ -309,7 +308,7 @@ async function getFileMarkdown(input: GetFileMarkdownRequest): Promise<GetFileMa
       };
     }
 
-    const document = await app.parser.materializeNode({ nodeId: input.nodeId });
+    const document = await app.getParserService().materializeNode({ nodeId: input.nodeId });
     return {
       ok: true,
       markdown: document.markdown,

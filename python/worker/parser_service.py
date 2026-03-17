@@ -19,7 +19,8 @@ def parse_node(
     parse_simple: SimpleParser = parse_simple_document,
     parse_docling: DoclingParser = parse_docling_document,
 ) -> list[dict[str, Any]]:
-    if node.get("providerType") != "local":
+    provider_type = str(mount.get("providerType") or node.get("providerType") or "")
+    if provider_type != "local":
         return [
             {
                 "status": "error",

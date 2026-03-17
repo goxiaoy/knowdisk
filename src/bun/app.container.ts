@@ -7,13 +7,6 @@ import {
   validateCoreConfig,
   type CoreConfig,
 } from "@knowdisk/core";
-import {
-  createFtsRepository,
-  createIndexingServiceFromConfig,
-  createVectorRepository,
-  type VectorRepository,
-} from "@knowdisk/indexing";
-import { createModelService } from "@knowdisk/model";
 import { createParserService, type ParserService } from "@knowdisk/parser";
 import {
   createVfsProviderRegistry,
@@ -25,9 +18,12 @@ import {
 } from "@knowdisk/vfs";
 import type { Logger } from "pino";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
-type IndexingService = ReturnType<typeof createIndexingServiceFromConfig>;
 
-type ModelService = ReturnType<typeof createModelService>;
+type LegacyIndexingService = {
+  indexNode(input: { nodeId: string }): Promise<unknown>;
+  deleteNode(input: { nodeId: string }): Promise<unknown>;
+  rebuildAllFromLocalNodes(): Promise<unknown>;
+};
 
 export type AppContainerPaths = {
   basePath: string;
@@ -46,10 +42,6 @@ export type AppContainerDeps = {
   createVfsProviderRegistry: typeof createVfsProviderRegistry;
   createVfsService: typeof createVfsService;
   createParserService: typeof createParserService;
-  createFtsRepository: typeof createFtsRepository;
-  createVectorRepository: typeof createVectorRepository;
-  createIndexingServiceFromConfig: typeof createIndexingServiceFromConfig;
-  createModelService: typeof createModelService;
 };
 
 export type AppContainer = {
@@ -57,12 +49,9 @@ export type AppContainer = {
   config: CoreConfig;
   paths: AppContainerPaths;
   logger: Logger;
-  modelService: ModelService;
   vfsRepository: VfsRepository;
   vfs: VfsService;
-  parser: ParserService;
-  indexing: IndexingService;
-  vectorRepository: VectorRepository;
+  getParserService(): ParserService;
   close(): Promise<void>;
 };
 
@@ -72,13 +61,9 @@ const TOKENS = {
   coreConfig: "CoreConfig",
   fetchService: "Fetch",
   fetchServiceLegacy: "fetch",
-  modelService: "ModelService",
   vfsRepository: "VfsRepository",
   vfsService: "VfsService",
   parserService: "ParserService",
-  ftsRepository: "FtsRepository",
-  vectorRepository: "VectorRepository",
-  indexingService: "IndexingService",
 } as const;
 
 export function createAppContainer(input?: {
@@ -92,10 +77,6 @@ export function createAppContainer(input?: {
     createVfsProviderRegistry,
     createVfsService,
     createParserService,
-    createFtsRepository,
-    createVectorRepository,
-    createIndexingServiceFromConfig,
-    createModelService,
     ...input?.deps,
   };
   const container = input?.container ?? rootContainer.createChildContainer();
@@ -118,16 +99,6 @@ export function createAppContainer(input?: {
   container.registerInstance(TOKENS.fetchService, fetch);
   container.registerInstance(TOKENS.fetchServiceLegacy, fetch);
 
-  const modelService = deps.createModelService({
-    logger,
-    config,
-    cacheDir: paths.modelCacheDir,
-    deps: {
-      fetch: container.resolve(TOKENS.fetchService),
-    },
-  });
-  container.registerInstance(TOKENS.modelService, modelService);
-
   const vfsRepository = deps.createVfsRepository({ dbPath: paths.vfsDbPath });
   const vfsRegistry = deps.createVfsProviderRegistry(container);
   const vfs = deps.createVfsService({
@@ -138,38 +109,26 @@ export function createAppContainer(input?: {
   });
   container.registerInstance(TOKENS.vfsRepository, vfsRepository);
   container.registerInstance(TOKENS.vfsService, vfs);
-
-  const parser = deps.createParserService({
-    vfs,
-    basePath: paths.parserCacheDir,
-    logger,
-  });
-  container.registerInstance(TOKENS.parserService, parser);
-
-  const ftsRepository = deps.createFtsRepository({ dbPath: paths.indexingDbPath });
-  const vectorRepository = deps.createVectorRepository({
-    collectionPath: paths.indexingVectorPath,
-  });
-  const indexing = deps.createIndexingServiceFromConfig(container, {
-    logger,
-    ftsRepository,
-    vectorRepository,
-  });
-  container.registerInstance(TOKENS.ftsRepository, ftsRepository);
-  container.registerInstance(TOKENS.vectorRepository, vectorRepository);
-  container.registerInstance(TOKENS.indexingService, indexing);
+  let parser: ParserService | null = null;
 
   return {
     container,
     config,
     paths,
     logger,
-    modelService,
     vfsRepository,
     vfs,
-    parser,
-    indexing,
-    vectorRepository,
+    getParserService() {
+      if (!parser) {
+        parser = deps.createParserService({
+          vfs,
+          basePath: paths.parserCacheDir,
+          logger,
+        });
+        container.registerInstance(TOKENS.parserService, parser);
+      }
+      return parser;
+    },
     async close() {
       const errors: Error[] = [];
       try {
@@ -181,8 +140,6 @@ export function createAppContainer(input?: {
       }
       for (const close of [
         () => vfsRepository.close(),
-        () => ftsRepository.close(),
-        () => vectorRepository.close(),
       ]) {
         try {
           close();
@@ -200,7 +157,7 @@ export function createAppContainer(input?: {
 }
 
 export function createVfsIndexingHooks(input: {
-  indexing: Pick<IndexingService, "indexNode" | "deleteNode">;
+  indexing: Pick<LegacyIndexingService, "indexNode" | "deleteNode">;
   logger: Pick<Logger, "error">;
 }): VfsNodeEventHooks {
   return {
@@ -239,7 +196,12 @@ export function createVfsIndexingHooks(input: {
   };
 }
 
-export function initializeAppRuntime(app: AppContainer): () => void {
+export function initializeAppRuntime(app: {
+  vfs: Pick<VfsService, "registerNodeEventHooks">;
+  indexing: Pick<LegacyIndexingService, "indexNode" | "deleteNode" | "rebuildAllFromLocalNodes">;
+  logger: Pick<Logger, "error">;
+  vectorRepository: Pick<{ consumeRecoveryState(): { recovered: boolean } }, "consumeRecoveryState">;
+}): () => void {
   const offHooks = app.vfs.registerNodeEventHooks(
     createVfsIndexingHooks({
       indexing: app.indexing,

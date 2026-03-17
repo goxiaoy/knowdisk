@@ -12,7 +12,6 @@ export function createPythonWorkerAppRuntime(input: {
     VfsRepository,
     "getNodeMountExtByMountId" | "listNodeMountExts" | "listNodesByMountId"
   >;
-  vectorRepository: Pick<{ consumeRecoveryState(): { recovered: boolean } }, "consumeRecoveryState">;
   logger: Pick<Logger, "error">;
 }): {
   start(): Promise<void>;
@@ -55,16 +54,14 @@ async function bootstrapRecoveryRebuild(input: {
     VfsRepository,
     "getNodeMountExtByMountId" | "listNodeMountExts" | "listNodesByMountId"
   >;
-  vectorRepository: Pick<{ consumeRecoveryState(): { recovered: boolean } }, "consumeRecoveryState">;
 }): Promise<void> {
-  if (!input.vectorRepository.consumeRecoveryState().recovered) {
-    return;
-  }
-
   const items = buildPythonWorkerRebuildItems({
     contentRootDir: input.contentRootDir,
     vfsRepository: input.vfsRepository,
   });
+  if (items.length === 0) {
+    return;
+  }
   await input.request("rebuild_all", { items });
 }
 

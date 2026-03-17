@@ -15,7 +15,7 @@ import {
 } from "./app.container";
 
 describe("createAppContainer", () => {
-  it("registers logger/config/model/vfs/indexing/parser services with basePath-derived paths", () => {
+  it("registers logger/config/vfs services and lazily resolves the legacy parser", () => {
     const basePath = mkdtempSync(join(tmpdir(), "knowdisk-app-container-"));
     const config = createDefaultCoreConfig();
     config.basePath = basePath;
@@ -31,71 +31,6 @@ describe("createAppContainer", () => {
       }),
       clear: async () => {},
     };
-    const indexingService = {
-      indexNode: async () => ({ indexed: 0 }),
-      deleteNode: async () => {},
-      rebuildAllFromLocalNodes: async () => {},
-      getStatus: () => ({
-        getSnapshot: () => ({
-          phase: "idle" as const,
-          scope: null,
-          processedFiles: 0,
-          totalFiles: 0,
-          activeNodeName: null,
-          error: "",
-        }),
-        subscribe: () => () => {},
-      }),
-      search: async () => ({
-        hybrid: [],
-        fts: [],
-        vector: [],
-        reranked: [],
-        meta: {
-          query: "",
-          topK: 5,
-          titleOnly: false,
-          embeddingProvider: "stub",
-          rerankerProvider: null,
-        },
-      }),
-    };
-    const vectorRepository = {
-      getChunkCount: async () => 0,
-      consumeRecoveryState: () => ({ recovered: false }),
-      close() {},
-    };
-    const modelService = {
-      ensureRequiredModels: async () => {},
-      getLocalEmbeddingExtractor: async () => {
-        throw new Error("not implemented");
-      },
-      getLocalRerankerRuntime: async () => {
-        throw new Error("not implemented");
-      },
-      retryNow: async () => ({ ok: true }),
-      redownloadEmbeddingModel: async () => ({ ok: true }),
-      redownloadRerankerModel: async () => ({ ok: true }),
-      getStatus: () => ({
-        getSnapshot: () => ({
-          phase: "idle" as const,
-          lastStartedAt: "",
-          lastFinishedAt: "",
-          progressPct: 0,
-          error: "",
-          tasks: { embedding: null, reranker: null },
-          retry: {
-            attempt: 0,
-            maxAttempts: 0,
-            backoffMs: [],
-            nextRetryAt: "",
-            exhausted: false,
-          },
-        }),
-        subscribe: () => () => {},
-      }),
-    };
-
     const deps: AppContainerDeps = {
       createLoggerService: () => logger as never,
       createVfsRepository: (input) => {
@@ -114,23 +49,6 @@ describe("createAppContainer", () => {
         calls.parserBasePath = input.basePath;
         return parserService as never;
       },
-      createFtsRepository: (input) => {
-        calls.indexingDbPath = input.dbPath;
-        return { close() {} } as never;
-      },
-      createVectorRepository: (input) => {
-        calls.indexingVectorPath = input.collectionPath;
-        return vectorRepository as never;
-      },
-      createIndexingServiceFromConfig: (container) => {
-        calls.indexingContainer = container;
-        return indexingService as never;
-      },
-      createModelService: (input) => {
-        calls.modelCacheDir = input.cacheDir;
-        calls.modelFetch = input.deps?.fetch;
-        return modelService as never;
-      },
     };
 
     const app = createAppContainer({
@@ -144,19 +62,13 @@ describe("createAppContainer", () => {
     expect((app.paths as AppContainerPaths).modelCacheDir).toBe(join(basePath, "models"));
     expect(calls.vfsDbPath).toBe(join(basePath, "vfs", "vfs.db"));
     expect(calls.vfsContentRootParent).toBe(join(basePath, "vfs", "content"));
-    expect(calls.parserBasePath).toBe(join(basePath, "parser", "cache"));
-    expect(calls.indexingDbPath).toBe(join(basePath, "indexing", "index.db"));
-    expect(calls.indexingVectorPath).toBe(join(basePath, "indexing", "index.zvec"));
-    expect(calls.modelCacheDir).toBe(join(basePath, "models"));
-    expect(calls.modelFetch).toBe(fetch);
+    expect(calls.parserBasePath).toBeUndefined();
 
     expect(app.container.resolve("CoreConfig")).toBe(config);
-    expect(app.container.resolve("ModelService")).toBe(modelService);
     expect(app.container.resolve("VfsService")).toBe(vfsService);
     expect(app.vfsRepository).toBe(vfsRepository);
-    expect(app.container.resolve("ParserService")).toBe(parserService);
-    expect(app.container.resolve("IndexingService")).toBe(indexingService);
-    expect(app.vectorRepository).toBe(vectorRepository);
+    expect(app.getParserService()).toBe(parserService);
+    expect(calls.parserBasePath).toBe(join(basePath, "parser", "cache"));
   });
 
   it("builds the python worker command from app paths", () => {
@@ -167,7 +79,7 @@ describe("createAppContainer", () => {
     ).toEqual(["uv", "run", "--project", "/tmp/knowdisk/python", "python", "-m", "worker"]);
   });
 
-  it("closes vfs and indexing repositories during shutdown", async () => {
+  it("closes only vfs repositories during shutdown", async () => {
     const closed: string[] = [];
     const app = createAppContainer({
       container: rootContainer.createChildContainer(),
@@ -203,87 +115,12 @@ describe("createAppContainer", () => {
             }),
             clear: async () => {},
           }) as never,
-        createFtsRepository: () =>
-          ({
-            close() {
-              closed.push("fts");
-            },
-          }) as never,
-        createVectorRepository: () =>
-          ({
-            getChunkCount: async () => 0,
-            consumeRecoveryState: () => ({ recovered: false }),
-            close() {
-              closed.push("vector");
-            },
-          }) as never,
-        createIndexingServiceFromConfig: () =>
-          ({
-            indexNode: async () => ({ indexed: 0 }),
-            deleteNode: async () => {},
-            rebuildAllFromLocalNodes: async () => {},
-            getStatus: () => ({
-              getSnapshot: () => ({
-                phase: "idle" as const,
-                scope: null,
-                processedFiles: 0,
-                totalFiles: 0,
-                activeNodeName: null,
-                error: "",
-              }),
-              subscribe: () => () => {},
-            }),
-            search: async () => ({
-              hybrid: [],
-              fts: [],
-              vector: [],
-              reranked: [],
-              meta: {
-                query: "",
-                topK: 5,
-                titleOnly: false,
-                embeddingProvider: "stub",
-                rerankerProvider: null,
-              },
-            }),
-          }) as never,
-        createModelService: () =>
-          ({
-            ensureRequiredModels: async () => {},
-            getLocalEmbeddingExtractor: async () => {
-              throw new Error("not implemented");
-            },
-            getLocalRerankerRuntime: async () => {
-              throw new Error("not implemented");
-            },
-            retryNow: async () => ({ ok: true }),
-            redownloadEmbeddingModel: async () => ({ ok: true }),
-            redownloadRerankerModel: async () => ({ ok: true }),
-            getStatus: () => ({
-              getSnapshot: () => ({
-                phase: "idle" as const,
-                lastStartedAt: "",
-                lastFinishedAt: "",
-                progressPct: 0,
-                error: "",
-                tasks: { embedding: null, reranker: null },
-                retry: {
-                  attempt: 0,
-                  maxAttempts: 0,
-                  backoffMs: [],
-                  nextRetryAt: "",
-                  exhausted: false,
-                },
-              }),
-              subscribe: () => () => {},
-            }),
-          }) as never,
       },
     });
 
     await app.close();
 
-    expect(closed).toEqual(["vfs", "vfsRepository", "fts", "vector"]);
+    expect(closed).toEqual(["vfs", "vfsRepository"]);
   });
 });
 

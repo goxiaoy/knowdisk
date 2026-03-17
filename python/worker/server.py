@@ -47,6 +47,9 @@ class PythonWorkerServer:
 
     def _handle_start(self, params: dict[str, Any]) -> dict[str, Any]:
         _ = params
+        model_service = self.services.get("model_service")
+        if model_service is not None:
+            model_service.ensure_required_models()
         self._event_sink(
             {
                 "type": "worker_health_changed",
@@ -78,7 +81,14 @@ class PythonWorkerServer:
         }
 
     def _handle_index_node(self, params: dict[str, Any]) -> dict[str, Any]:
-        return self.services["index_service"].index_node(params["node"], params["mount"])
+        result: dict[str, Any] = {"indexed": 0}
+
+        def job() -> None:
+            nonlocal result
+            result = self.services["index_service"].index_node(params["node"], params["mount"])
+
+        self.services["index_queue"].enqueue_incremental(params["node"]["name"], job)
+        return result
 
     def _handle_delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
         self.services["index_service"].delete_node(params["nodeId"])
