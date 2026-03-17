@@ -17,6 +17,7 @@ import {
 } from "@knowdisk/vfs";
 import type { Logger } from "pino";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
+import { resolvePythonWorkerCommand } from "./python-worker-command";
 
 type LegacyIndexingService = {
   indexNode(input: { nodeId: string }): Promise<unknown>;
@@ -203,7 +204,11 @@ export function createPythonWorkerCommand(paths: Pick<AppContainerPaths, "python
   string,
   ...string[],
 ] {
-  return ["uv", "run", "--project", paths.pythonProjectDir, "python", "-m", "worker"];
+  return resolvePythonWorkerCommand({
+    mode: "development",
+    repoPythonProjectDir: paths.pythonProjectDir,
+    resourcesDir: "",
+  });
 }
 
 function resolveAppPaths(basePath: string): AppContainerPaths {
