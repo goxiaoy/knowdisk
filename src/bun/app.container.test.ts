@@ -153,6 +153,7 @@ describe("createAppContainer", () => {
     expect(app.container.resolve("CoreConfig")).toBe(config);
     expect(app.container.resolve("ModelService")).toBe(modelService);
     expect(app.container.resolve("VfsService")).toBe(vfsService);
+    expect(app.vfsRepository).toBe(vfsRepository);
     expect(app.container.resolve("ParserService")).toBe(parserService);
     expect(app.container.resolve("IndexingService")).toBe(indexingService);
     expect(app.vectorRepository).toBe(vectorRepository);

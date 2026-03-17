@@ -1,4 +1,3 @@
-import type { ModelDownloadStatus } from "@knowdisk/model";
 import type { VfsNode, VfsSyncerEvent } from "@knowdisk/vfs";
 import { basename } from "node:path";
 import Electrobun, {
@@ -23,7 +22,7 @@ import type {
   RenameFileNodeResponse,
 } from "../shared/files";
 import { type RendererIndexStatus } from "../shared/index-status";
-import { clampPct, type RendererModelStatus } from "../shared/model-status";
+import { type RendererModelStatus } from "../shared/model-status";
 import {
   FALLBACK_VFS_STATUS,
   type RendererVfsMountStatus,
@@ -31,7 +30,11 @@ import {
 } from "../shared/vfs-status";
 import { type RendererVectorDbStatus } from "../shared/vector-db-status";
 import { isParserSupportedFile } from "@knowdisk/parser";
-import { createAppContainer, initializeAppRuntime } from "./app.container";
+import { createAppContainer, createPythonWorkerCommand } from "./app.container";
+import { createPythonWorkerAppRuntime } from "./python-worker-app-runtime";
+import { createPythonWorkerRuntime } from "./python-worker-runtime";
+import { createPythonWorkerStatusStore } from "./python-worker-status";
+import { createPythonWorkerTransport } from "./python-worker-transport";
 import { isMissingRpcSendTransportError } from "./rpc-transport";
 import {
   applyMountNodeChange,
@@ -104,15 +107,21 @@ type AppRPCSchema = {
 };
 
 const app = createAppContainer();
-const stopRuntimeHooks = initializeAppRuntime(app);
-
-void app.vfs.start().catch((error) => {
-  app.logger.error(
-    {
-      error: error instanceof Error ? error.message : String(error),
-    },
-    "failed to start vfs runtime"
-  );
+const pythonWorkerTransport = createPythonWorkerTransport({
+  command: createPythonWorkerCommand(app.paths),
+});
+const pythonWorkerRuntime = createPythonWorkerRuntime({
+  transport: pythonWorkerTransport,
+  maxRestarts: 2,
+});
+const pythonWorkerStatus = createPythonWorkerStatusStore();
+const pythonWorkerAppRuntime = createPythonWorkerAppRuntime({
+  contentRootDir: app.paths.vfsContentRootDir,
+  request: (method, params) => pythonWorkerTransport.request(method, params),
+  vfs: app.vfs,
+  vfsRepository: app.vfsRepository,
+  vectorRepository: app.vectorRepository,
+  logger: app.logger,
 });
 
 const vfsMountStatus = new Map<string, RendererVfsMountStatus>();
@@ -172,47 +181,8 @@ function updateVfsMountStatus(mountId: string, event: VfsSyncerEvent): void {
   vfsMountStatus.set(mountId, applyVfsSyncerEvent(current, event));
 }
 
-function mapModelStatus(status: ModelDownloadStatus): RendererModelStatus {
-  return {
-    phase: status.phase,
-    progressPct: clampPct(status.progressPct),
-    error: status.error,
-    available: true,
-    tasks: {
-      embedding: status.tasks.embedding
-        ? {
-            id: status.tasks.embedding.id,
-            model: status.tasks.embedding.model,
-            state: status.tasks.embedding.state,
-            progressPct: clampPct(status.tasks.embedding.progressPct),
-            error: status.tasks.embedding.error,
-          }
-        : null,
-      reranker: status.tasks.reranker
-        ? {
-            id: status.tasks.reranker.id,
-            model: status.tasks.reranker.model,
-            state: status.tasks.reranker.state,
-            progressPct: clampPct(status.tasks.reranker.progressPct),
-            error: status.tasks.reranker.error,
-          }
-        : null,
-    },
-  };
-}
-
 function mapIndexStatus(): RendererIndexStatus {
-  const status = app.indexing.getStatus().getSnapshot();
-  return {
-    available: true,
-    phase: status.phase,
-    scope: status.scope,
-    queueDepth: status.phase === "idle" ? 0 : Math.max(0, status.totalFiles - status.processedFiles),
-    processedFiles: status.processedFiles,
-    totalFiles: status.totalFiles,
-    activeNodeName: status.activeNodeName ?? "",
-    error: status.error,
-  };
+  return pythonWorkerStatus.getIndexStatus();
 }
 
 function mapNode(node: VfsNode): FileTreeNode {
@@ -428,12 +398,7 @@ async function renameFileNode(input: RenameFileNodeRequest): Promise<RenameFileN
 }
 
 async function getVectorDbStatus(): Promise<RendererVectorDbStatus> {
-  return {
-    available: true,
-    chunkCount: await app.vectorRepository.getChunkCount(),
-    lastUpdatedAt: "",
-    error: "",
-  };
+  return pythonWorkerStatus.getVectorDbStatus();
 }
 
 void hydrateMountedVfsStatus().catch((error) => {
@@ -449,7 +414,7 @@ const rpc = defineElectrobunRPC<AppRPCSchema>("bun", {
   handlers: {
     requests: {
       getModelStatus() {
-        return mapModelStatus(app.modelService.getStatus().getSnapshot());
+        return pythonWorkerStatus.getModelStatus();
       },
       async getVfsStatus() {
         return computeCurrentVfsStatus();
@@ -470,31 +435,6 @@ const rpc = defineElectrobunRPC<AppRPCSchema>("bun", {
   },
 });
 
-void app.modelService.ensureRequiredModels().catch((error) => {
-  const status = app.modelService.getStatus().getSnapshot();
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (status.retry.exhausted) {
-    app.logger.error(
-      {
-        error: message,
-      },
-      "model bootstrap download failed"
-    );
-    return;
-  }
-
-  app.logger.info(
-    {
-      error: message,
-      attempt: status.retry.attempt,
-      maxAttempts: status.retry.maxAttempts,
-      nextRetryAt: status.retry.nextRetryAt,
-    },
-    "model bootstrap download pending retry"
-  );
-});
-
 const mainWindow = new BrowserWindow({
   title: "Knowdisk",
   url:
@@ -509,9 +449,13 @@ const mainWindow = new BrowserWindow({
   rpc,
 });
 
-const stopModelStatusSubscription = app.modelService.getStatus().subscribe((status) => {
+const stopPythonWorkerStatusSubscription = pythonWorkerRuntime.subscribeStatusEvents((event) => {
+  pythonWorkerStatus.applyEvent(event);
+  if (event.type !== "statusSnapshot" && event.type !== "model_status_changed") {
+    return;
+  }
   try {
-    rpc.send.modelStatusUpdated(mapModelStatus(status));
+    rpc.send.modelStatusUpdated(pythonWorkerStatus.getModelStatus());
   } catch (error) {
     if (isMissingRpcSendTransportError(error)) {
       return;
@@ -520,7 +464,24 @@ const stopModelStatusSubscription = app.modelService.getStatus().subscribe((stat
       {
         error: error instanceof Error ? error.message : String(error),
       },
-      "failed to push model status update to renderer"
+      "failed to push python worker model status update to renderer"
+    );
+  }
+});
+
+const stopPythonWorkerExitSubscription = pythonWorkerTransport.subscribeExit(() => {
+  pythonWorkerStatus.reset();
+  try {
+    rpc.send.modelStatusUpdated(pythonWorkerStatus.getModelStatus());
+  } catch (error) {
+    if (isMissingRpcSendTransportError(error)) {
+      return;
+    }
+    app.logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "failed to push python worker unavailable status to renderer"
     );
   }
 });
@@ -569,24 +530,47 @@ const stopVfsNodeChangesSubscription = app.vfs.subscribeNodeChanges((node) => {
   }
 });
 
+void pythonWorkerRuntime.start()
+  .then(() => pythonWorkerAppRuntime.start())
+  .then(() => app.vfs.start())
+  .catch((error) => {
+    app.logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "failed to start python worker services"
+    );
+  });
+
 let shutdownPromise: Promise<void> | null = null;
 
 const shutdown = (): Promise<void> => {
   if (shutdownPromise) {
     return shutdownPromise;
   }
-  stopModelStatusSubscription();
+  stopPythonWorkerStatusSubscription();
+  stopPythonWorkerExitSubscription();
   stopVfsStatusSubscription();
   stopVfsNodeChangesSubscription();
-  stopRuntimeHooks();
-  shutdownPromise = app.close().catch((error) => {
-    app.logger.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "failed to close application resources"
-    );
-  });
+  pythonWorkerAppRuntime.stop();
+  shutdownPromise = pythonWorkerRuntime.stop()
+    .catch((error) => {
+      app.logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "failed to stop python worker runtime"
+      );
+    })
+    .then(() => app.close())
+    .catch((error) => {
+      app.logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "failed to close application resources"
+      );
+    });
   return shutdownPromise;
 };
 

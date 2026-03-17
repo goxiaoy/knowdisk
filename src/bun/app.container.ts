@@ -20,6 +20,7 @@ import {
   createVfsRepository,
   createVfsService,
   type VfsNodeEventHooks,
+  type VfsRepository,
   type VfsService,
 } from "@knowdisk/vfs";
 import type { Logger } from "pino";
@@ -57,6 +58,7 @@ export type AppContainer = {
   paths: AppContainerPaths;
   logger: Logger;
   modelService: ModelService;
+  vfsRepository: VfsRepository;
   vfs: VfsService;
   parser: ParserService;
   indexing: IndexingService;
@@ -163,6 +165,7 @@ export function createAppContainer(input?: {
     paths,
     logger,
     modelService,
+    vfsRepository,
     vfs,
     parser,
     indexing,
