@@ -27,9 +27,6 @@
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "@knowdisk/core": "workspace:*",
-    "@knowdisk/indexing": "workspace:*",
-    "@knowdisk/model": "workspace:*",
-    "@knowdisk/parser": "workspace:*",
     "@knowdisk/vfs": "workspace:*",
     "@milkdown/kit": "^7.19.0",
     "@milkdown/react": "^7.19.0",

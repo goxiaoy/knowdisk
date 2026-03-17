@@ -7,7 +7,6 @@ import {
   validateCoreConfig,
   type CoreConfig,
 } from "@knowdisk/core";
-import { createParserService, type ParserService } from "@knowdisk/parser";
 import {
   createVfsProviderRegistry,
   createVfsRepository,
@@ -41,7 +40,6 @@ export type AppContainerDeps = {
   createVfsRepository: typeof createVfsRepository;
   createVfsProviderRegistry: typeof createVfsProviderRegistry;
   createVfsService: typeof createVfsService;
-  createParserService: typeof createParserService;
 };
 
 export type AppContainer = {
@@ -51,7 +49,6 @@ export type AppContainer = {
   logger: Logger;
   vfsRepository: VfsRepository;
   vfs: VfsService;
-  getParserService(): ParserService;
   close(): Promise<void>;
 };
 
@@ -63,7 +60,6 @@ const TOKENS = {
   fetchServiceLegacy: "fetch",
   vfsRepository: "VfsRepository",
   vfsService: "VfsService",
-  parserService: "ParserService",
 } as const;
 
 export function createAppContainer(input?: {
@@ -76,7 +72,6 @@ export function createAppContainer(input?: {
     createVfsRepository,
     createVfsProviderRegistry,
     createVfsService,
-    createParserService,
     ...input?.deps,
   };
   const container = input?.container ?? rootContainer.createChildContainer();
@@ -109,7 +104,6 @@ export function createAppContainer(input?: {
   });
   container.registerInstance(TOKENS.vfsRepository, vfsRepository);
   container.registerInstance(TOKENS.vfsService, vfs);
-  let parser: ParserService | null = null;
 
   return {
     container,
@@ -118,17 +112,6 @@ export function createAppContainer(input?: {
     logger,
     vfsRepository,
     vfs,
-    getParserService() {
-      if (!parser) {
-        parser = deps.createParserService({
-          vfs,
-          basePath: paths.parserCacheDir,
-          logger,
-        });
-        container.registerInstance(TOKENS.parserService, parser);
-      }
-      return parser;
-    },
     async close() {
       const errors: Error[] = [];
       try {

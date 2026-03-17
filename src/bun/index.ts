@@ -1,4 +1,5 @@
 import type { VfsNode, VfsSyncerEvent } from "@knowdisk/vfs";
+import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import Electrobun, {
   BrowserWindow,
@@ -29,8 +30,8 @@ import {
   type RendererVfsStatus,
 } from "../shared/vfs-status";
 import { type RendererVectorDbStatus } from "../shared/vector-db-status";
-import { isParserSupportedFile } from "@knowdisk/parser";
 import { createAppContainer, createPythonWorkerCommand } from "./app.container";
+import { buildParserDocumentPath, deriveMarkdownTitle } from "./parser-artifacts";
 import { createPythonWorkerAppRuntime } from "./python-worker-app-runtime";
 import { createPythonWorkerRuntime } from "./python-worker-runtime";
 import { createPythonWorkerStatusStore } from "./python-worker-status";
@@ -301,23 +302,27 @@ async function getFileMarkdown(input: GetFileMarkdownRequest): Promise<GetFileMa
         error: "selected node is not a file",
       };
     }
-    if (!isParserSupportedFile(node)) {
-      return {
-        ok: false,
-        error: "preview is not available for this file type",
-      };
-    }
-
-    const document = await app.getParserService().materializeNode({ nodeId: input.nodeId });
+    const markdown = await readFile(
+      buildParserDocumentPath({
+        parserCacheDir: app.paths.parserCacheDir,
+        nodeId: input.nodeId,
+      }),
+      "utf8"
+    );
     return {
       ok: true,
-      markdown: document.markdown,
-      title: document.title,
+      markdown,
+      title: deriveMarkdownTitle(markdown, node.name),
     };
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : String(error),
+      error:
+        error instanceof Error && "code" in error && error.code === "ENOENT"
+          ? "preview is not available yet"
+          : error instanceof Error
+            ? error.message
+            : String(error),
     };
   }
 }

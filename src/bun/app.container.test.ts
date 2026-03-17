@@ -15,7 +15,7 @@ import {
 } from "./app.container";
 
 describe("createAppContainer", () => {
-  it("registers logger/config/vfs services and lazily resolves the legacy parser", () => {
+  it("registers logger/config/vfs services with basePath-derived paths", () => {
     const basePath = mkdtempSync(join(tmpdir(), "knowdisk-app-container-"));
     const config = createDefaultCoreConfig();
     config.basePath = basePath;
@@ -25,12 +25,6 @@ describe("createAppContainer", () => {
     const vfsRepository = { close() {} };
     const vfsRegistry = {};
     const vfsService = { registerNodeEventHooks: () => () => {} };
-    const parserService = {
-      parseNode: () => ({
-        async *[Symbol.asyncIterator]() {},
-      }),
-      clear: async () => {},
-    };
     const deps: AppContainerDeps = {
       createLoggerService: () => logger as never,
       createVfsRepository: (input) => {
@@ -45,10 +39,6 @@ describe("createAppContainer", () => {
         calls.vfsContentRootParent = input.contentRootParent;
         return vfsService as never;
       },
-      createParserService: (input) => {
-        calls.parserBasePath = input.basePath;
-        return parserService as never;
-      },
     };
 
     const app = createAppContainer({
@@ -62,13 +52,10 @@ describe("createAppContainer", () => {
     expect((app.paths as AppContainerPaths).modelCacheDir).toBe(join(basePath, "models"));
     expect(calls.vfsDbPath).toBe(join(basePath, "vfs", "vfs.db"));
     expect(calls.vfsContentRootParent).toBe(join(basePath, "vfs", "content"));
-    expect(calls.parserBasePath).toBeUndefined();
 
     expect(app.container.resolve("CoreConfig")).toBe(config);
     expect(app.container.resolve("VfsService")).toBe(vfsService);
     expect(app.vfsRepository).toBe(vfsRepository);
-    expect(app.getParserService()).toBe(parserService);
-    expect(calls.parserBasePath).toBe(join(basePath, "parser", "cache"));
   });
 
   it("builds the python worker command from app paths", () => {
@@ -107,13 +94,6 @@ describe("createAppContainer", () => {
             close: async () => {
               closed.push("vfs");
             },
-          }) as never,
-        createParserService: () =>
-          ({
-            parseNode: () => ({
-              async *[Symbol.asyncIterator]() {},
-            }),
-            clear: async () => {},
           }) as never,
       },
     });
