@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
 import { createDefaultCoreConfig } from "@knowdisk/core";
 import {
+  createPythonWorkerCommand,
   createAppContainer,
   createVfsIndexingHooks,
   initializeAppRuntime,
@@ -139,6 +140,7 @@ describe("createAppContainer", () => {
     });
 
     expect(app.paths.basePath).toBe(basePath);
+    expect(app.paths.pythonProjectDir).toBe(join(process.cwd(), "python"));
     expect((app.paths as AppContainerPaths).modelCacheDir).toBe(join(basePath, "models"));
     expect(calls.vfsDbPath).toBe(join(basePath, "vfs", "vfs.db"));
     expect(calls.vfsContentRootParent).toBe(join(basePath, "vfs", "content"));
@@ -154,6 +156,14 @@ describe("createAppContainer", () => {
     expect(app.container.resolve("ParserService")).toBe(parserService);
     expect(app.container.resolve("IndexingService")).toBe(indexingService);
     expect(app.vectorRepository).toBe(vectorRepository);
+  });
+
+  it("builds the python worker command from app paths", () => {
+    expect(
+      createPythonWorkerCommand({
+        pythonProjectDir: "/tmp/knowdisk/python",
+      })
+    ).toEqual(["uv", "run", "--project", "/tmp/knowdisk/python", "python", "-m", "worker"]);
   });
 
   it("closes vfs and indexing repositories during shutdown", async () => {

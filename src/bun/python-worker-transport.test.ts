@@ -111,4 +111,19 @@ describe("createPythonWorkerTransport", () => {
 
     await expect(pending).rejects.toThrow("python worker exited");
   });
+
+  test("notifies exit subscribers when the worker exits", () => {
+    const child = new FakeChildProcess();
+    const transport = createPythonWorkerTransport({
+      command: ["python3", "-m", "worker"],
+      spawn: () => child,
+    });
+    const listener = mock(() => {});
+
+    transport.subscribeExit(listener);
+    transport.start();
+    child.emit("exit", 2, "SIGTERM");
+
+    expect(listener).toHaveBeenCalledWith({ code: 2, signal: "SIGTERM" });
+  });
 });

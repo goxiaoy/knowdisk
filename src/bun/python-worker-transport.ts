@@ -18,6 +18,7 @@ export type PythonWorkerTransport = {
   stop(): void;
   request(method: string, params: unknown): Promise<unknown>;
   subscribeEvents(listener: (event: PythonWorkerEvent) => void): () => void;
+  subscribeExit(listener: (detail: { code: number | null; signal: NodeJS.Signals | null }) => void): () => void;
 };
 
 export function createPythonWorkerTransport(input: {
@@ -50,6 +51,7 @@ export function createPythonWorkerTransport(input: {
       child.on("exit", (code, signal) => {
         const reason = `python worker exited (code=${code ?? "null"}, signal=${signal ?? "null"})`;
         rejectAllPending(new Error(reason));
+        emitter.emit("exit", { code, signal });
         child = null;
       });
     },
@@ -78,6 +80,13 @@ export function createPythonWorkerTransport(input: {
       emitter.on("event", listener);
       return () => {
         emitter.off("event", listener);
+      };
+    },
+
+    subscribeExit(listener) {
+      emitter.on("exit", listener);
+      return () => {
+        emitter.off("exit", listener);
       };
     },
   };

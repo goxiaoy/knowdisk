@@ -30,6 +30,7 @@ type ModelService = ReturnType<typeof createModelService>;
 
 export type AppContainerPaths = {
   basePath: string;
+  pythonProjectDir: string;
   modelCacheDir: string;
   vfsDbPath: string;
   vfsContentRootDir: string;
@@ -250,6 +251,13 @@ export function initializeAppRuntime(app: AppContainer): () => void {
   };
 }
 
+export function createPythonWorkerCommand(paths: Pick<AppContainerPaths, "pythonProjectDir">): [
+  string,
+  ...string[],
+] {
+  return ["uv", "run", "--project", paths.pythonProjectDir, "python", "-m", "worker"];
+}
+
 function resolveAppPaths(basePath: string): AppContainerPaths {
   const normalizedBasePath = basePath.trim();
   if (!normalizedBasePath) {
@@ -257,6 +265,7 @@ function resolveAppPaths(basePath: string): AppContainerPaths {
   }
   return {
     basePath: normalizedBasePath,
+    pythonProjectDir: join(process.cwd(), "python"),
     modelCacheDir: join(normalizedBasePath, "models"),
     vfsDbPath: join(normalizedBasePath, "vfs", "vfs.db"),
     vfsContentRootDir: join(normalizedBasePath, "vfs", "content"),
