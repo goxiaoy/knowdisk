@@ -9,4 +9,5 @@ export * from "./vfs.node-id";
 export * from "./vfs.cursor";
 export * from "./vfs.service";
 export * from "./vfs.syncer";
+export * from "./vfs.node-event-processor";
 export * from "./provider";

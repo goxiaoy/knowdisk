@@ -61,7 +61,7 @@ export type VfsRepository = {
   getPageCacheIfFresh: (cacheKey: string, nowMs: number) => VfsPageCacheRow | null;
   deletePageCacheByMountId: (mountId: string) => void;
   insertNodeEvents: (rows: Array<Omit<VfsNodeEventRow, "id">>) => void;
-  listNodeEventsByMountId: (mountId: string, limit?: number) => VfsNodeEventRow[];
+  listNodeEvents: (limit?: number) => VfsNodeEventRow[];
   getQueueProgressByMountId: (mountId: string) => {
     pendingUnits: number;
   };

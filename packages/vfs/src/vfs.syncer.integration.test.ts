@@ -6,6 +6,7 @@ import { join, relative } from "node:path";
 import pino from "pino";
 import { createHuggingFaceVfsProvider } from "./provider/huggingface";
 import { createLocalVfsProvider } from "./provider/local";
+import { createVfsNodeEventsProcessor } from "./vfs.node-event-processor";
 import { walk } from "./vfs.provider.walk";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsSyncer } from "./vfs.syncer";
@@ -70,6 +71,17 @@ describe("vfs syncer integration", () => {
           contentRootParent: join(dir, "content"),
           logger,
         });
+        const processor = createVfsNodeEventsProcessor({
+          repository: repo,
+          contentRootParent: join(dir, "content"),
+          resolveMount(mountId) {
+            return mountId === mount.mountId ? mount : null;
+          },
+          resolveProvider() {
+            return provider;
+          },
+          logger,
+        });
         syncer.subscribe((event) => {
           if (event.type === "status") {
             logger.info({ event: event.payload }, "syncer status event");
@@ -77,6 +89,10 @@ describe("vfs syncer integration", () => {
         });
 
         await syncer.fullSync();
+        await processor.drain({
+          allowContentSync: false,
+          includeContentUpdates: false,
+        });
 
         const remote = new Map(
           (
@@ -134,6 +150,17 @@ describe("vfs syncer integration", () => {
         contentRootParent: join(dir, "content"),
         logger,
       });
+      const processor = createVfsNodeEventsProcessor({
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        resolveMount(mountId) {
+          return mountId === mount.mountId ? mount : null;
+        },
+        resolveProvider() {
+          return provider;
+        },
+        logger,
+      });
       syncer.subscribe((event) => {
         if (event.type === "status") {
           logger.info({ event: event.payload }, "syncer status event");
@@ -141,6 +168,10 @@ describe("vfs syncer integration", () => {
       });
 
       await syncer.fullSync();
+      await processor.drain({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
 
       const fsMap1 = await walkLocalFs(sourceRoot);
       const dbMap1 = new Map(
@@ -159,6 +190,7 @@ describe("vfs syncer integration", () => {
         }
       }
 
+      processor.start();
       await syncer.startWatching();
       await mkdir(join(sourceRoot, "newdir"), { recursive: true });
       writeFileSync(join(sourceRoot, "newdir", "c.txt"), "ccc");
@@ -178,6 +210,7 @@ describe("vfs syncer integration", () => {
       }, 3000);
       expect(settled).toBe(true);
       await syncer.stopWatching();
+      processor.close();
 
       const fsMap2 = await walkLocalFs(sourceRoot);
       const dbMap2 = new Map(

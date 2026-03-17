@@ -407,7 +407,7 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       }
     },
 
-    listNodeEventsByMountId(mountId: string, limit = 1000) {
+    listNodeEvents(limit = 1000) {
       const rows = db
         .query(
           `SELECT
@@ -419,11 +419,10 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           node_json AS nodeJson,
           created_at_ms AS createdAtMs
         FROM vfs_node_events
-        WHERE mount_id = ?
-        ORDER BY created_at_ms ASC, source_ref ASC, type ASC
+        ORDER BY created_at_ms ASC, mount_id ASC, source_ref ASC, type ASC
         LIMIT ?`
         )
-        .all(mountId, limit) as Array<{
+        .all(limit) as Array<{
         id: string;
         sourceRef: string;
         mountId: string;

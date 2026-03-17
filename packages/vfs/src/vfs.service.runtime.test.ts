@@ -31,6 +31,17 @@ function setup() {
   };
 }
 
+async function waitUntil(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (predicate()) {
+      return true;
+    }
+    await Bun.sleep(20);
+  }
+  return predicate();
+}
+
 describe("vfs service runtime", () => {
   test("registerNodeEventHooks exists and returns unsubscribe", () => {
     const ctx = setup();
@@ -88,12 +99,12 @@ describe("vfs service runtime", () => {
 
     const offA = ctx.service.registerNodeEventHooks({
       beforeAdd(ctx) {
-        calls.push(`a:${ctx.mount.mountId}:${ctx.event.sourceRef}`);
+        calls.push(`a:${ctx.mount?.mountId ?? "null"}:${ctx.event.sourceRef}`);
       },
     });
     const offB = ctx.service.registerNodeEventHooks({
       beforeAdd(ctx) {
-        calls.push(`b:${ctx.mount.mountId}:${ctx.event.sourceRef}`);
+        calls.push(`b:${ctx.mount?.mountId ?? "null"}:${ctx.event.sourceRef}`);
       },
     });
 
@@ -208,6 +219,120 @@ describe("vfs service runtime", () => {
 
     void m2;
     ctx.cleanup();
+  });
+
+  test("queued delete events still run after restart when mount config is gone", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-runtime-unmount-restart-"));
+    const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
+    const service = createVfsService({
+      repository: repo,
+      registry,
+      nowMs: () => 1_000,
+      contentRootParent: join(dir, "content"),
+    });
+    const calls: string[] = [];
+    registry.register("mock-unmount-delete-hooks", (_container, mount) => ({
+      type: "mock-unmount-delete-hooks",
+      capabilities: { watch: false },
+      async listChildren() {
+        return {
+          items: [
+            {
+              nodeId: "f.txt",
+              mountId: mount.mountId,
+              parentId: null,
+              name: "f.txt",
+              kind: "file" as const,
+              size: 1,
+              mtimeMs: 1,
+              sourceRef: "f.txt",
+              providerVersion: null,
+              deletedAtMs: null,
+              createdAtMs: 1,
+              updatedAtMs: 1,
+            },
+          ],
+        };
+      },
+      async getMetadata(input) {
+        return {
+          nodeId: input.id,
+          mountId: mount.mountId,
+          parentId: null,
+          name: input.id,
+          kind: "file" as const,
+          size: 1,
+          mtimeMs: 1,
+          sourceRef: input.id,
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        };
+      },
+    }));
+
+    service.registerNodeEventHooks({
+      beforeDelete(hookCtx) {
+        calls.push(`before:${hookCtx.mount?.mountId ?? "null"}:${hookCtx.event.sourceRef}`);
+      },
+      afterDelete(hookCtx) {
+        calls.push(`after:${hookCtx.mount?.mountId ?? "null"}:${hookCtx.event.sourceRef}`);
+      },
+    });
+
+    const mount = await service.mount({
+      providerType: "mock-unmount-delete-hooks",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+
+    await service.start();
+    await service.triggerReconcile(mount.mountId);
+
+    expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.deletedAtMs).toBeNull();
+
+    await service.close();
+    repo.insertNodeEvents([
+      {
+        sourceRef: "f.txt",
+        mountId: mount.mountId,
+        parentId: null,
+        type: "delete",
+        node: null,
+        createdAtMs: 1_001,
+      },
+    ]);
+    repo.deleteNodeMountExtByMountId(mount.mountId);
+
+    const restarted = createVfsService({
+      repository: repo,
+      registry,
+      nowMs: () => 1_000,
+      contentRootParent: join(dir, "content"),
+    });
+    restarted.registerNodeEventHooks({
+      beforeDelete(hookCtx) {
+        calls.push(`restart-before:${hookCtx.mount?.mountId ?? "null"}:${hookCtx.event.sourceRef}`);
+      },
+      afterDelete(hookCtx) {
+        calls.push(`restart-after:${hookCtx.mount?.mountId ?? "null"}:${hookCtx.event.sourceRef}`);
+      },
+    });
+    await restarted.start();
+
+    const drained = await waitUntil(() => repo.listNodeEvents().length === 0, 500);
+
+    expect(drained).toBe(true);
+    expect(calls).toContain("restart-before:null:f.txt");
+    expect(calls).toContain("restart-after:null:f.txt");
+
+    await restarted.close();
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
   });
 
   test("start schedules reconcile timer based on mount config", async () => {

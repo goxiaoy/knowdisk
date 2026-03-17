@@ -4,9 +4,14 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalVfsProvider } from "./provider/local";
+import { createVfsNodeEventsProcessor } from "./vfs.node-event-processor";
 import { createVfsNodeId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 import { createVfsRepository } from "./vfs.repository";
-import { createVfsSyncer } from "./vfs.syncer";
+import {
+  createVfsSyncer,
+  type VfsSyncerEvent,
+  type VfsSyncerHookRunner,
+} from "./vfs.syncer";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsMount } from "./vfs.types";
 
@@ -37,6 +42,47 @@ function makeMount(extra?: Partial<VfsMount>): VfsMount {
     reconcileIntervalMs: 1000,
     ...extra,
   };
+}
+
+function createTestNodeEventsProcessor(input: {
+  mount: VfsMount;
+  provider: VfsProviderAdapter;
+  repository: ReturnType<typeof createVfsRepository>;
+  contentRootParent: string;
+  hooks?: VfsSyncerHookRunner;
+  nowMs?: () => number;
+  logger?: unknown;
+  events?: VfsSyncerEvent[];
+}) {
+  const processor = createVfsNodeEventsProcessor({
+    repository: input.repository,
+    contentRootParent: input.contentRootParent,
+    resolveMount(mountId) {
+      return mountId === input.mount.mountId ? input.mount : null;
+    },
+    resolveProvider() {
+      return input.provider;
+    },
+    hooks: input.hooks,
+    nowMs: input.nowMs,
+    logger: input.logger as never,
+    emitSyncerEvent(mountId, event) {
+      if (mountId === input.mount.mountId) {
+        input.events?.push(event);
+      }
+    },
+  });
+  return {
+    ...processor,
+    rememberMount() {},
+    drainMount(options?: { allowContentSync?: boolean; includeContentUpdates?: boolean }) {
+      return processor.drain(options);
+    },
+  };
+}
+
+function listQueuedEvents(repo: ReturnType<typeof createVfsRepository>, mountId: string) {
+  return repo.listNodeEvents().filter((event) => event.mountId === mountId);
 }
 
 describe("vfs syncer", () => {
@@ -154,9 +200,20 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         nowMs: () => 1000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 1000,
+      });
       const events: Array<{ type: string; payload: unknown }> = [];
       const off = syncer.subscribe((event) => events.push(event));
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       off();
 
       const all = repo.listNodesByMountId(mount.mountId);
@@ -247,25 +304,18 @@ describe("vfs syncer", () => {
 
       expect(offsets).toEqual([]);
       expect(() => readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toThrow();
-      const queued = repo.listNodeEventsByMountId(mount.mountId);
+      const queued = listQueuedEvents(repo, mount.mountId);
       expect(
         queued.some((event) => event.sourceRef === "f.txt" && event.type === "update_content")
       ).toBe(true);
       expect(events.some((e) => e.type === "download_progress")).toBe(false);
-      expect(
-        events.some(
-          (event) =>
-            event.type === "queue_progress" &&
-            (event.payload as { pendingUnits: number }).pendingUnits === 1
-        )
-      ).toBe(true);
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("fullSync consumes queued node events without startWatching", async () => {
+  test("node events processor consumes queued metadata events without watch loop", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-fullsync-events-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
@@ -323,13 +373,26 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         nowMs: () => 3000,
       });
+      const processorEvents: VfsSyncerEvent[] = [];
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 3000,
+        events: processorEvents,
+      });
 
       const events: Array<{ type: string; payload: unknown }> = [];
       const off = syncer.subscribe((event) => events.push(event));
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       off();
 
-      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([
+      expect(listQueuedEvents(repo, mount.mountId)).toEqual([
         expect.objectContaining({
           sourceRef: "f.txt",
           mountId: mount.mountId,
@@ -338,7 +401,7 @@ describe("vfs syncer", () => {
       ]);
       expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
       expect(
-        events.some(
+        processorEvents.some(
           (event) =>
             event.type === "queue_progress" &&
             (event.payload as { pendingUnits: number }).pendingUnits === 1
@@ -350,7 +413,7 @@ describe("vfs syncer", () => {
     }
   });
 
-  test("startWatching refreshes queue progress when queued event is deleted externally", async () => {
+  test("node events processor refreshes queue progress when queued event is deleted externally", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-external-delete-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
     try {
@@ -404,18 +467,23 @@ describe("vfs syncer", () => {
           };
         },
       };
-      const syncer = createVfsSyncer({
+      const events: VfsSyncerEvent[] = [];
+      const processor = createTestNodeEventsProcessor({
         mount,
         provider,
         repository: repo,
         contentRootParent: join(dir, "content"),
         nowMs: () => 3000,
+        hooks: {
+          async beforeNodeEvent() {
+            throw new Error("blocked");
+          },
+        },
+        events,
       });
-      const events: Array<{ type: string; payload: unknown }> = [];
-      const off = syncer.subscribe((event) => events.push(event));
 
-      await syncer.startWatching();
-      const queued = repo.listNodeEventsByMountId(mount.mountId);
+      processor.start();
+      const queued = listQueuedEvents(repo, mount.mountId);
       repo.deleteNodeEvents([{ id: queued[0]!.id, mountId: mount.mountId }]);
 
       const refreshed = await waitUntil(
@@ -427,8 +495,7 @@ describe("vfs syncer", () => {
           ),
         500
       );
-      await syncer.stopWatching();
-      off();
+      processor.close();
 
       expect(refreshed).toBe(true);
     } finally {
@@ -490,6 +557,13 @@ describe("vfs syncer", () => {
         provider,
         repository: repo,
         contentRootParent: join(dir, "content"),
+        nowMs: () => 3000,
+      });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
         hooks: {
           async beforeNodeEvent(hookName) {
             if (hookName === "beforeAdd") {
@@ -501,9 +575,13 @@ describe("vfs syncer", () => {
       });
 
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
 
       expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")).toBeNull();
-      expect(repo.listNodeEventsByMountId(mount.mountId).map((event) => event.type)).toEqual([
+      expect(listQueuedEvents(repo, mount.mountId).map((event) => event.type)).toEqual([
         "add",
         "update_content",
         "update_metadata",
@@ -567,6 +645,13 @@ describe("vfs syncer", () => {
         provider,
         repository: repo,
         contentRootParent: join(dir, "content"),
+        nowMs: () => 3000,
+      });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
         hooks: {
           async afterNodeEvent(hookName) {
             if (hookName === "afterAdd") {
@@ -578,9 +663,13 @@ describe("vfs syncer", () => {
       });
 
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
 
       expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
-      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([
+      expect(listQueuedEvents(repo, mount.mountId)).toEqual([
         expect.objectContaining({ sourceRef: "f.txt", type: "update_content" }),
       ]);
     } finally {
@@ -651,7 +740,7 @@ describe("vfs syncer", () => {
         },
       ]);
 
-      const syncer = createVfsSyncer({
+      const processor = createTestNodeEventsProcessor({
         mount,
         provider,
         repository: repo,
@@ -667,16 +756,16 @@ describe("vfs syncer", () => {
         nowMs: () => 3000,
       });
 
-      await syncer.startWatching();
+      processor.start();
       const drained = await waitUntil(
-        () => repo.listNodeEventsByMountId(mount.mountId).length === 1,
+        () => listQueuedEvents(repo, mount.mountId).length === 1,
         500
       );
-      await syncer.stopWatching();
+      processor.close();
 
       expect(drained).toBe(true);
       expect(() => readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toThrow();
-      expect(repo.listNodeEventsByMountId(mount.mountId)).toEqual([
+      expect(listQueuedEvents(repo, mount.mountId)).toEqual([
         expect.objectContaining({ sourceRef: "f.txt", type: "update_content" }),
       ]);
     } finally {
@@ -747,7 +836,7 @@ describe("vfs syncer", () => {
         },
       ]);
 
-      const syncer = createVfsSyncer({
+      const processor = createTestNodeEventsProcessor({
         mount,
         provider,
         repository: repo,
@@ -763,12 +852,12 @@ describe("vfs syncer", () => {
         nowMs: () => 3000,
       });
 
-      await syncer.startWatching();
+      processor.start();
       const drained = await waitUntil(
-        () => repo.listNodeEventsByMountId(mount.mountId).length === 0,
+        () => listQueuedEvents(repo, mount.mountId).length === 0,
         500
       );
-      await syncer.stopWatching();
+      processor.close();
 
       expect(drained).toBe(true);
       expect(readFileSync(join(contentParent, mount.mountId, "f.txt"), "utf8")).toBe("abcdef");
@@ -832,6 +921,14 @@ describe("vfs syncer", () => {
         provider,
         repository: repo,
         contentRootParent: join(dir, "content"),
+        logger: mock.logger as never,
+        nowMs: () => 3000,
+      });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
         hooks: {
           async beforeNodeEvent(hookName) {
             if (hookName === "beforeAdd") {
@@ -839,11 +936,15 @@ describe("vfs syncer", () => {
             }
           },
         },
-        logger: mock.logger as never,
+        logger: mock.logger,
         nowMs: () => 3000,
       });
 
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
 
       expect(mock.records).toContainEqual(
         expect.objectContaining({
@@ -928,7 +1029,7 @@ describe("vfs syncer", () => {
         },
       ]);
 
-      const syncer = createVfsSyncer({
+      const processor = createTestNodeEventsProcessor({
         mount,
         provider,
         repository: repo,
@@ -941,16 +1042,16 @@ describe("vfs syncer", () => {
             throw new Error("after-update-content");
           },
         },
-        logger: mock.logger as never,
+        logger: mock.logger,
         nowMs: () => 3000,
       });
 
-      await syncer.startWatching();
+      processor.start();
       const drained = await waitUntil(
-        () => repo.listNodeEventsByMountId(mount.mountId).length === 0,
+        () => listQueuedEvents(repo, mount.mountId).length === 0,
         500
       );
-      await syncer.stopWatching();
+      processor.close();
 
       expect(drained).toBe(true);
       expect(mock.records).toContainEqual(
@@ -1035,8 +1136,19 @@ describe("vfs syncer", () => {
         requiredFields: ["size", "mtimeMs"],
         nowMs: () => 1000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 1000,
+      });
 
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.mtimeMs).toBe(123);
     } finally {
@@ -1130,6 +1242,14 @@ describe("vfs syncer", () => {
         contentRootParent: contentParent,
         nowMs: () => 3000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: contentParent,
+        nowMs: () => 3000,
+      });
+      processor.start();
       await syncer.startWatching();
       watchHandler?.({
         type: "update",
@@ -1161,6 +1281,7 @@ describe("vfs syncer", () => {
       }, 2000);
       expect(deleted).toBe(true);
       await syncer.stopWatching();
+      processor.close();
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });
@@ -1287,7 +1408,18 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         nowMs: () => 4000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 4000,
+      });
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
 
       const all = repo.listNodesByMountId(mount.mountId);
       const child = all.find((n) => n.sourceRef === "dir/file.txt");
@@ -1410,7 +1542,18 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         nowMs: () => 2000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 2000,
+      });
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       const next = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
       expect(next?.name).toBe("manual-display-name.txt");
       expect(next?.size).toBe(2);
@@ -1509,6 +1652,14 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         nowMs: () => 3000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 3000,
+      });
+      processor.start();
       await syncer.startWatching();
       watchHandler?.({
         type: "update",
@@ -1525,6 +1676,7 @@ describe("vfs syncer", () => {
       const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.name).toBe("manual-display-name.txt");
       await syncer.stopWatching();
+      processor.close();
     } finally {
       repo.close();
       rmSync(dir, { recursive: true, force: true });
@@ -1574,13 +1726,28 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         nowMs: () => 1000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 1000,
+      });
 
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       const before = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
       expect(before?.providerVersion).toEqual(expect.any(String));
 
       writeFileSync(filePath, "v2");
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       const after = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
       expect(after?.providerVersion).toEqual(expect.any(String));
       expect(after?.providerVersion).not.toBe(before?.providerVersion ?? null);
@@ -1661,13 +1828,28 @@ describe("vfs syncer", () => {
         contentRootParent: join(dir, "content"),
         nowMs: () => 1000,
       });
+      const processor = createTestNodeEventsProcessor({
+        mount,
+        provider,
+        repository: repo,
+        contentRootParent: join(dir, "content"),
+        nowMs: () => 1000,
+      });
 
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       let node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.providerVersion).toBe("pv1");
 
       providerVersion = "pv2";
       await syncer.fullSync();
+      await processor.drainMount({
+        allowContentSync: false,
+        includeContentUpdates: false,
+      });
       node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.providerVersion).toBe("pv2");
     } finally {

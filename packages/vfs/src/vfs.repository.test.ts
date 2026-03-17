@@ -12,6 +12,10 @@ function makeRepo() {
   return { dir, dbPath, repo };
 }
 
+function listQueuedEvents(repo: ReturnType<typeof createVfsRepository>, mountId: string) {
+  return repo.listNodeEvents().filter((event) => event.mountId === mountId);
+}
+
 describe("vfs repository", () => {
   test("creates and migrates metadata-only VFS tables", () => {
     const { dir, dbPath, repo } = makeRepo();
@@ -241,7 +245,7 @@ describe("vfs repository", () => {
 
   test("insert/list/delete node events refreshes id on conflict and deletes by event rows", () => {
     const { dir, repo } = makeRepo();
-    expect("listNodeEvents" in repo).toBe(false);
+    expect("listNodeEvents" in repo).toBe(true);
     expect("subscribeNodeChanges" in repo).toBe(true);
     expect("subscribeNodeEventsChanged" in repo).toBe(true);
     repo.insertNodeEvents([
@@ -267,7 +271,7 @@ describe("vfs repository", () => {
         createdAtMs: 1,
       },
     ]);
-    const addIdBefore = repo.listNodeEventsByMountId("m1")[0]?.id;
+    const addIdBefore = listQueuedEvents(repo, "m1")[0]?.id;
     expect(addIdBefore).toEqual(expect.any(String));
     repo.insertNodeEvents([
       {
@@ -312,7 +316,7 @@ describe("vfs repository", () => {
         createdAtMs: 10,
       },
     ]);
-    const events = repo.listNodeEventsByMountId("m1");
+    const events = listQueuedEvents(repo, "m1");
     expect(events).toHaveLength(3);
     expect(events.every((item) => typeof item.id === "string" && item.id.length > 0)).toBe(true);
     expect(events.map((item) => item.sourceRef)).toEqual(["s1", "s1", "s1"]);
@@ -351,7 +355,7 @@ describe("vfs repository", () => {
         createdAtMs: 4,
       },
     ]);
-    const withDelete = repo.listNodeEventsByMountId("m1");
+    const withDelete = listQueuedEvents(repo, "m1");
     expect(withDelete).toHaveLength(4);
     expect(new Set(withDelete.map((item) => item.id)).size).toBe(4);
     expect(withDelete.map((item) => item.type)).toEqual([
@@ -365,7 +369,7 @@ describe("vfs repository", () => {
       { id: withDelete[0]!.id, mountId: withDelete[0]!.mountId },
       { id: withDelete[2]!.id, mountId: withDelete[2]!.mountId },
     ]);
-    const remained = repo.listNodeEventsByMountId("m1");
+    const remained = listQueuedEvents(repo, "m1");
     expect(remained).toEqual([
       {
         id: withDelete[1]!.id,
@@ -404,7 +408,7 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("subscribeNodeEventsChanged receives affected mount id on insert and delete", () => {
+  test("subscribeNodeEventsChanged reports affected mount ids on insert and delete", () => {
     const { dir, repo } = makeRepo();
     const mountIds: string[] = [];
     const unsubscribe = repo.subscribeNodeEventsChanged((mountId) => {
@@ -421,7 +425,7 @@ describe("vfs repository", () => {
         createdAtMs: 1,
       },
     ]);
-    const inserted = repo.listNodeEventsByMountId("m1");
+    const inserted = listQueuedEvents(repo, "m1");
     repo.deleteNodeEvents([{ id: inserted[0]!.id, mountId: inserted[0]!.mountId }]);
 
     expect(mountIds).toEqual(["m1", "m1"]);

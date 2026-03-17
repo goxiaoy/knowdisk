@@ -47,7 +47,7 @@ export type VfsChangeEvent = {
 };
 
 export type VfsNodeEventHookContext = {
-  mount: VfsMount;
+  mount: VfsMount | null;
   event: VfsNodeEventRow;
   prevNode: VfsNode | null;
   nextNode: VfsNode | null;

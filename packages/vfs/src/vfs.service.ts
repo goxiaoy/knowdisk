@@ -6,6 +6,7 @@ import {
   encodeVfsLocalCursorToken,
   encodeVfsRemoteCursorToken,
 } from "./vfs.cursor";
+import { createVfsNodeEventsProcessor } from "./vfs.node-event-processor";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
@@ -39,7 +40,6 @@ export function createVfsService(deps: {
   const syncerEventListeners = new Set<(event: { mountId: string; event: VfsSyncerEvent }) => void>();
   const syncers = new Map<string, { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }>();
   let nextHookRegistrationId = 1;
-
   deps.repository.subscribeNodeEventsChanged((mountId) => {
     deps.repository.deletePageCacheByMountId(mountId);
   });
@@ -62,6 +62,24 @@ export function createVfsService(deps: {
 
   const isAutoSyncEnabled = (mount: VfsMount): boolean => mount.autoSync !== false;
 
+  const emitSyncerEvent = (mountId: string, event: VfsSyncerEvent): void => {
+    for (const listener of syncerEventListeners) {
+      listener({ mountId, event });
+    }
+  };
+
+  const resolveMountForNodeEvent = (mountId: string): VfsMount | null => {
+    const active = syncers.get(mountId);
+    if (active) {
+      return active.mount;
+    }
+    const ext = deps.repository.getNodeMountExtByMountId(mountId);
+    if (ext) {
+      return mountFromExt(ext);
+    }
+    return null;
+  };
+
   const hooksRunner: VfsSyncerHookRunner = {
     async beforeNodeEvent(hookName, ctx) {
       for (const hooks of nodeEventHooks.values()) {
@@ -74,6 +92,22 @@ export function createVfsService(deps: {
       }
     },
   };
+
+  const nodeEventsProcessor =
+    deps.contentRootParent === undefined
+      ? null
+      : createVfsNodeEventsProcessor({
+          repository: deps.repository,
+          contentRootParent: deps.contentRootParent,
+          resolveMount: resolveMountForNodeEvent,
+          resolveProvider(mount) {
+            return deps.registry.get(mount);
+          },
+          hooks: hooksRunner,
+          nowMs,
+          logger: deps.logger,
+          emitSyncerEvent,
+        });
 
   const ensureSyncer = async (mount: VfsMount): Promise<VfsSyncer> => {
     const existing = syncers.get(mount.mountId);
@@ -88,14 +122,11 @@ export function createVfsService(deps: {
       provider: deps.registry.get(mount),
       repository: deps.repository,
       contentRootParent: deps.contentRootParent,
-      hooks: hooksRunner,
       logger: deps.logger,
       nowMs,
     });
     const stopSub = syncer.subscribe((event) => {
-      for (const listener of syncerEventListeners) {
-        listener({ mountId: mount.mountId, event });
-      }
+      emitSyncerEvent(mount.mountId, event);
     });
     syncers.set(mount.mountId, { mount, syncer, stopSub });
     return syncer;
@@ -146,6 +177,10 @@ export function createVfsService(deps: {
       const active = syncers.get(mountId);
       if (active) {
         await active.syncer.fullSync();
+        await nodeEventsProcessor?.drain({
+          allowContentSync: false,
+          includeContentUpdates: false,
+        });
         return;
       }
       if (!deps.contentRootParent) {
@@ -162,6 +197,10 @@ export function createVfsService(deps: {
       const syncer = await ensureSyncer(mount);
       try {
         await syncer.fullSync();
+        await nodeEventsProcessor?.drain({
+          allowContentSync: false,
+          includeContentUpdates: false,
+        });
       } finally {
         if (!started) {
           await stopSyncer(mountId);
@@ -213,6 +252,7 @@ export function createVfsService(deps: {
         }
         scheduleReconcile(mount);
       }
+      nodeEventsProcessor?.start();
     },
 
     async close() {
@@ -223,6 +263,7 @@ export function createVfsService(deps: {
       for (const id of ids) {
         await stopSyncer(id);
       }
+      nodeEventsProcessor?.close();
       started = false;
     },
 
@@ -313,6 +354,7 @@ export function createVfsService(deps: {
         );
       }
       deps.repository.deleteNodeMountExtByMountId(mountId);
+      await nodeEventsProcessor?.drain();
     },
 
     async listChildren(input) {
