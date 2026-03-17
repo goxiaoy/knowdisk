@@ -246,6 +246,28 @@ Build:
 bun run build
 ```
 
+Stage a bundled Python runtime for the macOS package:
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run prepare:python-runtime
+```
+
+This expects the runtime source directory to contain a distributable interpreter at `bin/python`.
+
+Build the macOS package with bundled Python assets:
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run prepare:python-runtime
+bun run build
+```
+
+In packaged macOS builds, the Bun main process resolves the worker from bundled app resources instead of `uv`:
+
+```text
+python-runtime/bin/python
+python-worker/worker/__main__.py
+```
+
 Test:
 
 ```bash
@@ -255,7 +277,7 @@ bun run python:test
 Python worker migration verification used on this branch:
 
 ```bash
-bun test src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-status.test.ts src/bun/python-worker.integration.test.ts
+bun test src/bun/python-worker-command.test.ts src/bun/python-worker.integration.test.ts src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-status.test.ts electrobun.config.test.ts scripts/prepare-python-runtime.test.ts
 bun run python:test
 ```
 

@@ -246,6 +246,28 @@ bun run dev:hmr
 bun run build
 ```
 
+为 macOS 安装包准备内置 Python runtime：
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run prepare:python-runtime
+```
+
+这里要求 runtime 源目录里存在可分发解释器：`bin/python`。
+
+构建带 Python sidecar 的 macOS 安装包：
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run prepare:python-runtime
+bun run build
+```
+
+在打包后的 macOS 应用里，Bun 主进程不会再通过 `uv` 启动 worker，而是直接从 app resources 里解析：
+
+```text
+python-runtime/bin/python
+python-worker/worker/__main__.py
+```
+
 测试：
 
 ```bash
@@ -255,7 +277,7 @@ bun run python:test
 当前分支用于 Python worker 迁移的验证命令：
 
 ```bash
-bun test src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-status.test.ts src/bun/python-worker.integration.test.ts
+bun test src/bun/python-worker-command.test.ts src/bun/python-worker.integration.test.ts src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-status.test.ts electrobun.config.test.ts scripts/prepare-python-runtime.test.ts
 bun run python:test
 ```
 
