@@ -9,21 +9,14 @@ export default {
   build: {
     bun: {
       external: [
-        "@huggingface/transformers",
-        // "onnxruntime-node",
-        // "onnxruntime-web",
-        // "onnxruntime-common",
       ],
     },
     // Vite builds to dist/, we copy from there
     copy: {
       "dist/index.html": "views/app/index.html",
       "dist/assets": "views/app/assets",
-      "node_modules/@huggingface/transformers": "node_modules/@huggingface/transformers",
-      "vendor/node_modules/@zvec/bindings-darwin-arm64": "node_modules/@zvec/bindings-darwin-arm64",
-      "vendor/node_modules/onnxruntime-common": "node_modules/onnxruntime-common",
-      "vendor/node_modules/onnxruntime-node": "node_modules/onnxruntime-node",
-      "vendor/node_modules/onnxruntime-web": "node_modules/onnxruntime-web",
+      "vendor/python-runtime": "python-runtime",
+      "vendor/python-worker": "python-worker",
       "vendor/node_modules/sharp": "node_modules/sharp",
       "vendor/node_modules/detect-libc": "node_modules/detect-libc",
       "vendor/node_modules/semver": "node_modules/semver",
