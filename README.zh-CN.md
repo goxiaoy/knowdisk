@@ -146,9 +146,11 @@ Know Disk 在 `packages/vfs` 提供可挂载的 VFS 层，用于多 provider 元
 - **UI（React）**
   负责 settings/onboarding/status/retrieval 交互
 - **Bun 主进程（Electrobun）**
-  负责 DI 容器、配置持久化、索引编排、MCP 暴露
+  负责桌面壳层、VFS、renderer RPC，以及 Python worker 生命周期
+- **Python worker**
+  负责 model 生命周期、解析路由（`docling` + simple parser）、索引队列和向量状态
 - **Core Services**
-  Config / Indexing / Retrieval / Embedding / Reranker / Vector / Metadata
+  Config / Retrieval / Metadata
 - **存储层**
   - `bun:sqlite`：metadata + FTS
   - `@zvec/zvec`：向量集合
@@ -217,10 +219,20 @@ Monorepo 说明：
 - Parser 流水线已拆分到 `packages/parser`，负责从 VFS 读取字节流、转换成 markdown、用 `remark` 切 section，并在本地 `basePath` 下缓存解析产物后输出 `ParseChunk` 流。
 - parser hook 示例可通过 `bun run --cwd packages/parser example` 运行。
 
+Python worker 环境准备：
+
 ```bash
 bun install
+bun run python:setup
+```
+
+启动桌面应用：
+
+```bash
 bun run dev
 ```
+
+Bun 主进程会自动通过 `uv run --project python python -m worker` 拉起 Python sidecar。
 
 HMR：
 
@@ -237,8 +249,17 @@ bun run build
 测试：
 
 ```bash
-bun test
+bun run python:test
 ```
+
+当前分支用于 Python worker 迁移的验证命令：
+
+```bash
+bun test src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-status.test.ts src/bun/python-worker.integration.test.ts
+bun run python:test
+```
+
+注意：仓库目前仍有一些与本次改动无关的基线依赖缺失问题，所以 `bun test` 还不能作为这个分支的稳定验证命令。
 
 类型检查（不影响运行时构建配置）：
 

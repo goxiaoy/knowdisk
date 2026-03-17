@@ -146,9 +146,11 @@ Know Disk includes a mountable VFS layer under `packages/vfs` for multi-provider
 - **UI (React)**
   Settings, onboarding, status, retrieval interaction
 - **Bun runtime (Electrobun main)**
-  DI container, config persistence, indexing orchestration, MCP endpoint
+  Desktop shell, VFS owner, renderer RPC, Python worker lifecycle
+- **Python worker**
+  Model lifecycle, parser selection (`docling` + simple parser), indexing queue, vector state
 - **Core services**
-  Config, indexing, retrieval, embedding, reranker, vector repo, metadata repo
+  Config, retrieval, metadata repo
 - **Storage**
   - `bun:sqlite` for metadata + FTS
   - `@zvec/zvec` for vector collection
@@ -217,10 +219,20 @@ Monorepo note:
 - Parser pipeline is extracted to `packages/parser`, which reads file bytes from VFS, converts them to markdown, sections them with `remark`, and emits `ParseChunk` streams while caching artifacts under a local `basePath`.
 - Run the parser hook example with `bun run --cwd packages/parser example`.
 
+Python worker setup:
+
 ```bash
 bun install
+bun run python:setup
+```
+
+Run the desktop app:
+
+```bash
 bun run dev
 ```
+
+The Bun main process will start the Python sidecar automatically via `uv run --project python python -m worker`.
 
 HMR mode:
 
@@ -237,8 +249,17 @@ bun run build
 Test:
 
 ```bash
-bun test
+bun run python:test
 ```
+
+Python worker migration verification used on this branch:
+
+```bash
+bun test src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-status.test.ts src/bun/python-worker.integration.test.ts
+bun run python:test
+```
+
+Note: full `bun test` is not currently a reliable branch verification command because the repo still has pre-existing baseline failures from missing workspace dependencies.
 
 Typecheck (project-safe config):
 
