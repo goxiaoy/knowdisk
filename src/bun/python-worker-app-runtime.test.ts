@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { createPythonWorkerAppRuntime } from "./python-worker-app-runtime";
 
 describe("createPythonWorkerAppRuntime", () => {
-  test("dispatches rebuild_all with local file contexts after vector recovery", async () => {
+  test("replays local file contexts through index_node during startup", async () => {
     const request = mock(async () => ({ ok: true }));
     const offHooks = mock(() => {});
 
@@ -113,24 +113,21 @@ describe("createPythonWorkerAppRuntime", () => {
 
     await runtime.start();
 
-    expect(request).toHaveBeenCalledWith("rebuild_all", {
-      items: [
-        {
-          node: {
-            nodeId: "file-1",
-            mountId: "mount-local",
-            name: "note.md",
-            sourceRef: "docs/note.md",
-            providerVersion: "v1",
-          },
-          mount: {
-            mountId: "mount-local",
-            providerType: "local",
-            directory: "/tmp/source",
-            contentDir: "/tmp/content/mount-local",
-          },
-        },
-      ],
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith("index_node", {
+      node: {
+        nodeId: "file-1",
+        mountId: "mount-local",
+        name: "note.md",
+        sourceRef: "docs/note.md",
+        providerVersion: "v1",
+      },
+      mount: {
+        mountId: "mount-local",
+        providerType: "local",
+        directory: "/tmp/source",
+        contentDir: "/tmp/content/mount-local",
+      },
     });
 
     runtime.stop();

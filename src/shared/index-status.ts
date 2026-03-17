@@ -1,9 +1,9 @@
-export type RendererIndexStatusPhase = "idle" | "indexing" | "rebuilding" | "error";
+export type RendererIndexStatusPhase = "idle" | "indexing" | "error";
 
 export type RendererIndexStatus = {
   available: boolean;
   phase: RendererIndexStatusPhase;
-  scope: "incremental" | "full" | null;
+  scope: "incremental" | null;
   queueDepth: number;
   processedFiles: number;
   totalFiles: number;

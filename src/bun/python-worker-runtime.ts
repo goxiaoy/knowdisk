@@ -3,7 +3,7 @@ import type { PythonWorkerTransport } from "./python-worker-transport";
 
 export type PythonWorkerRuntimeTransport = Pick<
   PythonWorkerTransport,
-  "start" | "stop" | "request" | "subscribeEvents" | "subscribeExit"
+  "start" | "stop" | "request" | "subscribeEvents" | "subscribeStderr" | "subscribeExit"
 >;
 
 export type PythonWorkerRuntime = {

@@ -25,7 +25,7 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(tmp_path: Pat
         vector_repository=repository,
         vector_status_store=vector_store,
     )
-    queue = IndexQueue(status_store=index_store, rebuild_concurrency=2)
+    queue = IndexQueue(status_store=index_store)
 
     queue.enqueue_incremental(
         "note.md",
@@ -107,7 +107,7 @@ def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: 
     assert index_service.search("docling")[0]["name"] == "paper.pdf"
 
 
-def test_rebuild_queue_updates_processed_counts_and_vector_rows(tmp_path: Path):
+def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: Path):
     source_dir = tmp_path / "source"
     source_dir.mkdir()
     (source_dir / "a.md").write_text("alpha", encoding="utf-8")
@@ -125,51 +125,47 @@ def test_rebuild_queue_updates_processed_counts_and_vector_rows(tmp_path: Path):
         vector_repository=repository,
         vector_status_store=vector_store,
     )
-    queue = IndexQueue(status_store=index_store, rebuild_concurrency=2)
+    queue = IndexQueue(status_store=index_store)
 
-    queue.rebuild_all(
-        [
-            (
-                "a.md",
-                lambda: index_service.index_node(
-                    node={
-                        "nodeId": "node-a",
-                        "mountId": "mount-1",
-                        "name": "a.md",
-                        "sourceRef": "a.md",
-                        "providerVersion": "v1",
-                    },
-                    mount={
-                        "mountId": "mount-1",
-                        "providerType": "local",
-                        "directory": str(source_dir),
-                        "contentDir": "",
-                    },
-                ),
-            ),
-            (
-                "b.txt",
-                lambda: index_service.index_node(
-                    node={
-                        "nodeId": "node-b",
-                        "mountId": "mount-1",
-                        "name": "b.txt",
-                        "sourceRef": "b.txt",
-                        "providerVersion": "v1",
-                    },
-                    mount={
-                        "mountId": "mount-1",
-                        "providerType": "local",
-                        "directory": str(source_dir),
-                        "contentDir": "",
-                    },
-                ),
-            ),
-        ]
+    queue.enqueue_incremental(
+        "a.md",
+        lambda: index_service.index_node(
+            node={
+                "nodeId": "node-a",
+                "mountId": "mount-1",
+                "name": "a.md",
+                "sourceRef": "a.md",
+                "providerVersion": "v1",
+            },
+            mount={
+                "mountId": "mount-1",
+                "providerType": "local",
+                "directory": str(source_dir),
+                "contentDir": "",
+            },
+        ),
+    )
+    queue.enqueue_incremental(
+        "b.txt",
+        lambda: index_service.index_node(
+            node={
+                "nodeId": "node-b",
+                "mountId": "mount-1",
+                "name": "b.txt",
+                "sourceRef": "b.txt",
+                "providerVersion": "v1",
+            },
+            mount={
+                "mountId": "mount-1",
+                "providerType": "local",
+                "directory": str(source_dir),
+                "contentDir": "",
+            },
+        ),
     )
 
-    assert queue.snapshot()["processedFiles"] == 2
-    assert queue.snapshot()["totalFiles"] == 2
+    assert queue.snapshot()["processedFiles"] == 1
+    assert queue.snapshot()["totalFiles"] == 1
     assert queue.snapshot()["phase"] == "idle"
     assert repository.count_chunks() == 2
     assert index_service.vector_status_snapshot()["chunkCount"] == 2

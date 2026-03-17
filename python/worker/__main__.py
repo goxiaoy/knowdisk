@@ -21,6 +21,16 @@ def main() -> None:
         stdout.write(encode_frame(event))
         stdout.flush()
 
+    def log(level: str, msg: str, **fields: Any) -> None:
+        record = {
+            "level": level,
+            "msg": msg,
+            "logger": "python-worker",
+            **fields,
+        }
+        sys.stderr.write(f"{record}\n".replace("'", '"'))
+        sys.stderr.flush()
+
     model_status_store = ModelStatusStore(event_sink=emit_event)
     index_status_store = IndexStatusStore(event_sink=emit_event)
     vector_status_store = VectorStatusStore(event_sink=emit_event)
@@ -31,7 +41,7 @@ def main() -> None:
         load_embedding_runtime=lambda: simple_embedding_runtime,
         load_reranker_runtime=lambda: {"provider": "stub-reranker"},
     )
-    index_queue = IndexQueue(status_store=index_status_store, rebuild_concurrency=2)
+    index_queue = IndexQueue(status_store=index_status_store)
     index_service = IndexService(
         parse_node=parse_node,
         model_service=model_service,
@@ -46,6 +56,7 @@ def main() -> None:
             "index_service": index_service,
         },
     )
+    log("info", "python worker started")
 
     while server.is_running:
         line = sys.stdin.buffer.readline()
@@ -54,12 +65,17 @@ def main() -> None:
         try:
             frame = decode_frame(line)
         except ValueError:
+            log("warn", "failed to decode worker frame")
             continue
         if not is_request_frame(frame):
+            log("warn", "ignored non-request worker frame")
             continue
+        log("info", "handling worker request", method=frame["method"])
         response = server.handle_request(frame)
         stdout.write(encode_frame(response))
         stdout.flush()
+
+    log("info", "python worker stopped")
 
 
 def simple_embedding_runtime(text: str) -> list[float]:

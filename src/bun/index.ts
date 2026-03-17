@@ -496,6 +496,35 @@ const stopPythonWorkerExitSubscription = pythonWorkerTransport.subscribeExit(() 
   }
 });
 
+const stopPythonWorkerStderrSubscription = pythonWorkerTransport.subscribeStderr((chunk) => {
+  for (const line of chunk.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as {
+        level?: string;
+        msg?: string;
+        logger?: string;
+        [key: string]: unknown;
+      };
+      const message = typeof parsed.msg === "string" ? parsed.msg : trimmed;
+      const level = typeof parsed.level === "string" ? parsed.level : "warn";
+      if (level === "error") {
+        app.logger.error(parsed, message);
+      } else if (level === "warn") {
+        app.logger.warn(parsed, message);
+      } else {
+        app.logger.info(parsed, message);
+      }
+    } catch {
+      app.logger.warn({ chunk: trimmed }, "python worker stderr");
+    }
+  }
+});
+
 const stopVfsStatusSubscription =
   app.vfs.subscribeSyncerEvents?.(({ mountId, event }) => {
     updateVfsMountStatus(mountId, event);
@@ -560,6 +589,7 @@ const shutdown = (): Promise<void> => {
   }
   stopPythonWorkerStatusSubscription();
   stopPythonWorkerExitSubscription();
+  stopPythonWorkerStderrSubscription();
   stopVfsStatusSubscription();
   stopVfsNodeChangesSubscription();
   pythonWorkerAppRuntime.stop();

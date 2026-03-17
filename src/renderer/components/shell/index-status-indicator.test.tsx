@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import renderer from "react-test-renderer";
 import { IndexStatusIndicator } from "./index-status-indicator";
 
-test("renders rebuilding progress and active node details", () => {
+test("renders indexing progress and active node details", () => {
   const tree = renderer.create(
     <IndexStatusIndicator
       status={{
         available: true,
-        phase: "rebuilding",
-        scope: "full",
+        phase: "indexing",
+        scope: "incremental",
         queueDepth: 3,
         processedFiles: 12,
         totalFiles: 40,

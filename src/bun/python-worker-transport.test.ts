@@ -126,4 +126,19 @@ describe("createPythonWorkerTransport", () => {
 
     expect(listener).toHaveBeenCalledWith({ code: 2, signal: "SIGTERM" });
   });
+
+  test("emits stderr chunks to subscribers", () => {
+    const child = new FakeChildProcess();
+    const transport = createPythonWorkerTransport({
+      command: ["python3", "-m", "worker"],
+      spawn: () => child,
+    });
+    const listener = mock(() => {});
+
+    transport.subscribeStderr(listener);
+    transport.start();
+    child.stderr.emit("data", '{"level":"info","msg":"worker started"}\n');
+
+    expect(listener).toHaveBeenCalledWith('{"level":"info","msg":"worker started"}\n');
+  });
 });

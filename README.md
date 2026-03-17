@@ -257,8 +257,7 @@ This expects the runtime source directory to contain a distributable interpreter
 Build the macOS package with bundled Python assets:
 
 ```bash
-KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run prepare:python-runtime
-bun run build
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run build
 ```
 
 In packaged macOS builds, the Bun main process resolves the worker from bundled app resources instead of `uv`:
@@ -267,6 +266,8 @@ In packaged macOS builds, the Bun main process resolves the worker from bundled 
 python-runtime/bin/python
 python-worker/worker/__main__.py
 ```
+
+`bun run build` now runs `prepare:python-runtime` internally, so `KNOWDISK_PYTHON_RUNTIME_DIR` must be set for packaged macOS builds.
 
 Test:
 

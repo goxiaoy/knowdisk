@@ -27,7 +27,6 @@ class PythonWorkerServer:
             "get_status_snapshot": self._handle_get_status_snapshot,
             "index_node": self._handle_index_node,
             "delete_node": self._handle_delete_node,
-            "rebuild_all": self._handle_rebuild_all,
             "search": self._handle_search,
         }
         handler = handlers.get(method)
@@ -92,21 +91,6 @@ class PythonWorkerServer:
 
     def _handle_delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
         self.services["index_service"].delete_node(params["nodeId"])
-        return {"ok": True}
-
-    def _handle_rebuild_all(self, params: dict[str, Any]) -> dict[str, Any]:
-        items = params.get("items", [])
-        self.services["index_queue"].rebuild_all(
-            [
-                (
-                    item["node"]["name"],
-                    lambda item=item: self.services["index_service"].index_node(
-                        item["node"], item["mount"]
-                    ),
-                )
-                for item in items
-            ]
-        )
         return {"ok": True}
 
     def _handle_search(self, params: dict[str, Any]) -> list[dict[str, Any]]:

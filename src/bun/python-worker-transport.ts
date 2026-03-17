@@ -18,6 +18,7 @@ export type PythonWorkerTransport = {
   stop(): void;
   request(method: string, params: unknown): Promise<unknown>;
   subscribeEvents(listener: (event: PythonWorkerEvent) => void): () => void;
+  subscribeStderr(listener: (chunk: string) => void): () => void;
   subscribeExit(listener: (detail: { code: number | null; signal: NodeJS.Signals | null }) => void): () => void;
 };
 
@@ -80,6 +81,13 @@ export function createPythonWorkerTransport(input: {
       emitter.on("event", listener);
       return () => {
         emitter.off("event", listener);
+      };
+    },
+
+    subscribeStderr(listener) {
+      emitter.on("stderr", listener);
+      return () => {
+        emitter.off("stderr", listener);
       };
     },
 

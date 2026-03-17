@@ -18,8 +18,6 @@ export default {
       "vendor/python-runtime": "python-runtime",
       "vendor/python-worker": "python-worker",
       "vendor/node_modules/sharp": "node_modules/sharp",
-      "vendor/node_modules/detect-libc": "node_modules/detect-libc",
-      "vendor/node_modules/semver": "node_modules/semver",
       "vendor/node_modules/@img": "node_modules/@img",
     },
     mac: {

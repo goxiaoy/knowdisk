@@ -129,9 +129,8 @@ def test_index_node_delegates_to_index_service():
     ]
 
 
-def test_delete_node_rebuild_all_and_search_delegate_to_services():
+def test_delete_node_and_search_delegate_to_services():
     deleted: list[str] = []
-    rebuilt: list[list[str]] = []
     searched: list[str] = []
 
     class IndexServiceStub:
@@ -149,9 +148,6 @@ def test_delete_node_rebuild_all_and_search_delegate_to_services():
         def snapshot(self):
             return {"phase": "idle"}
 
-        def rebuild_all(self, jobs):
-            rebuilt.append([name for name, _ in jobs])
-
     server = create_server(
         event_sink=lambda event: None,
         services={
@@ -164,27 +160,11 @@ def test_delete_node_rebuild_all_and_search_delegate_to_services():
     delete_response = server.handle_request(
         {"id": "req-6", "method": "delete_node", "params": {"nodeId": "node-1"}}
     )
-    rebuild_response = server.handle_request(
-        {
-            "id": "req-7",
-            "method": "rebuild_all",
-            "params": {
-                "items": [
-                    {
-                        "node": {"nodeId": "node-1", "name": "a.md"},
-                        "mount": {"directory": "/tmp", "contentDir": ""},
-                    }
-                ]
-            },
-        }
-    )
     search_response = server.handle_request(
-        {"id": "req-8", "method": "search", "params": {"query": "hello"}}
+        {"id": "req-7", "method": "search", "params": {"query": "hello"}}
     )
 
     assert delete_response == {"id": "req-6", "result": {"ok": True}}
-    assert rebuild_response == {"id": "req-7", "result": {"ok": True}}
-    assert search_response == {"id": "req-8", "result": [{"nodeId": "node-1"}]}
+    assert search_response == {"id": "req-7", "result": [{"nodeId": "node-1"}]}
     assert deleted == ["node-1"]
-    assert rebuilt == [["a.md"]]
     assert searched == ["hello"]

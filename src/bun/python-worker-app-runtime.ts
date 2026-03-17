@@ -29,7 +29,7 @@ export function createPythonWorkerAppRuntime(input: {
   return {
     async start() {
       try {
-        await bootstrapRecoveryRebuild(input);
+        await replayRecoveryIndexes(input);
       } catch (error) {
         input.logger.error(
           {
@@ -47,7 +47,7 @@ export function createPythonWorkerAppRuntime(input: {
   };
 }
 
-async function bootstrapRecoveryRebuild(input: {
+async function replayRecoveryIndexes(input: {
   contentRootDir: string;
   request: (method: string, params: unknown) => Promise<unknown>;
   vfsRepository: Pick<
@@ -59,10 +59,9 @@ async function bootstrapRecoveryRebuild(input: {
     contentRootDir: input.contentRootDir,
     vfsRepository: input.vfsRepository,
   });
-  if (items.length === 0) {
-    return;
+  for (const item of items) {
+    await input.request("index_node", item);
   }
-  await input.request("rebuild_all", { items });
 }
 
 function buildPythonWorkerRebuildItems(input: {

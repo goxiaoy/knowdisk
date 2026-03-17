@@ -18,7 +18,7 @@ function phaseStyle(phase: RendererIndexStatus["phase"], available: boolean) {
       progressFill: "stroke-rose-500",
     };
   }
-  if (phase === "indexing" || phase === "rebuilding") {
+  if (phase === "indexing") {
     return {
       ring: "border-amber-200 bg-amber-50 text-amber-700",
       progressTrack: "stroke-amber-200",
@@ -46,10 +46,10 @@ function getSummary(status: RendererIndexStatus): string {
   if (status.phase === "error") {
     return status.error || "Error";
   }
-  if (status.phase === "rebuilding") {
-    return `${status.processedFiles} / ${status.totalFiles}`;
-  }
   if (status.phase === "indexing") {
+    if (status.totalFiles > 1 && status.processedFiles > 0) {
+      return `${status.processedFiles} / ${status.totalFiles}`;
+    }
     return status.queueDepth > 0 ? `Indexing (${status.queueDepth} queued)` : "Indexing";
   }
   return "Idle";
