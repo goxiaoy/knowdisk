@@ -1,0 +1,41 @@
+import json
+
+import pytest
+
+from worker.protocol import decode_frame, encode_frame
+
+
+def test_encode_frame_returns_single_newline_terminated_json_line():
+    payload = {"id": "req-1", "method": "start", "params": {}}
+
+    encoded = encode_frame(payload)
+
+    assert encoded.endswith(b"\n")
+    assert encoded.count(b"\n") == 1
+    assert json.loads(encoded.decode("utf-8")) == payload
+
+
+def test_decode_frame_parses_valid_request_response_and_event_frames():
+    request = decode_frame(b'{"id":"req-1","method":"start","params":{}}\n')
+    response = decode_frame(b'{"id":"req-1","result":{"ok":true}}\n')
+    event = decode_frame(b'{"type":"worker_health_changed","payload":{"ready":true}}\n')
+
+    assert request["method"] == "start"
+    assert response["result"] == {"ok": True}
+    assert event["type"] == "worker_health_changed"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        b"",
+        b"not-json\n",
+        b'{"id":"","method":"start","params":{}}\n',
+        b'{"id":"req-1"}\n',
+        b'{"id":"req-1","result":{},"error":{"code":"X","message":"boom"}}\n',
+        b'{"type":"","payload":{}}\n',
+    ],
+)
+def test_decode_frame_rejects_invalid_json_and_invalid_shapes(line: bytes):
+    with pytest.raises(ValueError):
+        decode_frame(line)

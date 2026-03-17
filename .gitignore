@@ -25,6 +25,10 @@ coverage/
 # Caches
 .cache/
 .vite/
+.venv/
+.pytest_cache/
+__pycache__/
+*.egg-info/
 
 # IDE/editor
 .vscode/
