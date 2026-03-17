@@ -1,10 +1,17 @@
 from collections.abc import Callable
 from typing import Any
 
+from worker.bun_client import BunClient
+
 
 class PythonWorkerServer:
-    def __init__(self, event_sink: Callable[[dict[str, Any]], None]) -> None:
+    def __init__(
+        self,
+        event_sink: Callable[[dict[str, Any]], None],
+        bun_request: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+    ) -> None:
         self._event_sink = event_sink
+        self.bun_client = BunClient(bun_request) if bun_request is not None else None
         self.is_running = True
 
     def handle_request(self, frame: dict[str, Any]) -> dict[str, Any]:
@@ -53,5 +60,8 @@ class PythonWorkerServer:
         return {"ok": True}
 
 
-def create_server(event_sink: Callable[[dict[str, Any]], None]) -> PythonWorkerServer:
-    return PythonWorkerServer(event_sink=event_sink)
+def create_server(
+    event_sink: Callable[[dict[str, Any]], None],
+    bun_request: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+) -> PythonWorkerServer:
+    return PythonWorkerServer(event_sink=event_sink, bun_request=bun_request)
