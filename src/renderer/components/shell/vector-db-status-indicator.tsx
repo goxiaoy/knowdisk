@@ -42,6 +42,10 @@ export function VectorDbStatusIndicator({ status }: { status: RendererVectorDbSt
       <StatusTooltip title="Vector DB">
         <p className="text-xs text-slate-500">{formatCompactCount(status.chunkCount)}</p>
         <p className="mt-1 text-sm font-medium text-slate-800">{formatFullCount(status.chunkCount)} chunks</p>
+        {status.error ? <p className="mt-1 text-xs text-rose-600">{status.error}</p> : null}
+        {status.lastUpdatedAt ? (
+          <p className="mt-1 text-xs text-slate-500">Updated {status.lastUpdatedAt}</p>
+        ) : null}
       </StatusTooltip>
     </div>
   );

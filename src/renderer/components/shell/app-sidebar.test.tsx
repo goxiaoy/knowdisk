@@ -20,6 +20,7 @@ test("renders sidebar with muted shell background and segmented sections", () =>
           available: true,
           phase: "idle",
           scope: null,
+          queueDepth: 0,
           processedFiles: 0,
           totalFiles: 0,
           activeNodeName: "",
@@ -30,6 +31,8 @@ test("renders sidebar with muted shell background and segmented sections", () =>
         vectorDbStatus={{
           available: true,
           chunkCount: 42,
+          lastUpdatedAt: "",
+          error: "",
         }}
         vfsStatus={{
           available: true,

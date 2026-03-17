@@ -207,6 +207,7 @@ function mapIndexStatus(): RendererIndexStatus {
     available: true,
     phase: status.phase,
     scope: status.scope,
+    queueDepth: status.phase === "idle" ? 0 : Math.max(0, status.totalFiles - status.processedFiles),
     processedFiles: status.processedFiles,
     totalFiles: status.totalFiles,
     activeNodeName: status.activeNodeName ?? "",
@@ -430,6 +431,8 @@ async function getVectorDbStatus(): Promise<RendererVectorDbStatus> {
   return {
     available: true,
     chunkCount: await app.vectorRepository.getChunkCount(),
+    lastUpdatedAt: "",
+    error: "",
   };
 }
 

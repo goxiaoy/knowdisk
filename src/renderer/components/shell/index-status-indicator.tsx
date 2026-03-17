@@ -50,7 +50,7 @@ function getSummary(status: RendererIndexStatus): string {
     return `${status.processedFiles} / ${status.totalFiles}`;
   }
   if (status.phase === "indexing") {
-    return "Indexing";
+    return status.queueDepth > 0 ? `Indexing (${status.queueDepth} queued)` : "Indexing";
   }
   return "Idle";
 }
@@ -94,6 +94,9 @@ export function IndexStatusIndicator({ status }: { status: RendererIndexStatus }
           <span className="text-xs font-medium text-slate-700">{progress}%</span>
         </div>
         <p className="text-sm font-medium text-slate-800">{getSummary(status)}</p>
+        {status.phase !== "idle" && status.queueDepth > 0 ? (
+          <p className="mt-1 text-xs text-slate-500">{status.queueDepth} jobs remaining</p>
+        ) : null}
         {status.activeNodeName ? (
           <p className="mt-1 truncate text-xs text-slate-500">{status.activeNodeName}</p>
         ) : null}
