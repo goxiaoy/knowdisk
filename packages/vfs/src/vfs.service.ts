@@ -6,7 +6,10 @@ import {
   encodeVfsLocalCursorToken,
   encodeVfsRemoteCursorToken,
 } from "./vfs.cursor";
-import { createVfsNodeEventsProcessor } from "./vfs.node-event-processor";
+import {
+  createVfsContentNodeEventsProcessor,
+  createVfsMetadataNodeEventsProcessor,
+} from "./vfs.node-event-processor";
 import { createVfsNodeId } from "./vfs.node-id";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsRepository } from "./vfs.repository.types";
@@ -93,10 +96,10 @@ export function createVfsService(deps: {
     },
   };
 
-  const nodeEventsProcessor =
+  const metadataNodeEventsProcessor =
     deps.contentRootParent === undefined
       ? null
-      : createVfsNodeEventsProcessor({
+      : createVfsMetadataNodeEventsProcessor({
           repository: deps.repository,
           contentRootParent: deps.contentRootParent,
           resolveMount: resolveMountForNodeEvent,
@@ -108,6 +111,26 @@ export function createVfsService(deps: {
           logger: deps.logger,
           emitSyncerEvent,
         });
+  const contentNodeEventsProcessor =
+    deps.contentRootParent === undefined
+      ? null
+      : createVfsContentNodeEventsProcessor({
+          repository: deps.repository,
+          contentRootParent: deps.contentRootParent,
+          resolveMount: resolveMountForNodeEvent,
+          resolveProvider(mount) {
+            return deps.registry.get(mount);
+          },
+          hooks: hooksRunner,
+          nowMs,
+          logger: deps.logger,
+          emitSyncerEvent,
+        });
+
+  const ensureNodeEventsProcessorsStarted = (): void => {
+    metadataNodeEventsProcessor?.start();
+    contentNodeEventsProcessor?.start();
+  };
 
   const ensureSyncer = async (mount: VfsMount): Promise<VfsSyncer> => {
     const existing = syncers.get(mount.mountId);
@@ -169,6 +192,7 @@ export function createVfsService(deps: {
   };
 
   const runReconcile = async (mountId: string): Promise<void> => {
+    ensureNodeEventsProcessorsStarted();
     if (reconcileRunning.has(mountId)) {
       return;
     }
@@ -177,10 +201,6 @@ export function createVfsService(deps: {
       const active = syncers.get(mountId);
       if (active) {
         await active.syncer.fullSync();
-        await nodeEventsProcessor?.drain({
-          allowContentSync: false,
-          includeContentUpdates: false,
-        });
         return;
       }
       if (!deps.contentRootParent) {
@@ -197,10 +217,6 @@ export function createVfsService(deps: {
       const syncer = await ensureSyncer(mount);
       try {
         await syncer.fullSync();
-        await nodeEventsProcessor?.drain({
-          allowContentSync: false,
-          includeContentUpdates: false,
-        });
       } finally {
         if (!started) {
           await stopSyncer(mountId);
@@ -239,6 +255,7 @@ export function createVfsService(deps: {
         return;
       }
       started = true;
+      ensureNodeEventsProcessorsStarted();
       const mounts = deps.repository.listNodeMountExts().map((ext) => mountFromExt(ext));
       for (const mount of mounts) {
         if (!isAutoSyncEnabled(mount)) {
@@ -252,7 +269,6 @@ export function createVfsService(deps: {
         }
         scheduleReconcile(mount);
       }
-      nodeEventsProcessor?.start();
     },
 
     async close() {
@@ -263,7 +279,8 @@ export function createVfsService(deps: {
       for (const id of ids) {
         await stopSyncer(id);
       }
-      nodeEventsProcessor?.close();
+      metadataNodeEventsProcessor?.close();
+      contentNodeEventsProcessor?.close();
       started = false;
     },
 
@@ -329,6 +346,7 @@ export function createVfsService(deps: {
     },
 
     async unmount(mountId: string) {
+      ensureNodeEventsProcessorsStarted();
       clearReconcileTimer(mountId);
       await stopSyncer(mountId);
       const now = nowMs();
@@ -354,7 +372,6 @@ export function createVfsService(deps: {
         );
       }
       deps.repository.deleteNodeMountExtByMountId(mountId);
-      await nodeEventsProcessor?.drain();
     },
 
     async listChildren(input) {

@@ -32,11 +32,10 @@ type VfsNodeEventHookName =
 export type VfsNodeEventsProcessor = {
   start: () => void;
   close: () => void;
-  drain: (options?: {
-    allowContentSync?: boolean;
-    includeContentUpdates?: boolean;
-  }) => Promise<{ blocked: boolean }>;
+  drain: (options?: { allowContentSync?: boolean }) => Promise<{ blocked: boolean }>;
 };
+
+type VfsNodeEventProcessorType = VfsNodeEventRow["type"];
 
 function toBeforeHookName(type: VfsNodeEventRow["type"]): VfsNodeEventHookName {
   switch (type) {
@@ -422,13 +421,14 @@ async function drainNodeEvents(input: {
   logger: Logger;
   emitSyncerEvent?: (mountId: string, event: VfsSyncerEvent) => void;
   batchSize: number;
-  allowContentSync?: boolean;
-  includeContentUpdates?: boolean;
+  allowContentSync: boolean;
+  types: VfsNodeEventProcessorType[];
 }): Promise<{ blocked: boolean }> {
   while (true) {
-    const rows = input.repository
-      .listNodeEvents(input.batchSize)
-      .filter((row) => input.includeContentUpdates !== false || row.type !== "update_content");
+    const rows = input.repository.listNodeEvents({
+      limit: input.batchSize,
+      types: input.types,
+    });
     if (rows.length === 0) {
       return { blocked: false };
     }
@@ -553,7 +553,7 @@ async function drainNodeEvents(input: {
   }
 }
 
-export function createVfsNodeEventsProcessor(input: {
+function createFilteredVfsNodeEventsProcessor(input: {
   repository: VfsRepository;
   contentRootParent: string;
   resolveMount: (mountId: string) => VfsMount | null;
@@ -564,6 +564,8 @@ export function createVfsNodeEventsProcessor(input: {
   emitSyncerEvent?: (mountId: string, event: VfsSyncerEvent) => void;
   batchSize?: number;
   idleMs?: number;
+  allowContentSync: boolean;
+  types: VfsNodeEventProcessorType[];
 }): VfsNodeEventsProcessor {
   const nowMs = input.nowMs ?? (() => Date.now());
   const logger =
@@ -602,12 +604,7 @@ export function createVfsNodeEventsProcessor(input: {
     void run();
   };
 
-  const drain = async (
-    options?: {
-      allowContentSync?: boolean;
-      includeContentUpdates?: boolean;
-    }
-  ): Promise<{ blocked: boolean }> => {
+  const drain = async (options?: { allowContentSync?: boolean }): Promise<{ blocked: boolean }> => {
     return drainNodeEvents({
       repository: input.repository,
       contentRootParent: input.contentRootParent,
@@ -618,8 +615,8 @@ export function createVfsNodeEventsProcessor(input: {
       logger,
       emitSyncerEvent: input.emitSyncerEvent,
       batchSize,
-      allowContentSync: options?.allowContentSync,
-      includeContentUpdates: options?.includeContentUpdates,
+      allowContentSync: options?.allowContentSync ?? input.allowContentSync,
+      types: input.types,
     });
   };
 
@@ -631,7 +628,7 @@ export function createVfsNodeEventsProcessor(input: {
     try {
       while (true) {
         const result = await drain();
-        if (result.blocked || input.repository.listNodeEvents(1).length === 0) {
+        if (result.blocked || input.repository.listNodeEvents({ limit: 1, types: input.types }).length === 0) {
           break;
         }
       }
@@ -674,4 +671,24 @@ export function createVfsNodeEventsProcessor(input: {
 
     drain,
   };
+}
+
+export function createVfsMetadataNodeEventsProcessor(
+  input: Omit<Parameters<typeof createFilteredVfsNodeEventsProcessor>[0], "allowContentSync" | "types">
+): VfsNodeEventsProcessor {
+  return createFilteredVfsNodeEventsProcessor({
+    ...input,
+    allowContentSync: false,
+    types: ["add", "update_metadata", "delete"],
+  });
+}
+
+export function createVfsContentNodeEventsProcessor(
+  input: Omit<Parameters<typeof createFilteredVfsNodeEventsProcessor>[0], "allowContentSync" | "types">
+): VfsNodeEventsProcessor {
+  return createFilteredVfsNodeEventsProcessor({
+    ...input,
+    allowContentSync: true,
+    types: ["update_content"],
+  });
 }

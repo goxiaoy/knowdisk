@@ -117,7 +117,9 @@ describe("vfs service runtime", () => {
     });
     filesByMountId.set(mount1.mountId, ["a.txt"]);
     await ctx.service.triggerReconcile(mount1.mountId);
+    const firstProcessed = await waitUntil(() => calls.length === 2, 500);
 
+    expect(firstProcessed).toBe(true);
     expect(calls).toEqual([`a:${mount1.mountId}:a.txt`, `b:${mount1.mountId}:a.txt`]);
 
     offB();
@@ -131,7 +133,9 @@ describe("vfs service runtime", () => {
     });
     filesByMountId.set(mount2.mountId, ["b.txt"]);
     await ctx.service.triggerReconcile(mount2.mountId);
+    const secondProcessed = await waitUntil(() => calls.length === 3, 500);
 
+    expect(secondProcessed).toBe(true);
     expect(calls).toEqual([
       `a:${mount1.mountId}:a.txt`,
       `b:${mount1.mountId}:a.txt`,
@@ -139,6 +143,7 @@ describe("vfs service runtime", () => {
     ]);
 
     offA();
+    await ctx.service.close();
     ctx.cleanup();
   });
 
@@ -167,6 +172,82 @@ describe("vfs service runtime", () => {
     );
 
     off();
+    ctx.cleanup();
+  });
+
+  test("triggerReconcile enqueues work and processors drain asynchronously", async () => {
+    const ctx = setup();
+    const filesByMountId = new Map<string, string[]>();
+    let releaseHook: (() => void) | null = null;
+    const hookBlocked = new Promise<void>((resolve) => {
+      releaseHook = resolve;
+    });
+    ctx.registry.register("mock-async-reconcile", (_container, mount) => ({
+      type: "mock-async-reconcile",
+      capabilities: { watch: false },
+      async listChildren() {
+        return {
+          items: (filesByMountId.get(mount.mountId) ?? []).map((sourceRef) => ({
+            nodeId: sourceRef,
+            mountId: mount.mountId,
+            parentId: null,
+            name: sourceRef,
+            kind: "file" as const,
+            size: 1,
+            mtimeMs: 1,
+            sourceRef,
+            providerVersion: null,
+            deletedAtMs: null,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          })),
+        };
+      },
+      async getMetadata(input) {
+        return {
+          nodeId: input.id,
+          mountId: mount.mountId,
+          parentId: null,
+          name: input.id,
+          kind: "file" as const,
+          size: 1,
+          mtimeMs: 1,
+          sourceRef: input.id,
+          providerVersion: null,
+          deletedAtMs: null,
+          createdAtMs: 1,
+          updatedAtMs: 1,
+        };
+      },
+    }));
+    ctx.service.registerNodeEventHooks({
+      async beforeAdd() {
+        await hookBlocked;
+      },
+    });
+
+    const mount = await ctx.service.mount({
+      providerType: "mock-async-reconcile",
+      providerExtra: {},
+      syncMetadata: true,
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1_000,
+    });
+    await ctx.service.start();
+    filesByMountId.set(mount.mountId, ["a.txt"]);
+
+    const reconcilePromise = ctx.service.triggerReconcile(mount.mountId).then(() => true);
+    const settledQuickly = await Promise.race([reconcilePromise, Bun.sleep(20).then(() => false)]);
+
+    expect(settledQuickly).toBe(true);
+    expect(ctx.repo.listNodeEvents().length).toBeGreaterThan(0);
+
+    releaseHook?.();
+
+    const drained = await waitUntil(() => ctx.repo.listNodeEvents().length === 0, 500);
+    expect(drained).toBe(true);
+
+    await ctx.service.close();
     ctx.cleanup();
   });
 
@@ -292,7 +373,12 @@ describe("vfs service runtime", () => {
 
     await service.start();
     await service.triggerReconcile(mount.mountId);
+    const indexed = await waitUntil(
+      () => repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.deletedAtMs === null,
+      500
+    );
 
+    expect(indexed).toBe(true);
     expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.deletedAtMs).toBeNull();
 
     await service.close();

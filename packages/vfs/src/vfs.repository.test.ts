@@ -435,6 +435,48 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test("listNodeEvents filters by type", () => {
+    const { dir, repo } = makeRepo();
+
+    repo.insertNodeEvents([
+      {
+        sourceRef: "a",
+        mountId: "m1",
+        parentId: null,
+        type: "add",
+        node: null,
+        createdAtMs: 1,
+      },
+      {
+        sourceRef: "a",
+        mountId: "m1",
+        parentId: null,
+        type: "update_content",
+        node: null,
+        createdAtMs: 2,
+      },
+      {
+        sourceRef: "b",
+        mountId: "m2",
+        parentId: null,
+        type: "delete",
+        node: null,
+        createdAtMs: 3,
+      },
+    ]);
+
+    expect(repo.listNodeEvents({ types: ["update_content"] }).map((event) => event.type)).toEqual([
+      "update_content",
+    ]);
+    expect(repo.listNodeEvents({ types: ["add", "delete"] }).map((event) => event.type)).toEqual([
+      "add",
+      "delete",
+    ]);
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test("subscribeNodeChanges receives upserted row", () => {
     const { dir, repo } = makeRepo();
     const rows = [];

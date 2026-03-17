@@ -4,7 +4,10 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalVfsProvider } from "./provider/local";
-import { createVfsNodeEventsProcessor } from "./vfs.node-event-processor";
+import {
+  createVfsContentNodeEventsProcessor,
+  createVfsMetadataNodeEventsProcessor,
+} from "./vfs.node-event-processor";
 import { createVfsNodeId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 import { createVfsRepository } from "./vfs.repository";
 import {
@@ -54,7 +57,25 @@ function createTestNodeEventsProcessor(input: {
   logger?: unknown;
   events?: VfsSyncerEvent[];
 }) {
-  const processor = createVfsNodeEventsProcessor({
+  const metadataProcessor = createVfsMetadataNodeEventsProcessor({
+    repository: input.repository,
+    contentRootParent: input.contentRootParent,
+    resolveMount(mountId) {
+      return mountId === input.mount.mountId ? input.mount : null;
+    },
+    resolveProvider() {
+      return input.provider;
+    },
+    hooks: input.hooks,
+    nowMs: input.nowMs,
+    logger: input.logger as never,
+    emitSyncerEvent(mountId, event) {
+      if (mountId === input.mount.mountId) {
+        input.events?.push(event);
+      }
+    },
+  });
+  const contentProcessor = createVfsContentNodeEventsProcessor({
     repository: input.repository,
     contentRootParent: input.contentRootParent,
     resolveMount(mountId) {
@@ -73,10 +94,25 @@ function createTestNodeEventsProcessor(input: {
     },
   });
   return {
-    ...processor,
+    ...metadataProcessor,
     rememberMount() {},
-    drainMount(options?: { allowContentSync?: boolean; includeContentUpdates?: boolean }) {
-      return processor.drain(options);
+    start() {
+      metadataProcessor.start();
+      contentProcessor.start();
+    },
+    close() {
+      metadataProcessor.close();
+      contentProcessor.close();
+    },
+    async drainMount(options?: { allowContentSync?: boolean; includeContentUpdates?: boolean }) {
+      const metadata = await metadataProcessor.drain();
+      if (options?.includeContentUpdates === false) {
+        return metadata;
+      }
+      const content = await contentProcessor.drain({
+        allowContentSync: options?.allowContentSync,
+      });
+      return content.blocked ? content : metadata;
     },
   };
 }

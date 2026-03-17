@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { Database } from "bun:sqlite";
 import type {
+  ListNodeEventsInput,
   ListChildrenPageLocalInput,
   ListChildrenPageLocalOutput,
   VfsNodeEventRow,
@@ -407,7 +408,10 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       }
     },
 
-    listNodeEvents(limit = 1000) {
+    listNodeEvents(input: ListNodeEventsInput = {}) {
+      const limit = input.limit ?? 1000;
+      const types = input.types?.length ? [...new Set(input.types)] : null;
+      const typeClause = types ? `WHERE type IN (${types.map(() => "?").join(", ")})` : "";
       const rows = db
         .query(
           `SELECT
@@ -419,10 +423,11 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           node_json AS nodeJson,
           created_at_ms AS createdAtMs
         FROM vfs_node_events
+        ${typeClause}
         ORDER BY created_at_ms ASC, mount_id ASC, source_ref ASC, type ASC
         LIMIT ?`
         )
-        .all(limit) as Array<{
+        .all(...(types ?? []), limit) as Array<{
         id: string;
         sourceRef: string;
         mountId: string;
