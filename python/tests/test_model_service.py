@@ -21,6 +21,9 @@ class FakeArtifactManager:
         self.progress_steps = progress_steps or {}
         self.calls: list[tuple[str, str, bool]] = []
 
+    def resolve_model_root(self, kind: str, model: str) -> Path:
+        return self.cache_root / kind / Path(*model.split("/"))
+
     def ensure_artifacts(
         self,
         kind: str,
@@ -103,6 +106,10 @@ def test_real_ensure_models_verifies_existing_local_model_by_successful_load(tmp
     emitted: list[dict] = []
     store = ModelStatusStore(event_sink=emitted.append)
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    embedding_root = manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
+    reranker_root = manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
+    embedding_root.mkdir(parents=True, exist_ok=True)
+    reranker_root.mkdir(parents=True, exist_ok=True)
     embedding_runtime = object()
     reranker_tokenizer = object()
     reranker_model = object()
@@ -116,10 +123,7 @@ def test_real_ensure_models_verifies_existing_local_model_by_successful_load(tmp
     result = service.ensure_required_models()
 
     assert result == {"ok": True}
-    assert manager.calls == [
-        ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
-        ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
-    ]
+    assert manager.calls == []
     assert service.snapshot()["phase"] == "completed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
     assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
@@ -163,6 +167,12 @@ def test_real_ensure_models_marks_failed_when_verify_by_load_fails(tmp_path: Pat
     emitted: list[dict] = []
     store = ModelStatusStore(event_sink=emitted.append)
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base").mkdir(
+        parents=True, exist_ok=True
+    )
+    manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base").mkdir(
+        parents=True, exist_ok=True
+    )
     service = make_real_model_service(
         store,
         manager,
@@ -176,7 +186,34 @@ def test_real_ensure_models_marks_failed_when_verify_by_load_fails(tmp_path: Pat
     assert service.snapshot()["phase"] == "failed"
     assert service.snapshot()["error"] == "boom"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "failed"
-    assert manager.calls == [("embedding", "Alibaba-NLP/gte-multilingual-base", False)]
+    assert manager.calls == [("embedding", "Alibaba-NLP/gte-multilingual-base", True)]
+
+
+def test_real_ensure_models_marks_only_reranker_failed_when_reranker_load_fails(tmp_path: Path):
+    emitted: list[dict] = []
+    store = ModelStatusStore(event_sink=emitted.append)
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base").mkdir(
+        parents=True, exist_ok=True
+    )
+    manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base").mkdir(
+        parents=True, exist_ok=True
+    )
+    service = make_real_model_service(
+        store,
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: object(),
+        reranker_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("reranker boom")),
+    )
+
+    result = service.ensure_required_models()
+
+    assert result == {"ok": False}
+    assert service.snapshot()["phase"] == "failed"
+    assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
+    assert service.snapshot()["tasks"]["reranker"]["state"] == "failed"
+    assert service.snapshot()["error"] == "reranker boom"
+    assert manager.calls == [("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", True)]
 
 
 def test_embedding_runtime_is_cached(tmp_path: Path):
