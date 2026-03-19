@@ -1,6 +1,6 @@
 import json
 
-from worker.parser_simple import parse_simple_document
+from worker.parser.simple import parse_simple_document
 
 
 def test_markdown_input_produces_normalized_chunks():

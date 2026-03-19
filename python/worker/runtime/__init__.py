@@ -1,3 +1,4 @@
+from .status import IndexStatusStore, ModelStatusStore, VectorStatusStore
 from .types import (
     DeleteNodeRequest,
     IndexNodeRequest,
@@ -29,6 +30,7 @@ from .types import (
 )
 
 __all__ = [
+    "IndexStatusStore",
     "DeleteNodeRequest",
     "IndexNodeRequest",
     "IndexNodeResult",
@@ -45,6 +47,8 @@ __all__ = [
     "ModelTasksSnapshot",
     "SearchRequest",
     "VectorStatusSnapshot",
+    "ModelStatusStore",
+    "VectorStatusStore",
     "WorkerServices",
     "WorkerServicesBundle",
     "WorkerStatusEvent",

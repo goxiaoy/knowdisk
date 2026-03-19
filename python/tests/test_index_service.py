@@ -1,8 +1,8 @@
 from worker.parser.types import ParserMount, ParserNode
 from worker.runtime.types import IndexNodeRequest
-from worker.index_service import IndexService
-from worker.status import VectorStatusStore
-from worker.vector_repository import VectorRepository
+from worker.index.service import IndexService
+from worker.runtime.status import VectorStatusStore
+from worker.vector.repository import VectorRepository
 
 
 class FakeEmbeddingRuntime:

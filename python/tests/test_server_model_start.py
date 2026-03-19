@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from worker.model.types import ModelRuntimeConfig
-from worker.server import create_server
+from worker.protocol.server import create_server
 
 
 def test_start_stores_model_runtime_config():

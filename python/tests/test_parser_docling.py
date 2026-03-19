@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from worker.parser_docling import parse_docling_document
+from worker.parser.docling_adapter import parse_docling_document
 
 
 def test_docling_path_is_selected_for_pdf_like_inputs(tmp_path: Path):

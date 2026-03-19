@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from worker.model_download import download_file
+from worker.model.download import download_file
 
 
 @dataclass

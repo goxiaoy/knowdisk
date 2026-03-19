@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
-from worker.model_service import ModelService
-from worker.status import ModelStatusStore
+from worker.model.service import ModelService
+from worker.runtime.status import ModelStatusStore
 
 
 @dataclass(frozen=True)

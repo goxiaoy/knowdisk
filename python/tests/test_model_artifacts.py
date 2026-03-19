@@ -1,4 +1,4 @@
-from worker.model_artifacts import select_embedding_repo_files, select_reranker_repo_files
+from worker.model.artifacts import select_embedding_repo_files, select_reranker_repo_files
 
 
 def test_select_embedding_repo_files_keeps_sentence_transformer_assets():

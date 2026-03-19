@@ -1,6 +1,6 @@
 from worker.parser.types import ParserMount, ParserNode
+from worker.protocol.server import create_server
 from worker.runtime.types import IndexNodeResult
-from worker.server import create_server
 
 
 def test_start_returns_handshake_and_emits_health_event():

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from worker.model_runtime_loader import (
+from worker.model.runtime_loader import (
     load_local_embedding_runtime,
     load_local_reranker_runtime,
     select_runtime_device,

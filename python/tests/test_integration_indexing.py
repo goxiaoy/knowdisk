@@ -1,11 +1,13 @@
 from pathlib import Path
 
-from worker.index_queue import IndexQueue
-from worker.index_service import IndexService
-from worker.model_service import ModelService
-from worker.parser_service import parse_node as parse_node_from_mount
-from worker.status import IndexStatusStore, ModelStatusStore, VectorStatusStore
-from worker.vector_repository import VectorRepository
+from worker.index.queue import IndexQueue
+from worker.index.service import IndexService
+from worker.model.service import ModelService
+from worker.parser.types import ParserMount, ParserNode
+from worker.parser.service import parse_node as parse_node_from_mount
+from worker.runtime.status import IndexStatusStore, ModelStatusStore, VectorStatusStore
+from worker.runtime.types import IndexNodeRequest
+from worker.vector.repository import VectorRepository
 
 
 def test_simple_file_indexes_through_parser_queue_and_vector_store(tmp_path: Path):
@@ -30,19 +32,20 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(tmp_path: Pat
     queue.enqueue_incremental(
         "note.md",
         lambda: index_service.index_node(
-            node={
-                "nodeId": "node-1",
-                "mountId": "mount-1",
-                "name": "note.md",
-                "sourceRef": "note.md",
-                "providerVersion": "v1",
-            },
-            mount={
-                "mountId": "mount-1",
-                "providerType": "local",
-                "directory": str(source_dir),
-                "contentDir": "",
-            },
+            IndexNodeRequest(
+                node=ParserNode(
+                    node_id="node-1",
+                    mount_id="mount-1",
+                    name="note.md",
+                    source_ref="note.md",
+                    provider_type="local",
+                ),
+                mount=ParserMount(
+                    directory=str(source_dir),
+                    content_dir="",
+                    provider_type="local",
+                ),
+            ),
         ),
     )
 
@@ -74,8 +77,8 @@ def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: 
                     "text": "Docling integration body",
                     "title": "Paper",
                     "source": {
-                        "nodeId": node["nodeId"],
-                        "name": node["name"],
+                        "nodeId": node.node_id,
+                        "name": node.name,
                         "path": source_path,
                     },
                 }
@@ -87,22 +90,23 @@ def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: 
     )
 
     result = index_service.index_node(
-        node={
-            "nodeId": "node-2",
-            "mountId": "mount-1",
-            "name": "paper.pdf",
-            "sourceRef": "paper.pdf",
-            "providerVersion": "v1",
-        },
-        mount={
-            "mountId": "mount-1",
-            "providerType": "local",
-            "directory": str(source_dir),
-            "contentDir": "",
-        },
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-2",
+                mount_id="mount-1",
+                name="paper.pdf",
+                source_ref="paper.pdf",
+                provider_type="local",
+            ),
+            mount=ParserMount(
+                directory=str(source_dir),
+                content_dir="",
+                provider_type="local",
+            ),
+        ),
     )
 
-    assert result == {"indexed": 1}
+    assert result.indexed == 1
     assert repository.count_chunks() == 1
     assert index_service.search("docling")[0]["name"] == "paper.pdf"
 
@@ -130,37 +134,39 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
     queue.enqueue_incremental(
         "a.md",
         lambda: index_service.index_node(
-            node={
-                "nodeId": "node-a",
-                "mountId": "mount-1",
-                "name": "a.md",
-                "sourceRef": "a.md",
-                "providerVersion": "v1",
-            },
-            mount={
-                "mountId": "mount-1",
-                "providerType": "local",
-                "directory": str(source_dir),
-                "contentDir": "",
-            },
+            IndexNodeRequest(
+                node=ParserNode(
+                    node_id="node-a",
+                    mount_id="mount-1",
+                    name="a.md",
+                    source_ref="a.md",
+                    provider_type="local",
+                ),
+                mount=ParserMount(
+                    directory=str(source_dir),
+                    content_dir="",
+                    provider_type="local",
+                ),
+            ),
         ),
     )
     queue.enqueue_incremental(
         "b.txt",
         lambda: index_service.index_node(
-            node={
-                "nodeId": "node-b",
-                "mountId": "mount-1",
-                "name": "b.txt",
-                "sourceRef": "b.txt",
-                "providerVersion": "v1",
-            },
-            mount={
-                "mountId": "mount-1",
-                "providerType": "local",
-                "directory": str(source_dir),
-                "contentDir": "",
-            },
+            IndexNodeRequest(
+                node=ParserNode(
+                    node_id="node-b",
+                    mount_id="mount-1",
+                    name="b.txt",
+                    source_ref="b.txt",
+                    provider_type="local",
+                ),
+                mount=ParserMount(
+                    directory=str(source_dir),
+                    content_dir="",
+                    provider_type="local",
+                ),
+            ),
         ),
     )
 

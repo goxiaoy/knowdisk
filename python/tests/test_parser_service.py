@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from worker.parser.types import ParserMount, ParserNode
-from worker.parser_service import parse_node
+from worker.parser.service import parse_node
 
 
 def test_selects_simple_parser_for_markdown_local_node(tmp_path: Path):

@@ -4,14 +4,14 @@ import sys
 from tempfile import gettempdir
 from typing import Any
 
-from worker.index_queue import IndexQueue
-from worker.index_service import IndexService
-from worker.model_service import ModelService
-from worker.parser_service import parse_node
+from worker.index.queue import IndexQueue
+from worker.index.service import IndexService
+from worker.model.service import ModelService
+from worker.parser.service import parse_node
 from worker.protocol import decode_frame, encode_frame, is_request_frame
-from worker.server import create_server
-from worker.status import IndexStatusStore, ModelStatusStore, VectorStatusStore
-from worker.vector_repository import VectorRepository
+from worker.protocol.server import create_server
+from worker.runtime.status import IndexStatusStore, ModelStatusStore, VectorStatusStore
+from worker.vector.repository import VectorRepository
 
 
 def main() -> None:

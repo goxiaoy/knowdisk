@@ -1,5 +1,5 @@
-from worker.index_queue import IndexQueue
-from worker.status import IndexStatusStore
+from worker.index.queue import IndexQueue
+from worker.runtime.status import IndexStatusStore
 
 
 def test_incremental_jobs_execute_serially_and_update_queue_depth():

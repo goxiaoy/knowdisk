@@ -1,4 +1,4 @@
-from worker.status import IndexStatusStore, ModelStatusStore, VectorStatusStore
+from worker.runtime.status import IndexStatusStore, ModelStatusStore, VectorStatusStore
 
 
 def test_model_status_store_exposes_default_snapshot():

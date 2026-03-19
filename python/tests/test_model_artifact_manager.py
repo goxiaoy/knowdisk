@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from worker.model_artifact_manager import ModelArtifactManager
+from worker.model.artifact_manager import ModelArtifactManager
 from worker.model.types import ModelRepoFile
 
 

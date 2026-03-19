@@ -1,7 +1,7 @@
 from pathlib import Path
 
+from worker.vector.repository import VectorRepository
 from worker.vector.types import VectorChunkRow, VectorRowEmbedding
-from worker.vector_repository import VectorRepository
 
 
 class FakeBackend:
