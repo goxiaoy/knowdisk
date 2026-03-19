@@ -148,7 +148,7 @@ Know Disk includes a mountable VFS layer under `packages/vfs` for multi-provider
 - **Bun runtime (Electrobun main)**
   Desktop shell, VFS owner, renderer RPC, Python worker lifecycle
 - **Python worker**
-  Model lifecycle, parser selection (`docling` + simple parser), indexing queue, vector state
+  Model lifecycle, parser selection (`docling` + simple parser), incremental indexing queue, vector state
 - **Core services**
   Config, retrieval, metadata repo
 - **Storage**
@@ -208,7 +208,7 @@ Default runtime root (macOS/Linux):
 2. Add source folders in Settings
 3. Wait for indexing/reconcile to settle
 4. Run search from Home (normal or title-only)
-5. Use force resync when you want full rebuild
+5. Let the worker catch up incrementally as files change
 
 ## 9. Development
 
@@ -216,8 +216,17 @@ Monorepo note:
 
 - This repo uses Bun workspace packages under `packages/*`.
 - VFS core is extracted to `packages/vfs` and consumed by app/runtime via `@knowdisk/vfs`.
-- Parser pipeline is extracted to `packages/parser`, which reads file bytes from VFS, converts them to markdown, sections them with `remark`, and emits `ParseChunk` streams while caching artifacts under a local `basePath`.
+- `packages/parser` remains in the repo for parser artifact conventions and examples, but normal desktop parsing/indexing now runs inside the Python worker.
 - Run the parser hook example with `bun run --cwd packages/parser example`.
+
+Python model runtime defaults:
+
+- Bun passes these local model defaults to the worker on startup:
+  - embedding: `Alibaba-NLP/gte-multilingual-base`
+  - reranker: `Alibaba-NLP/gte-multilingual-reranker-base`
+- Python uses `sentence-transformers` for embedding and `transformers` for reranking.
+- Python no longer uses ONNX as the default local model backend.
+- Current packaged-device support is `mps` on Apple Silicon with `cpu` fallback. `cuda` remains a forward-compatible path, not a current packaging target.
 
 Python worker setup:
 
@@ -233,6 +242,11 @@ bun run dev
 ```
 
 The Bun main process will start the Python sidecar automatically via `uv run --project python python -m worker`.
+
+The Python worker runtime depends on:
+
+- `sentence-transformers`
+- `transformers`
 
 HMR mode:
 

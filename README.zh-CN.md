@@ -148,7 +148,7 @@ Know Disk 在 `packages/vfs` 提供可挂载的 VFS 层，用于多 provider 元
 - **Bun 主进程（Electrobun）**
   负责桌面壳层、VFS、renderer RPC，以及 Python worker 生命周期
 - **Python worker**
-  负责 model 生命周期、解析路由（`docling` + simple parser）、索引队列和向量状态
+  负责 model 生命周期、解析路由（`docling` + simple parser）、增量索引队列和向量状态
 - **Core Services**
   Config / Retrieval / Metadata
 - **存储层**
@@ -208,7 +208,7 @@ UI 提供健康与索引状态可视化。
 2. 在 Settings 添加 source 目录
 3. 等待 indexing/reconcile 稳定
 4. 在 Home 检索（普通模式或 titleOnly）
-5. 需要时使用 force resync 做全量重建
+5. 文件变化后由 worker 持续做增量追平
 
 ## 9. 开发命令
 
@@ -216,8 +216,17 @@ Monorepo 说明：
 
 - 当前仓库使用 Bun workspace（`packages/*`）。
 - VFS 核心已拆分到 `packages/vfs`，应用侧通过 `@knowdisk/vfs` 依赖。
-- Parser 流水线已拆分到 `packages/parser`，负责从 VFS 读取字节流、转换成 markdown、用 `remark` 切 section，并在本地 `basePath` 下缓存解析产物后输出 `ParseChunk` 流。
+- `packages/parser` 目前主要保留 parser 产物约定和示例；桌面应用正常运行时的解析和索引已经迁到 Python worker。
 - parser hook 示例可通过 `bun run --cwd packages/parser example` 运行。
+
+Python model runtime 默认值：
+
+- Bun 在 worker 启动时会传入默认本地模型：
+  - embedding: `Alibaba-NLP/gte-multilingual-base`
+  - reranker: `Alibaba-NLP/gte-multilingual-reranker-base`
+- Python 侧 embedding 使用 `sentence-transformers`，reranker 使用 `transformers`。
+- Python 不再默认使用 ONNX 作为本地模型后端。
+- 当前打包支持的设备目标是 Apple Silicon 上的 `mps` 和回退用的 `cpu`。`cuda` 目前只保留为前向兼容分支，不是当前打包目标。
 
 Python worker 环境准备：
 
@@ -233,6 +242,11 @@ bun run dev
 ```
 
 Bun 主进程会自动通过 `uv run --project python python -m worker` 拉起 Python sidecar。
+
+Python worker 运行时依赖：
+
+- `sentence-transformers`
+- `transformers`
 
 HMR：
 

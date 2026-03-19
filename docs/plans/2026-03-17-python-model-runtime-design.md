@@ -22,7 +22,12 @@ The legacy TypeScript model runtime in `packages/model` already implements:
 - UI-facing model status updates
 - runtime loading for the local embedding and reranker stack
 
-The current Python `worker/model_service.py` does not implement real runtime behavior yet. It only provides a thin state machine with injected verification and loading callbacks.
+The current Python `worker/model_service.py` started as a thin state machine, but the implementation direction in this plan is now concrete:
+
+- Bun provides model defaults during worker startup
+- Python downloads model artifacts with resumable transfers
+- Python verifies models by loading them from local cache
+- Python uses `sentence-transformers` and `transformers` instead of ONNX as the default local backend
 
 ## Recommended Approach
 
@@ -33,7 +38,7 @@ Recommended stack:
 - Embedding: `sentence-transformers` with `Alibaba-NLP/gte-multilingual-base`
 - Reranker: `transformers` with `Alibaba-NLP/gte-multilingual-reranker-base`
 
-This avoids carrying over the legacy ONNX-specific download and load assumptions into Python. Python will no longer require ONNX as the default local inference format.
+This avoids carrying over the legacy ONNX-specific download and load assumptions into Python. Python no longer requires ONNX as the default local inference format.
 
 ## Runtime Ownership
 
@@ -49,7 +54,7 @@ Bun provides the runtime configuration during the worker `start` request:
 
 Python stores this configuration during worker startup and uses it for all model verification, download, and load operations.
 
-The default model identifiers should be decided by Bun, not hardcoded in Python. The initial Bun defaults are:
+The default model identifiers are decided by Bun, not hardcoded in Python. The current Bun defaults are:
 
 - `Alibaba-NLP/gte-multilingual-base`
 - `Alibaba-NLP/gte-multilingual-reranker-base`
@@ -214,5 +219,5 @@ Do not add CI tests that download the real large production models in this phase
 ## Migration Notes
 
 - The Python runtime replaces the legacy TypeScript model lifecycle.
-- The default Python implementation should not require ONNX.
+- The default Python implementation does not require ONNX.
 - ONNX can remain a future optional backend if later performance work justifies it.
