@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -9,43 +8,6 @@ RuntimeDevice = Literal["cpu", "mps", "cuda"]
 DeviceAvailability = Callable[[], bool]
 EmbeddingRuntimeLoader = Callable[[Path, RuntimeDevice], Any]
 RerankerRuntimeLoader = Callable[[Path, RuntimeDevice], Any]
-
-
-@dataclass(frozen=True)
-class LocalRerankerRuntime:
-    tokenizer: Any
-    model: Any
-    device: RuntimeDevice
-
-    def tokenize_pairs(self, query: str, docs: Sequence[str]) -> Any:
-        pairs = [(query, doc) for doc in docs]
-        return self.tokenizer(pairs, padding=True, truncation=True, return_tensors="pt")
-
-    def score(self, inputs: Any) -> list[float]:
-        try:
-            import torch
-        except ImportError as error:
-            raise RuntimeError("torch is required to score reranker inputs") from error
-
-        self.model.eval()
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-
-        logits = getattr(outputs, "logits", outputs)
-        if hasattr(logits, "detach"):
-            logits = logits.detach()
-        if hasattr(logits, "cpu"):
-            logits = logits.cpu()
-        if hasattr(logits, "squeeze"):
-            logits = logits.squeeze(-1)
-        if hasattr(logits, "tolist"):
-            values = logits.tolist()
-            if isinstance(values, list):
-                return [float(item) for item in values]
-            return [float(values)]
-        if isinstance(logits, (list, tuple)):
-            return [float(item) for item in logits]
-        return [float(logits)]
 
 
 def select_runtime_device(
@@ -101,7 +63,7 @@ def _load_local_embedding_runtime(model_path: Path, device: RuntimeDevice) -> An
     return SentenceTransformer(str(model_path), device=device)
 
 
-def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> LocalRerankerRuntime:
+def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> Any:
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(str(model_path))
@@ -110,7 +72,7 @@ def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> Loc
         model = model.to(device)
     if hasattr(model, "eval"):
         model = model.eval()
-    return LocalRerankerRuntime(tokenizer=tokenizer, model=model, device=device)
+    return tokenizer, model
 
 
 def _cuda_is_available() -> bool:

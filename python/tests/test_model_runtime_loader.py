@@ -94,3 +94,21 @@ def test_runtime_loader_errors_propagate():
         assert str(error) == "boom"
     else:
         raise AssertionError("expected loader error to propagate")
+
+
+def test_reranker_runtime_loader_errors_propagate():
+    def loader(_model_path: Path, _device: str):
+        raise RuntimeError("boom-reranker")
+
+    try:
+        load_local_reranker_runtime(
+            Path("/models/reranker"),
+            preferred_device="cpu",
+            is_cuda_available=lambda: False,
+            is_mps_available=lambda: False,
+            loader=loader,
+        )
+    except RuntimeError as error:
+        assert str(error) == "boom-reranker"
+    else:
+        raise AssertionError("expected reranker loader error to propagate")
