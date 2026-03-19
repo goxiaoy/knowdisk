@@ -1,23 +1,31 @@
 from collections.abc import Callable, Mapping
-from typing import Any
 
 from worker.bun_client import BunClient
+from worker.model.types import ModelRuntimeConfig
+from worker.runtime.types import (
+    DeleteNodeRequest,
+    IndexNodeRequest,
+    SearchRequest,
+    WorkerServices,
+    WorkerServicesBundle,
+    coerce_worker_services,
+)
 
 
 class PythonWorkerServer:
     def __init__(
         self,
-        event_sink: Callable[[dict[str, Any]], None],
-        bun_request: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
-        services: dict[str, Any] | None = None,
+        event_sink: Callable[[dict[str, object]], None],
+        bun_request: Callable[[str, dict[str, object]], dict[str, object]] | None = None,
+        services: WorkerServices | dict[str, object] | None = None,
     ) -> None:
         self._event_sink = event_sink
         self.bun_client = BunClient(bun_request) if bun_request is not None else None
-        self.services = services or {}
+        self.services = coerce_worker_services(services) if services is not None else None
         self.is_running = True
-        self.model_runtime_config: dict[str, Any] | None = None
+        self.model_runtime_config: ModelRuntimeConfig | None = None
 
-    def handle_request(self, frame: dict[str, Any]) -> dict[str, Any]:
+    def handle_request(self, frame: Mapping[str, object]) -> dict[str, object]:
         request_id = frame["id"]
         method = frame["method"]
         params = frame.get("params", {})
@@ -60,11 +68,10 @@ class PythonWorkerServer:
             "result": handler(params),
         }
 
-    def _handle_start(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _handle_start(self, params: object) -> dict[str, object]:
         self.model_runtime_config = self._parse_model_runtime_config(params)
-        model_service = self.services.get("model_service")
-        if model_service is not None:
-            model_service.ensure_required_models()
+        if self.services is not None:
+            self.services.model_service.ensure_required_models()
         self._event_sink(
             {
                 "type": "worker_health_changed",
@@ -79,40 +86,48 @@ class PythonWorkerServer:
             "version": "0.1.0",
         }
 
-    def _handle_shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _handle_shutdown(self, params: object) -> dict[str, object]:
         _ = params
         self.is_running = False
         return {"ok": True}
 
-    def _handle_get_status_snapshot(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _handle_get_status_snapshot(self, params: object) -> dict[str, object]:
         _ = params
-        model_service = self.services["model_service"]
-        index_queue = self.services["index_queue"]
-        index_service = self.services["index_service"]
+        services = self._require_services()
         return {
-            "model_status": model_service.snapshot(),
-            "index_status": index_queue.snapshot(),
-            "vector_status": index_service.vector_status_snapshot(),
+            "model_status": services.model_service.snapshot(),
+            "index_status": services.index_queue.snapshot(),
+            "vector_status": services.index_service.vector_status_snapshot(),
         }
 
-    def _handle_index_node(self, params: dict[str, Any]) -> dict[str, Any]:
-        result: dict[str, Any] = {"indexed": 0}
+    def _handle_index_node(self, params: object) -> dict[str, object]:
+        request = IndexNodeRequest.from_mapping(_as_mapping(params))
+        services = self._require_services()
+        result = {"indexed": 0}
 
         def job() -> None:
             nonlocal result
-            result = self.services["index_service"].index_node(params["node"], params["mount"])
+            typed_result = services.index_service.index_node(request)
+            if hasattr(typed_result, "to_legacy_dict"):
+                result = typed_result.to_legacy_dict()
+            else:
+                result = typed_result
 
-        self.services["index_queue"].enqueue_incremental(params["node"]["name"], job)
+        services.index_queue.enqueue_incremental(request.node.name, job)
         return result
 
-    def _handle_delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
-        self.services["index_service"].delete_node(params["nodeId"])
+    def _handle_delete_node(self, params: object) -> dict[str, object]:
+        services = self._require_services()
+        request = DeleteNodeRequest.from_mapping(_as_mapping(params))
+        services.index_service.delete_node(request.node_id)
         return {"ok": True}
 
-    def _handle_search(self, params: dict[str, Any]) -> list[dict[str, Any]]:
-        return self.services["index_service"].search(str(params.get("query", "")))
+    def _handle_search(self, params: object) -> list[dict[str, object]]:
+        services = self._require_services()
+        request = SearchRequest.from_mapping(_as_mapping(params))
+        return services.index_service.search(request.query)
 
-    def _parse_model_runtime_config(self, params: Any) -> dict[str, Any]:
+    def _parse_model_runtime_config(self, params: object) -> ModelRuntimeConfig:
         if not isinstance(params, Mapping):
             raise ValueError("missing required model runtime configuration")
 
@@ -124,24 +139,36 @@ class PythonWorkerServer:
         if preferred_device not in {"cpu", "mps", "cuda"}:
             raise ValueError(f"invalid preferred device: {preferred_device}")
 
-        config = {
-            "embeddingModel": str(params["embeddingModel"]),
-            "rerankerModel": str(params["rerankerModel"]),
-            "preferredDevice": preferred_device,
-            "modelCacheDir": str(params["modelCacheDir"]),
-        }
+        config = ModelRuntimeConfig.from_mapping(params)
         huggingface_endpoint = params.get("huggingfaceEndpoint")
         if huggingface_endpoint is not None:
             if not isinstance(huggingface_endpoint, str) or not huggingface_endpoint.strip():
                 raise ValueError("invalid huggingface endpoint")
-            config["huggingfaceEndpoint"] = huggingface_endpoint
+            config = ModelRuntimeConfig(
+                embedding_model=config.embedding_model,
+                reranker_model=config.reranker_model,
+                preferred_device=config.preferred_device,
+                model_cache_dir=config.model_cache_dir,
+                huggingface_endpoint=huggingface_endpoint,
+            )
 
         return config
 
+    def _require_services(self) -> WorkerServicesBundle:
+        if self.services is None:
+            raise RuntimeError("worker services are not attached")
+        return self.services
+
 
 def create_server(
-    event_sink: Callable[[dict[str, Any]], None],
-    bun_request: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
-    services: dict[str, Any] | None = None,
+    event_sink: Callable[[dict[str, object]], None],
+    bun_request: Callable[[str, dict[str, object]], dict[str, object]] | None = None,
+    services: WorkerServices | dict[str, object] | None = None,
 ) -> PythonWorkerServer:
     return PythonWorkerServer(event_sink=event_sink, bun_request=bun_request, services=services)
+
+
+def _as_mapping(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError("request params must be a mapping")
+    return value

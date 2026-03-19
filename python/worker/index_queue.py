@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
+from worker.runtime.types import IndexStatusSnapshot
 from worker.status import IndexStatusStore
 
 
@@ -13,7 +13,7 @@ class IndexQueue:
     def __init__(self, status_store: IndexStatusStore) -> None:
         self._status_store = status_store
 
-    def snapshot(self) -> dict[str, Any]:
+    def snapshot(self) -> IndexStatusSnapshot:
         return self._status_store.snapshot()
 
     def enqueue_incremental(self, node_name: str, job: Job) -> None:

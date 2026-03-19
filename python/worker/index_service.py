@@ -1,20 +1,26 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Callable
+from collections.abc import Callable, Mapping
 
 from worker.status import VectorStatusStore
+from worker.runtime.types import (
+    IndexNodeRequest,
+    IndexNodeResult,
+    coerce_index_node_request,
+)
+from worker.vector.types import VectorChunkRow, VectorRowEmbedding
 from worker.vector_repository import VectorRepository
 
 
-Parser = Callable[[dict[str, Any], dict[str, Any]], list[dict[str, Any]]]
+Parser = Callable[[object, object], list[dict[str, object]]]
 
 
 class IndexService:
     def __init__(
         self,
         parse_node: Parser,
-        model_service: Any,
+        model_service: object,
         vector_repository: VectorRepository,
         vector_status_store: VectorStatusStore,
     ) -> None:
@@ -22,38 +28,43 @@ class IndexService:
         self._model_service = model_service
         self._vector_repository = vector_repository
         self._vector_status_store = vector_status_store
-        self._search_rows: list[dict[str, Any]] = []
+        self._search_rows: list[dict[str, object]] = []
 
-    def index_node(self, node: dict[str, Any], mount: dict[str, Any]) -> dict[str, int]:
-        chunks = self._parse_node(node, mount)
+    def index_node(
+        self,
+        request: IndexNodeRequest | Mapping[str, object],
+    ) -> IndexNodeResult:
+        parsed_request = coerce_index_node_request(request)
+        chunks = self._parse_node(parsed_request.node, parsed_request.mount)
         embedding_runtime = self._model_service.get_local_embedding_runtime()
-        rows: list[dict[str, Any]] = []
+        rows: list[VectorChunkRow] = []
 
         for chunk in chunks:
             if chunk["status"] != "ok":
                 continue
-            rows.append(
-                {
-                    "chunkId": f'{node["nodeId"]}:{chunk["chunkIndex"]}',
-                    "nodeId": node["nodeId"],
-                    "mountId": node.get("mountId", ""),
-                    "sourceRef": node.get("sourceRef", ""),
-                    "name": node["name"],
-                    "title": chunk.get("title"),
-                    "text": chunk["text"],
-                    "embedding": embedding_runtime(chunk["text"]),
-                }
+            row = VectorChunkRow(
+                chunk_id=f'{parsed_request.node.node_id}:{chunk["chunkIndex"]}',
+                node_id=parsed_request.node.node_id,
+                mount_id=parsed_request.node.mount_id,
+                source_ref=parsed_request.node.source_ref,
+                name=parsed_request.node.name,
+                title=str(chunk.get("title") or ""),
+                text=str(chunk["text"]),
+                embedding=VectorRowEmbedding.from_iterable(embedding_runtime(chunk["text"])),
             )
+            rows.append(row)
 
         self._vector_repository.upsert_chunks(rows)
-        self._search_rows = [row for row in self._search_rows if row["nodeId"] != node["nodeId"]]
-        self._search_rows.extend(rows)
+        self._search_rows = [
+            row for row in self._search_rows if row["nodeId"] != parsed_request.node.node_id
+        ]
+        self._search_rows.extend(row.to_legacy_dict() for row in rows)
         self._vector_status_store.update(
             chunkCount=self._vector_repository.count_chunks(),
             lastUpdatedAt=now_iso(),
             error="",
         )
-        return {"indexed": len(rows)}
+        return IndexNodeResult(indexed=len(rows))
 
     def delete_node(self, node_id: str) -> None:
         self._vector_repository.delete_by_node_id(node_id)
@@ -64,13 +75,13 @@ class IndexService:
             error="",
         )
 
-    def search(self, query: str) -> list[dict[str, Any]]:
+    def search(self, query: str) -> list[dict[str, object]]:
         normalized = query.strip().lower()
         if not normalized:
             return []
         return [row for row in self._search_rows if normalized in row["text"].lower()]
 
-    def vector_status_snapshot(self) -> dict[str, Any]:
+    def vector_status_snapshot(self) -> dict[str, object]:
         return self._vector_status_store.snapshot()
 
 

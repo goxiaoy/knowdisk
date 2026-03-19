@@ -1,3 +1,5 @@
+from worker.parser.types import ParserMount, ParserNode
+from worker.runtime.types import IndexNodeResult
 from worker.server import create_server
 
 
@@ -26,12 +28,10 @@ def test_start_returns_handshake_and_emits_health_event():
             "version": "0.1.0",
         },
     }
-    assert server.model_runtime_config == {
-        "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
-        "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
-        "preferredDevice": "cpu",
-        "modelCacheDir": "/tmp/models",
-    }
+    assert server.model_runtime_config.embedding_model == "Alibaba-NLP/gte-multilingual-base"
+    assert server.model_runtime_config.reranker_model == "Alibaba-NLP/gte-multilingual-reranker-base"
+    assert server.model_runtime_config.preferred_device == "cpu"
+    assert str(server.model_runtime_config.model_cache_dir) == "/tmp/models"
     assert emitted == [
         {
             "type": "worker_health_changed",
@@ -95,13 +95,13 @@ def test_get_status_snapshot_reads_from_attached_services():
 
 
 def test_index_node_delegates_to_index_service():
-    calls: list[tuple[dict, dict]] = []
+    calls: list[tuple[ParserNode, ParserMount]] = []
     queued: list[str] = []
 
     class IndexServiceStub:
-        def index_node(self, node, mount):
-            calls.append((node, mount))
-            return {"indexed": 1}
+        def index_node(self, request):
+            calls.append((request.node, request.mount))
+            return IndexNodeResult(indexed=1)
 
         def vector_status_snapshot(self):
             return {"chunkCount": 0}
@@ -140,8 +140,18 @@ def test_index_node_delegates_to_index_service():
     assert queued == ["a.md"]
     assert calls == [
         (
-            {"nodeId": "node-1", "name": "a.md"},
-            {"directory": "/tmp", "contentDir": ""},
+            ParserNode(
+                node_id="node-1",
+                name="a.md",
+                source_ref="",
+                provider_type="",
+                mount_id="",
+            ),
+            ParserMount(
+                directory="/tmp",
+                content_dir="",
+                provider_type="",
+            ),
         )
     ]
 

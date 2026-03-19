@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from worker.model.types import ModelRuntimeConfig
 from worker.server import create_server
 
 
@@ -20,13 +23,13 @@ def test_start_stores_model_runtime_config():
     )
 
     assert response["result"]["ok"] is True
-    assert server.model_runtime_config == {
-        "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
-        "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
-        "preferredDevice": "cpu",
-        "modelCacheDir": "/tmp/models",
-        "huggingfaceEndpoint": "https://huggingface.co",
-    }
+    assert server.model_runtime_config == ModelRuntimeConfig(
+        embedding_model="Alibaba-NLP/gte-multilingual-base",
+        reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+        preferred_device="cpu",
+        model_cache_dir=Path("/tmp/models"),
+        huggingface_endpoint="https://huggingface.co",
+    )
     assert emitted == [
         {
             "type": "worker_health_changed",
