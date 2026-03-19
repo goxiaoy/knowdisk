@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from collections.abc import Callable
 from typing import Any
 
@@ -22,7 +23,7 @@ class ModelStatusStore:
         }
 
     def snapshot(self) -> dict[str, Any]:
-        return dict(self._snapshot)
+        return deepcopy(self._snapshot)
 
     def update(self, **changes: Any) -> dict[str, Any]:
         next_snapshot = {**self._snapshot, **changes}
@@ -47,7 +48,7 @@ class IndexStatusStore:
         }
 
     def snapshot(self) -> dict[str, Any]:
-        return dict(self._snapshot)
+        return deepcopy(self._snapshot)
 
     def update(self, **changes: Any) -> dict[str, Any]:
         next_snapshot = {**self._snapshot, **changes}
@@ -68,7 +69,7 @@ class VectorStatusStore:
         }
 
     def snapshot(self) -> dict[str, Any]:
-        return dict(self._snapshot)
+        return deepcopy(self._snapshot)
 
     def update(self, **changes: Any) -> dict[str, Any]:
         next_snapshot = {**self._snapshot, **changes}
