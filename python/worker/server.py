@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from worker.bun_client import BunClient
@@ -112,7 +112,10 @@ class PythonWorkerServer:
     def _handle_search(self, params: dict[str, Any]) -> list[dict[str, Any]]:
         return self.services["index_service"].search(str(params.get("query", "")))
 
-    def _parse_model_runtime_config(self, params: dict[str, Any]) -> dict[str, Any]:
+    def _parse_model_runtime_config(self, params: Any) -> dict[str, Any]:
+        if not isinstance(params, Mapping):
+            raise ValueError("missing required model runtime configuration")
+
         required_fields = ("embeddingModel", "rerankerModel", "preferredDevice", "modelCacheDir")
         if not all(isinstance(params.get(field), str) and params[field].strip() for field in required_fields):
             raise ValueError("missing required model runtime configuration")

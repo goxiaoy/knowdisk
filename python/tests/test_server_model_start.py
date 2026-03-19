@@ -90,3 +90,26 @@ def test_start_rejects_invalid_preferred_device():
     }
     assert server.model_runtime_config is None
     assert emitted == []
+
+
+def test_start_rejects_non_object_params():
+    emitted: list[dict] = []
+    server = create_server(event_sink=emitted.append)
+
+    response = server.handle_request(
+        {
+            "id": "req-4",
+            "method": "start",
+            "params": [],
+        }
+    )
+
+    assert response == {
+        "id": "req-4",
+        "error": {
+            "code": "INVALID_PARAMS",
+            "message": "missing required model runtime configuration",
+        },
+    }
+    assert server.model_runtime_config is None
+    assert emitted == []
