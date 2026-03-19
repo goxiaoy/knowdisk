@@ -1,4 +1,30 @@
+import { existsSync as defaultExistsSync } from "node:fs";
 import type { ElectrobunConfig } from "electrobun";
+
+type BuildCopyConfig = Record<string, string>;
+
+export function createBuildCopyConfig(input?: {
+  existsSync?: (path: string) => boolean;
+}): BuildCopyConfig {
+  const existsSync = input?.existsSync ?? defaultExistsSync;
+  const copy: BuildCopyConfig = {
+    "dist/index.html": "views/app/index.html",
+    "dist/assets": "views/app/assets",
+    "vendor/node_modules/sharp": "node_modules/sharp",
+    "vendor/node_modules/@img": "node_modules/@img",
+  };
+
+  if (existsSync("vendor/python-runtime")) {
+    copy["vendor/python-runtime"] = "python-runtime";
+  }
+  if (existsSync("vendor/python-worker")) {
+    copy["vendor/python-worker"] = "python-worker";
+  }
+
+  return copy;
+}
+
+export const defaultBuildCopyConfig = createBuildCopyConfig();
 
 export default {
   app: {
@@ -12,14 +38,7 @@ export default {
       ],
     },
     // Vite builds to dist/, we copy from there
-    copy: {
-      "dist/index.html": "views/app/index.html",
-      "dist/assets": "views/app/assets",
-      "vendor/python-runtime": "python-runtime",
-      "vendor/python-worker": "python-worker",
-      "vendor/node_modules/sharp": "node_modules/sharp",
-      "vendor/node_modules/@img": "node_modules/@img",
-    },
+    copy: defaultBuildCopyConfig,
     mac: {
       bundleCEF: false,
     },
