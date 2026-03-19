@@ -73,7 +73,15 @@ def test_local_cache_verify_path_uses_existing_files_without_downloading(tmp_pat
 
     assert result == {"ok": True}
     assert manager.calls == []
-    assert phases(emitted) == ["verifying", "verifying", "verifying", "completed"]
+    assert phases(emitted) == ["verifying", "verifying", "verifying", "verifying", "verifying", "completed"]
+    assert emitted[0]["payload"]["tasks"]["embedding"]["state"] == "waiting"
+    assert emitted[0]["payload"]["tasks"]["reranker"]["state"] == "waiting"
+    assert emitted[1]["payload"]["tasks"]["embedding"]["state"] == "verifying"
+    assert emitted[1]["payload"]["tasks"]["reranker"]["state"] == "waiting"
+    assert emitted[2]["payload"]["tasks"]["embedding"]["state"] == "ready"
+    assert emitted[2]["payload"]["tasks"]["reranker"]["state"] == "waiting"
+    assert emitted[3]["payload"]["tasks"]["embedding"]["state"] == "ready"
+    assert emitted[3]["payload"]["tasks"]["reranker"]["state"] == "verifying"
     assert service.snapshot()["phase"] == "completed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
     assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
@@ -109,6 +117,18 @@ def test_missing_cache_download_path_fetches_and_marks_ready(tmp_path: Path):
         ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
     ]
     assert phases(emitted)[0] == "verifying"
+    assert emitted[0]["payload"]["tasks"]["embedding"]["state"] == "waiting"
+    assert emitted[0]["payload"]["tasks"]["reranker"]["state"] == "waiting"
+    assert any(
+        event["payload"]["tasks"]["embedding"]["state"] == "verifying"
+        and event["payload"]["tasks"]["reranker"]["state"] == "waiting"
+        for event in emitted
+    )
+    assert any(
+        event["payload"]["tasks"]["embedding"]["state"] == "ready"
+        and event["payload"]["tasks"]["reranker"]["state"] == "verifying"
+        for event in emitted
+    )
     assert "running" in phases(emitted)
     assert phases(emitted)[-1] == "completed"
     assert service.snapshot()["phase"] == "completed"
@@ -153,7 +173,7 @@ def test_failed_load_path_marks_only_the_failing_model_failed(tmp_path: Path):
     assert phases(emitted)[-1] == "failed"
     assert service.snapshot()["phase"] == "failed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "failed"
-    assert service.snapshot()["tasks"]["reranker"]["state"] == "verifying"
+    assert service.snapshot()["tasks"]["reranker"]["state"] == "waiting"
     assert service.snapshot()["error"] == "embedding boom"
 
 
@@ -167,6 +187,18 @@ def test_model_status_transitions_cover_success_and_failure_paths(tmp_path: Path
     )
     assert success_service.ensure_required_models() == {"ok": True}
     assert phases(success_emitted)[0] == "verifying"
+    assert success_emitted[0]["payload"]["tasks"]["embedding"]["state"] == "waiting"
+    assert success_emitted[0]["payload"]["tasks"]["reranker"]["state"] == "waiting"
+    assert any(
+        event["payload"]["tasks"]["embedding"]["state"] == "verifying"
+        and event["payload"]["tasks"]["reranker"]["state"] == "waiting"
+        for event in success_emitted
+    )
+    assert any(
+        event["payload"]["tasks"]["embedding"]["state"] == "ready"
+        and event["payload"]["tasks"]["reranker"]["state"] == "verifying"
+        for event in success_emitted
+    )
     assert phases(success_emitted)[-1] == "completed"
     assert "running" in phases(success_emitted)
     assert phases(success_emitted).count("verifying") >= 2
@@ -187,6 +219,8 @@ def test_model_status_transitions_cover_success_and_failure_paths(tmp_path: Path
     )
     assert failure_service.ensure_required_models() == {"ok": False}
     assert phases(failure_emitted)[0] == "verifying"
+    assert failure_emitted[0]["payload"]["tasks"]["embedding"]["state"] == "waiting"
+    assert failure_emitted[0]["payload"]["tasks"]["reranker"]["state"] == "waiting"
     assert phases(failure_emitted)[-1] == "failed"
     assert "running" in phases(failure_emitted)
 

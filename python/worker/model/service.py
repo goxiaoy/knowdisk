@@ -44,6 +44,17 @@ class ModelService:
         self._embedding_runtime: object | None = None
         self._reranker_runtime: LoadedRerankerRuntime | None = None
 
+    def configure_runtime(
+        self,
+        config: ModelRuntimeConfig,
+        *,
+        artifact_manager: ModelArtifactManager,
+    ) -> None:
+        self._runtime_config = config
+        self._artifact_manager = artifact_manager
+        self._embedding_runtime = None
+        self._reranker_runtime = None
+
     def snapshot(self) -> dict[str, Any]:
         return self._status_store.snapshot()
 
@@ -55,19 +66,21 @@ class ModelService:
             phase="verifying",
             progressPct=0,
             error="",
-            embedding_state="verifying",
-            reranker_state="verifying",
+            embedding_state="waiting",
+            reranker_state="waiting",
             embedding_progress=0,
             reranker_progress=0,
         )
 
         try:
+            self._set_task_state("embedding", "verifying", 0)
             self._ensure_embedding_runtime()
         except Exception as error:
             self._mark_task_failed("embedding", str(error))
             return {"ok": False}
 
         try:
+            self._set_task_state("reranker", "verifying", 0)
             self._ensure_reranker_runtime()
         except Exception as error:
             self._mark_task_failed("reranker", str(error))
@@ -336,6 +349,23 @@ class ModelService:
         tasks[kind] = self._task_status(f"{kind}-local", model, state, progress_pct, "")
         self._status_store.update(
             phase="running" if state == "downloading" else "verifying",
+            progressPct=self._aggregate_progress(tasks),
+            error="",
+            tasks=tasks,
+        )
+
+    def _set_task_state(self, kind: str, state: str, progress_pct: int) -> None:
+        tasks = self.snapshot()["tasks"]
+        model = (
+            self._runtime_config.embedding_model
+            if kind == "embedding" and self._runtime_config is not None
+            else self._runtime_config.reranker_model
+            if kind == "reranker" and self._runtime_config is not None
+            else kind
+        )
+        tasks[kind] = self._task_status(f"{kind}-local", model, state, progress_pct, "")
+        self._status_store.update(
+            phase="verifying",
             progressPct=self._aggregate_progress(tasks),
             error="",
             tasks=tasks,

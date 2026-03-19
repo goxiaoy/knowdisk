@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { spawn as spawnChild } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,13 @@ describe("python worker integration", () => {
       command: createPythonWorkerCommand({
         pythonProjectDir: join(process.cwd(), "python"),
       }),
+      spawn: (command, args) =>
+        spawnChild(command, args, {
+          env: {
+            ...process.env,
+            KNOWDISK_PYTHON_FAKE_MODEL_RUNTIME: "1",
+          },
+        }),
     });
     const runtime = createPythonWorkerRuntime({
       transport,

@@ -116,3 +116,53 @@ def test_start_rejects_non_object_params():
     }
     assert server.model_runtime_config is None
     assert emitted == []
+
+
+def test_start_configures_model_service_before_ensuring_models():
+    emitted: list[dict] = []
+    calls: list[tuple[str, object]] = []
+
+    class ModelServiceStub:
+        def configure_runtime(self, config, *, artifact_manager):
+            calls.append(("configure", config))
+            calls.append(("artifact_manager", artifact_manager))
+
+        def ensure_required_models(self):
+            calls.append(("ensure", None))
+            return {"ok": True}
+
+    server = create_server(
+        event_sink=emitted.append,
+        services={
+            "model_service": ModelServiceStub(),
+            "index_queue": type("IndexQueueStub", (), {"snapshot": lambda self: {}})(),
+            "index_service": type("IndexServiceStub", (), {"vector_status_snapshot": lambda self: {}})(),
+        },
+        model_fetch=lambda url, headers=None: None,
+    )
+
+    response = server.handle_request(
+        {
+            "id": "req-5",
+            "method": "start",
+            "params": {
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "cpu",
+                "modelCacheDir": "/tmp/models",
+                "huggingfaceEndpoint": "https://huggingface.co",
+            },
+        }
+    )
+
+    assert response["result"]["ok"] is True
+    assert calls[0][0] == "configure"
+    assert calls[1][0] == "artifact_manager"
+    assert calls[2] == ("ensure", None)
+    assert calls[0][1] == ModelRuntimeConfig(
+        embedding_model="Alibaba-NLP/gte-multilingual-base",
+        reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+        preferred_device="cpu",
+        model_cache_dir=Path("/tmp/models"),
+        huggingface_endpoint="https://huggingface.co",
+    )

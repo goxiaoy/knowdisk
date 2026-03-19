@@ -1,5 +1,6 @@
 from collections.abc import Callable, Mapping
 
+from worker.model.artifact_manager import FetchCallable, ModelArtifactManager
 from worker.model.types import ModelRuntimeConfig
 from worker.runtime.types import (
     DeleteNodeRequest,
@@ -16,9 +17,11 @@ class PythonWorkerServer:
         self,
         event_sink: Callable[[dict[str, object]], None],
         services: WorkerServices | dict[str, object] | None = None,
+        model_fetch: FetchCallable | None = None,
     ) -> None:
         self._event_sink = event_sink
         self.services = coerce_worker_services(services) if services is not None else None
+        self._model_fetch = model_fetch
         self.is_running = True
         self.model_runtime_config: ModelRuntimeConfig | None = None
 
@@ -68,6 +71,17 @@ class PythonWorkerServer:
     def _handle_start(self, params: object) -> dict[str, object]:
         self.model_runtime_config = self._parse_model_runtime_config(params)
         if self.services is not None:
+            if self._model_fetch is None:
+                raise RuntimeError("model fetch is not configured")
+            artifact_manager = ModelArtifactManager(
+                cache_dir=self.model_runtime_config.model_cache_dir,
+                huggingface_endpoint=self.model_runtime_config.huggingface_endpoint or "https://huggingface.co",
+                fetch=self._model_fetch,
+            )
+            self.services.model_service.configure_runtime(
+                self.model_runtime_config,
+                artifact_manager=artifact_manager,
+            )
             self.services.model_service.ensure_required_models()
         self._event_sink(
             {
@@ -160,8 +174,9 @@ class PythonWorkerServer:
 def create_server(
     event_sink: Callable[[dict[str, object]], None],
     services: WorkerServices | dict[str, object] | None = None,
+    model_fetch: FetchCallable | None = None,
 ) -> PythonWorkerServer:
-    return PythonWorkerServer(event_sink=event_sink, services=services)
+    return PythonWorkerServer(event_sink=event_sink, services=services, model_fetch=model_fetch)
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:
