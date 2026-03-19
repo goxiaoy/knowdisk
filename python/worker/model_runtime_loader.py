@@ -1,0 +1,131 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal
+
+RuntimeDevice = Literal["cpu", "mps", "cuda"]
+DeviceAvailability = Callable[[], bool]
+EmbeddingRuntimeLoader = Callable[[Path, RuntimeDevice], Any]
+RerankerRuntimeLoader = Callable[[Path, RuntimeDevice], Any]
+
+
+@dataclass(frozen=True)
+class LocalRerankerRuntime:
+    tokenizer: Any
+    model: Any
+    device: RuntimeDevice
+
+    def tokenize_pairs(self, query: str, docs: Sequence[str]) -> Any:
+        pairs = [(query, doc) for doc in docs]
+        return self.tokenizer(pairs, padding=True, truncation=True, return_tensors="pt")
+
+    def score(self, inputs: Any) -> list[float]:
+        try:
+            import torch
+        except ImportError as error:
+            raise RuntimeError("torch is required to score reranker inputs") from error
+
+        self.model.eval()
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+
+        logits = getattr(outputs, "logits", outputs)
+        if hasattr(logits, "detach"):
+            logits = logits.detach()
+        if hasattr(logits, "cpu"):
+            logits = logits.cpu()
+        if hasattr(logits, "squeeze"):
+            logits = logits.squeeze(-1)
+        if hasattr(logits, "tolist"):
+            values = logits.tolist()
+            if isinstance(values, list):
+                return [float(item) for item in values]
+            return [float(values)]
+        if isinstance(logits, (list, tuple)):
+            return [float(item) for item in logits]
+        return [float(logits)]
+
+
+def select_runtime_device(
+    preferred_device: str,
+    *,
+    is_cuda_available: DeviceAvailability,
+    is_mps_available: DeviceAvailability,
+) -> RuntimeDevice:
+    if preferred_device == "cuda" and is_cuda_available():
+        return "cuda"
+    if preferred_device == "mps" and is_mps_available():
+        return "mps"
+    return "cpu"
+
+
+def load_local_embedding_runtime(
+    model_path: str | Path,
+    *,
+    preferred_device: str,
+    is_cuda_available: DeviceAvailability | None = None,
+    is_mps_available: DeviceAvailability | None = None,
+    loader: EmbeddingRuntimeLoader | None = None,
+) -> Any:
+    resolved_device = select_runtime_device(
+        preferred_device,
+        is_cuda_available=is_cuda_available or _cuda_is_available,
+        is_mps_available=is_mps_available or _mps_is_available,
+    )
+    runtime_loader = loader or _load_local_embedding_runtime
+    return runtime_loader(Path(model_path), resolved_device)
+
+
+def load_local_reranker_runtime(
+    model_path: str | Path,
+    *,
+    preferred_device: str,
+    is_cuda_available: DeviceAvailability | None = None,
+    is_mps_available: DeviceAvailability | None = None,
+    loader: RerankerRuntimeLoader | None = None,
+) -> Any:
+    resolved_device = select_runtime_device(
+        preferred_device,
+        is_cuda_available=is_cuda_available or _cuda_is_available,
+        is_mps_available=is_mps_available or _mps_is_available,
+    )
+    runtime_loader = loader or _load_local_reranker_runtime
+    return runtime_loader(Path(model_path), resolved_device)
+
+
+def _load_local_embedding_runtime(model_path: Path, device: RuntimeDevice) -> Any:
+    from sentence_transformers import SentenceTransformer
+
+    return SentenceTransformer(str(model_path), device=device)
+
+
+def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> LocalRerankerRuntime:
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(str(model_path))
+    model = AutoModelForSequenceClassification.from_pretrained(str(model_path))
+    if hasattr(model, "to"):
+        model = model.to(device)
+    if hasattr(model, "eval"):
+        model = model.eval()
+    return LocalRerankerRuntime(tokenizer=tokenizer, model=model, device=device)
+
+
+def _cuda_is_available() -> bool:
+    try:
+        import torch
+    except ImportError:
+        return False
+    return bool(torch.cuda.is_available())
+
+
+def _mps_is_available() -> bool:
+    try:
+        import torch
+    except ImportError:
+        return False
+
+    mps = getattr(torch.backends, "mps", None)
+    return bool(mps is not None and mps.is_available())
