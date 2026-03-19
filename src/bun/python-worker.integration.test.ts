@@ -28,12 +28,6 @@ describe("python worker integration", () => {
     const runtime = createPythonWorkerRuntime({
       transport,
       maxRestarts: 0,
-      startupConfig: {
-        embeddingModel: "Alibaba-NLP/gte-multilingual-base",
-        rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
-        preferredDevice: "cpu",
-        modelCacheDir: join(process.cwd(), "models"),
-      },
     });
     activeRuntimes.push(runtime);
 

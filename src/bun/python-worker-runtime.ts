@@ -22,11 +22,21 @@ export type PythonWorkerRuntimeStartupConfig = {
   huggingfaceEndpoint?: string;
 };
 
+function createDefaultPythonWorkerRuntimeStartupConfig(): PythonWorkerRuntimeStartupConfig {
+  return {
+    embeddingModel: "Alibaba-NLP/gte-multilingual-base",
+    rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+    preferredDevice: process.platform === "darwin" ? "mps" : "cpu",
+    modelCacheDir: `${process.cwd()}/models`,
+  };
+}
+
 export function createPythonWorkerRuntime(input: {
   transport: PythonWorkerRuntimeTransport;
   maxRestarts: number;
-  startupConfig: PythonWorkerRuntimeStartupConfig;
+  startupConfig?: PythonWorkerRuntimeStartupConfig;
 }): PythonWorkerRuntime {
+  const startupConfig = input.startupConfig ?? createDefaultPythonWorkerRuntimeStartupConfig();
   const listeners = new Set<
     (event: { type: "statusSnapshot"; payload: unknown } | PythonWorkerEvent) => void
   >();
@@ -74,7 +84,7 @@ export function createPythonWorkerRuntime(input: {
   async function startWorker() {
     input.transport.start();
     started = true;
-    await input.transport.request("start", input.startupConfig);
+    await input.transport.request("start", startupConfig);
     const snapshot = await input.transport.request("get_status_snapshot", {});
     for (const listener of listeners) {
       listener({

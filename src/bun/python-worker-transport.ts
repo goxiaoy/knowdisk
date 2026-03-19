@@ -149,12 +149,7 @@ export function createPythonWorkerTransport(input: {
     pending.delete(parsed.id);
 
     if ("error" in parsed) {
-      const error = parsed.error;
-      if (!error) {
-        entry.reject(new Error("python worker response is missing error details"));
-        return;
-      }
-      entry.reject(new Error(error.message));
+      entry.reject(new Error(parsed.error.message));
       return;
     }
 
