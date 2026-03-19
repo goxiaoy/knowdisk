@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from worker.parser.types import ParserMount, ParserNode
 from worker.parser_service import parse_node
 
 
@@ -20,6 +21,32 @@ def test_selects_simple_parser_for_markdown_local_node(tmp_path: Path):
             "directory": str(source_dir),
             "contentDir": "",
         },
+    )
+
+    assert chunks[0]["status"] == "ok"
+    assert chunks[0]["text"] == "# Title\n\nHello"
+    assert chunks[0]["source"]["path"] == str(source_file)
+
+
+def test_selects_simple_parser_for_typed_markdown_local_node(tmp_path: Path):
+    source_dir = tmp_path / "mount"
+    source_dir.mkdir()
+    source_file = source_dir / "notes.md"
+    source_file.write_text("# Title\n\nHello", encoding="utf-8")
+
+    chunks = parse_node(
+        node=ParserNode(
+            node_id="node-typed-1",
+            name="notes.md",
+            source_ref="notes.md",
+            provider_type="local",
+            mount_id="mount-1",
+        ),
+        mount=ParserMount(
+            directory=str(source_dir),
+            content_dir="",
+            provider_type="local",
+        ),
     )
 
     assert chunks[0]["status"] == "ok"
@@ -51,8 +78,8 @@ def test_selects_docling_for_pdf_local_node(tmp_path: Path):
                 "text": "docling result",
                 "title": "paper",
                 "source": {
-                    "nodeId": node["nodeId"],
-                    "name": node["name"],
+                    "nodeId": node.node_id,
+                    "name": node.name,
                     "path": source_path,
                 },
             }
