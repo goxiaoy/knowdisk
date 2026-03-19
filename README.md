@@ -227,6 +227,7 @@ Python model runtime defaults:
 - Python uses `sentence-transformers` for embedding and `transformers` for reranking.
 - Python no longer uses ONNX as the default local model backend.
 - Current packaged-device support is `mps` on Apple Silicon with `cpu` fallback. `cuda` remains a forward-compatible path, not a current packaging target.
+- The current Python worker runtime is organized by domain under `python/worker/model`, `python/worker/parser`, `python/worker/index`, `python/worker/vector`, `python/worker/protocol`, and `python/worker/runtime`.
 
 Python worker setup:
 

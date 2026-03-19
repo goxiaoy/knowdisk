@@ -227,6 +227,7 @@ Python model runtime 默认值：
 - Python 侧 embedding 使用 `sentence-transformers`，reranker 使用 `transformers`。
 - Python 不再默认使用 ONNX 作为本地模型后端。
 - 当前打包支持的设备目标是 Apple Silicon 上的 `mps` 和回退用的 `cpu`。`cuda` 目前只保留为前向兼容分支，不是当前打包目标。
+- 当前 Python worker runtime 已按 domain 组织在 `python/worker/model`、`python/worker/parser`、`python/worker/index`、`python/worker/vector`、`python/worker/protocol`、`python/worker/runtime` 下。
 
 Python worker 环境准备：
 

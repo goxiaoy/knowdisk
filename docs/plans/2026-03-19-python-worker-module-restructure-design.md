@@ -216,6 +216,8 @@ Do not do a blind move-first refactor. The migration should happen in this order
 
 This keeps failures attributable. If files move before interfaces are typed, import churn and behavioral bugs become hard to separate.
 
+During rollout, keeping thin compatibility wrappers at the old flat import paths is acceptable as a temporary migration aid, as long as the real implementations move into the domain packages and new runtime code imports those domain packages directly.
+
 ## Behavior Constraints
 
 This refactor must not change:
