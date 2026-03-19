@@ -120,6 +120,12 @@ const pythonWorkerTransport = createPythonWorkerTransport({
 const pythonWorkerRuntime = createPythonWorkerRuntime({
   transport: pythonWorkerTransport,
   maxRestarts: 2,
+  startupConfig: {
+    embeddingModel: "Alibaba-NLP/gte-multilingual-base",
+    rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+    preferredDevice: process.platform === "darwin" ? "mps" : "cpu",
+    modelCacheDir: app.paths.modelCacheDir,
+  },
 });
 const pythonWorkerStatus = createPythonWorkerStatusStore();
 const pythonWorkerAppRuntime = createPythonWorkerAppRuntime({

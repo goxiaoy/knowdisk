@@ -1,17 +1,20 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
   createPythonWorkerRuntime,
+  type PythonWorkerRuntimeStartupConfig,
   type PythonWorkerRuntimeTransport,
 } from "./python-worker-runtime";
 
 function createFakeTransport(): PythonWorkerRuntimeTransport & {
   emitEvent(event: { type: string; payload: unknown }): void;
   emitExit(detail: { code: number | null; signal: NodeJS.Signals | null }): void;
+  emitStderr(chunk: string): void;
   requests: Array<{ method: string; params: unknown }>;
   started: number;
   stopped: number;
 } {
   const eventListeners = new Set<(event: { type: string; payload: unknown }) => void>();
+  const stderrListeners = new Set<(chunk: string) => void>();
   const exitListeners = new Set<
     (detail: { code: number | null; signal: NodeJS.Signals | null }) => void
   >();
@@ -48,6 +51,10 @@ function createFakeTransport(): PythonWorkerRuntimeTransport & {
       eventListeners.add(listener);
       return () => eventListeners.delete(listener);
     },
+    subscribeStderr(listener) {
+      stderrListeners.add(listener);
+      return () => stderrListeners.delete(listener);
+    },
     subscribeExit(listener) {
       exitListeners.add(listener);
       return () => exitListeners.delete(listener);
@@ -55,6 +62,11 @@ function createFakeTransport(): PythonWorkerRuntimeTransport & {
     emitEvent(event) {
       for (const listener of eventListeners) {
         listener(event);
+      }
+    },
+    emitStderr(chunk) {
+      for (const listener of stderrListeners) {
+        listener(chunk);
       }
     },
     emitExit(detail) {
@@ -65,18 +77,35 @@ function createFakeTransport(): PythonWorkerRuntimeTransport & {
   };
 }
 
+function createStartupConfig(overrides: Partial<PythonWorkerRuntimeStartupConfig> = {}): PythonWorkerRuntimeStartupConfig {
+  return {
+    embeddingModel: "Alibaba-NLP/gte-multilingual-base",
+    rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+    preferredDevice: "cpu",
+    modelCacheDir: "/tmp/knowdisk-models",
+    ...overrides,
+  };
+}
+
 describe("createPythonWorkerRuntime", () => {
   test("starts transport and hydrates status snapshot", async () => {
     const transport = createFakeTransport();
     const listener = mock(() => {});
-    const runtime = createPythonWorkerRuntime({ transport, maxRestarts: 2 });
+    const runtime = createPythonWorkerRuntime({
+      transport,
+      maxRestarts: 2,
+      startupConfig: createStartupConfig(),
+    });
 
     runtime.subscribeStatusEvents(listener);
     await runtime.start();
 
     expect(transport.started).toBe(1);
     expect(transport.requests).toEqual([
-      { method: "start", params: {} },
+      {
+        method: "start",
+        params: createStartupConfig(),
+      },
       { method: "get_status_snapshot", params: {} },
     ]);
     expect(listener).toHaveBeenCalledWith({
@@ -91,7 +120,11 @@ describe("createPythonWorkerRuntime", () => {
 
   test("restarts after unexpected exit and rehydrates snapshot", async () => {
     const transport = createFakeTransport();
-    const runtime = createPythonWorkerRuntime({ transport, maxRestarts: 2 });
+    const runtime = createPythonWorkerRuntime({
+      transport,
+      maxRestarts: 2,
+      startupConfig: createStartupConfig(),
+    });
 
     await runtime.start();
     transport.emitExit({ code: 2, signal: null });
@@ -105,7 +138,11 @@ describe("createPythonWorkerRuntime", () => {
 
   test("stops transport without restarting after shutdown", async () => {
     const transport = createFakeTransport();
-    const runtime = createPythonWorkerRuntime({ transport, maxRestarts: 2 });
+    const runtime = createPythonWorkerRuntime({
+      transport,
+      maxRestarts: 2,
+      startupConfig: createStartupConfig(),
+    });
 
     await runtime.start();
     await runtime.stop();
