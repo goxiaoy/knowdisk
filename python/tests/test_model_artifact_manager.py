@@ -18,6 +18,13 @@ class FakeResponse:
         return self.payload
 
 
+@dataclass
+class FakeBodyOnlyResponse:
+    status: int
+    headers: dict[str, str]
+    body: list[bytes] | bytes | None = None
+
+
 def test_lists_model_files_from_configured_endpoint(tmp_path: Path):
     calls: list[str] = []
 
@@ -33,6 +40,35 @@ def test_lists_model_files_from_configured_endpoint(tmp_path: Path):
                     {"rfilename": "tokenizer.json", "size": 2},
                 ]
             },
+        )
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+
+    files = manager.list_model_files("embedding", "Alibaba-NLP/gte-multilingual-base")
+
+    assert [item["path"] for item in files] == ["config.json", "tokenizer.json"]
+    assert calls == ["https://hf.example/api/models/Alibaba-NLP/gte-multilingual-base"]
+
+
+def test_lists_model_files_from_body_only_response(tmp_path: Path):
+    calls: list[str] = []
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeBodyOnlyResponse:
+        _ = headers
+        calls.append(url)
+        return FakeBodyOnlyResponse(
+            status=200,
+            headers={"content-type": "application/json"},
+            body=[
+                b'{"siblings":[',
+                b'{"rfilename":"config.json","size":1},',
+                b'{"rfilename":"tokenizer.json","size":2}',
+                b"]}",
+            ],
         )
 
     manager = ModelArtifactManager(
