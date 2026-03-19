@@ -79,7 +79,9 @@ class IndexService:
         normalized = query.strip().lower()
         if not normalized:
             return []
-        return [row for row in self._search_rows if normalized in row["text"].lower()]
+        embedding_runtime = self._model_service.get_local_embedding_runtime()
+        query_embedding = embedding_runtime(query)
+        return self._vector_repository.search(query_embedding, limit=10)
 
     def vector_status_snapshot(self) -> dict[str, object]:
         return self._vector_status_store.snapshot()

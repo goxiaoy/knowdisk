@@ -7,6 +7,7 @@ from worker.vector.types import VectorChunkRow, VectorRowEmbedding
 class FakeBackend:
     def __init__(self) -> None:
         self.rows: dict[str, VectorChunkRow] = {}
+        self.search_calls: list[tuple[tuple[float, ...], int]] = []
 
     def upsert(self, rows: list[VectorChunkRow]) -> None:
         for row in rows:
@@ -19,6 +20,10 @@ class FakeBackend:
 
     def count(self) -> int:
         return len(self.rows)
+
+    def search(self, query_embedding: tuple[float, ...], limit: int) -> list[VectorChunkRow]:
+        self.search_calls.append((query_embedding, limit))
+        return list(self.rows.values())[:limit]
 
 
 def test_repository_initializes_with_collection_path(tmp_path: Path):
@@ -86,3 +91,37 @@ def test_repository_reports_chunk_count(tmp_path: Path):
     )
 
     assert repository.count_chunks() == 1
+
+
+def test_repository_searches_by_query_embedding(tmp_path: Path):
+    backend = FakeBackend()
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"), backend=backend)
+    repository.upsert_chunks(
+        [
+            VectorChunkRow(
+                chunk_id="chunk-1",
+                node_id="node-1",
+                text="hello",
+                embedding=VectorRowEmbedding(values=[0.1, 0.2]),
+                source_ref="hello.md",
+                name="hello.md",
+                title="Hello",
+            )
+        ]
+    )
+
+    results = repository.search([0.1, 0.2], limit=3)
+
+    assert backend.search_calls == [((0.1, 0.2), 3)]
+    assert results == [
+        {
+            "chunkId": "chunk-1",
+            "nodeId": "node-1",
+            "mountId": "",
+            "sourceRef": "hello.md",
+            "name": "hello.md",
+            "title": "Hello",
+            "text": "hello",
+            "embedding": [0.1, 0.2],
+        }
+    ]

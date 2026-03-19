@@ -11,6 +11,7 @@ dependencies = [
   "docling>=2.78.0,<3",
   "sentence-transformers>=3.0.0,<4",
   "transformers>=4.45.0,<5",
+  "zvec>=0.2.1",
 ]
 
 [project.optional-dependencies]

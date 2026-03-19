@@ -574,6 +574,7 @@ dependencies = [
     { name = "docling" },
     { name = "sentence-transformers" },
     { name = "transformers" },
+    { name = "zvec" },
 ]
 
 [package.optional-dependencies]
@@ -587,6 +588,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0,<9" },
     { name = "sentence-transformers", specifier = ">=3.0.0,<4" },
     { name = "transformers", specifier = ">=4.45.0,<5" },
+    { name = "zvec", specifier = ">=0.2.1" },
 ]
 provides-extras = ["dev"]
 
@@ -2701,4 +2703,26 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/46/2c/c06ef49dc36e7954e55b802a8b231770d286a9758b3d936bd1e04ce5ba88/xlsxwriter-3.2.9.tar.gz", hash = "sha256:254b1c37a368c444eac6e2f867405cc9e461b0ed97a3233b2ac1e574efb4140c", size = 215940 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/0c/3662f4a66880196a590b202f0db82d919dd2f89e99a27fadef91c4a33d41/xlsxwriter-3.2.9-py3-none-any.whl", hash = "sha256:9a5db42bc5dff014806c58a20b9eae7322a134abb6fce3c92c181bfb275ec5b3", size = 175315 },
+]
+
+[[package]]
+name = "zvec"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/c5/8ca4cf22aedabd13dd883cce18fb752eed0c4347ff19e392fab9ca0b82d0/zvec-0.2.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:3ca43f6055556684fc4377fe4c80bd5e60f1c3968004c63be451a8da3652d941", size = 12790573 },
+    { url = "https://files.pythonhosted.org/packages/ea/9e/24ae233c686ab91f53f8b7ea9d72d0989ef6bdbfaa9688fe2f3cbb0a5339/zvec-0.2.1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:e04e70ffbe55f87597d46b1e08b9297510857652af9afb6ca63785473262c239", size = 18837327 },
+    { url = "https://files.pythonhosted.org/packages/41/43/a0f6feb83890804f6f708faeb9da11865fa2efd8f0e583996429df7a0c02/zvec-0.2.1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:59e922e6f41c098e1443c759ab4928c80d40735cff2cbe2307e10119ca2003a5", size = 20539675 },
+    { url = "https://files.pythonhosted.org/packages/88/90/0aa27fb8268b7dcad937388679ec8d0133a3ec6733b00c0e6383a7484a17/zvec-0.2.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:31921bacf704534cc37b5f1ee07af893bce988646bcfef866bfd67067885de15", size = 12792533 },
+    { url = "https://files.pythonhosted.org/packages/3e/c9/f6dab704fd3f34cae83b05d8e1af59298498cae5e9440b5abe47ff738a12/zvec-0.2.1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:e822ec20def39589981abd5dda2e1e528bbbc770842984647f9feaa957cdc3f5", size = 18841303 },
+    { url = "https://files.pythonhosted.org/packages/33/fc/2240ddaf5c17fabb61a85bd3632a336ea76e79ac5a908581f35771833f53/zvec-0.2.1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:c1d98264e560d1caf6c87f56b96687da56394b956172990d730de00021b98012", size = 20542866 },
+    { url = "https://files.pythonhosted.org/packages/54/14/04912ec74cb9b19856e79f7e919e1c2bc07032b372b59151b5a79a096e44/zvec-0.2.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:0a49cf49ff9212bb3fa40cb1124d1960ff2cbbe255a5a6b6ba10989049bfe025", size = 12792742 },
+    { url = "https://files.pythonhosted.org/packages/7a/51/1a027dfa55c8c2d00a12b19db0673788836ff8badcd1a2aef989b731b997/zvec-0.2.1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:44cda1783d234706213c39356a9d4d8916ab3d264aad425d3b551e0e55cc3319", size = 18840981 },
+    { url = "https://files.pythonhosted.org/packages/68/d1/3e5cb2821ede69f49c45b2fc0edcc7afa883fcbcaf43f59b81004d9122e4/zvec-0.2.1-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:5cdd2cfbd04f6259802c4ac108a20f9232d60834b663bcdb4acc075df38a31a0", size = 20542823 },
+    { url = "https://files.pythonhosted.org/packages/b6/c7/c07c99b1877abecffb4a4f5c8b83f1c4c384ce8604290df8dea042de20ab/zvec-0.2.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:4f55eb64fa53c04eda9c4cf16afb620564dee9ccd3bc39c7673acc3c1ef508d5", size = 12793819 },
+    { url = "https://files.pythonhosted.org/packages/81/7f/7e5dbef037c983898bfbedc1bb35dbd046ce22760b84c19c69c6122614c8/zvec-0.2.1-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:11ddad74d14288e66a0934e24daf843fe1e84df8612a2208b3ff88cf768e504e", size = 18842125 },
+    { url = "https://files.pythonhosted.org/packages/71/3b/c473e5fbe061c1129b57d4233c9695b9d4824133ba4159b14a955e3fbb73/zvec-0.2.1-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:051c0f2df595ec4e58ed2b33d5d035d0d1ad6a23fb24fcdb53cfbae00074400c", size = 20543596 },
 ]

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from worker.vector.types import VectorChunkRow, VectorChunkRowInput
+from worker.vector.zvec_backend import ZvecVectorBackend
 
 class VectorBackend(Protocol):
     def upsert(self, rows: list[VectorChunkRow]) -> None: ...
@@ -12,6 +13,8 @@ class VectorBackend(Protocol):
     def delete_by_node_id(self, node_id: str) -> None: ...
 
     def count(self) -> int: ...
+
+    def search(self, query_embedding: tuple[float, ...], limit: int) -> list[VectorChunkRow]: ...
 
 
 class InMemoryVectorBackend:
@@ -35,7 +38,7 @@ class InMemoryVectorBackend:
 class VectorRepository:
     def __init__(self, collection_path: str, backend: VectorBackend | None = None) -> None:
         self.collection_path = str(Path(collection_path))
-        self.backend = backend or InMemoryVectorBackend()
+        self.backend = backend or ZvecVectorBackend(self.collection_path)
 
     def upsert_chunks(self, rows: Sequence[VectorChunkRowInput]) -> None:
         if not rows:
@@ -48,6 +51,10 @@ class VectorRepository:
 
     def count_chunks(self) -> int:
         return self.backend.count()
+
+    def search(self, query_embedding: Sequence[float], limit: int = 10) -> list[dict[str, object]]:
+        normalized_embedding = tuple(float(value) for value in query_embedding)
+        return [row.to_legacy_dict() for row in self.backend.search(normalized_embedding, limit)]
 
 
 def coerce_vector_chunk_row(value: VectorChunkRowInput) -> VectorChunkRow:

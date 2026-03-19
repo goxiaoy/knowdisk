@@ -10,6 +10,16 @@ class FakeEmbeddingRuntime:
         return [float(len(text))]
 
 
+class KeywordEmbeddingRuntime:
+    def __call__(self, text: str):
+        normalized = text.lower()
+        if "alpha" in normalized:
+            return [1.0, 0.0]
+        if "beta" in normalized:
+            return [0.0, 1.0]
+        return [0.0, 0.0]
+
+
 def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
@@ -153,3 +163,62 @@ def test_search_returns_repository_rows(tmp_path):
 
     assert results[0]["nodeId"] == "node-1"
     assert results[0]["text"] == "hello world"
+
+
+def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    service = IndexService(
+        parse_node=lambda node, mount: [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "alpha topic",
+                "title": "alpha",
+                "source": {
+                    "nodeId": "node-a",
+                    "name": "a.md",
+                    "path": "/tmp/a.md",
+                },
+            },
+            {
+                "status": "ok",
+                "chunkIndex": 1,
+                "text": "beta topic",
+                "title": "beta",
+                "source": {
+                    "nodeId": "node-b",
+                    "name": "b.md",
+                    "path": "/tmp/b.md",
+                },
+            },
+        ],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {"get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime()},
+        )(),
+        vector_repository=repository,
+        vector_status_store=vector_store,
+    )
+
+    service.index_node(
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-1",
+                name="mixed.md",
+                source_ref="mixed.md",
+                provider_type="local",
+                mount_id="m1",
+            ),
+            mount=ParserMount(
+                directory="/tmp",
+                content_dir="",
+                provider_type="local",
+            ),
+        )
+    )
+
+    results = service.search("beta only")
+
+    assert results[0]["text"] == "beta topic"
