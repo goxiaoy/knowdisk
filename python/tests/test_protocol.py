@@ -2,7 +2,11 @@ import json
 
 import pytest
 
-from worker.protocol import decode_frame, encode_frame
+from worker.protocol import (
+    decode_frame,
+    encode_frame,
+    is_start_request_frame,
+)
 
 
 def test_encode_frame_returns_single_newline_terminated_json_line():
@@ -23,6 +27,50 @@ def test_decode_frame_parses_valid_request_response_and_event_frames():
     assert request["method"] == "start"
     assert response["result"] == {"ok": True}
     assert event["type"] == "worker_health_changed"
+
+
+def test_is_start_request_frame_accepts_required_model_runtime_config():
+    assert is_start_request_frame(
+        {
+            "id": "req-start",
+            "method": "start",
+            "params": {
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "cpu",
+                "modelCacheDir": "/tmp/models",
+                "huggingfaceEndpoint": "https://huggingface.co",
+            },
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        {
+            "id": "req-start",
+            "method": "start",
+            "params": {
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "cpu",
+                "modelCacheDir": "/tmp/models",
+            },
+        },
+        {
+            "id": "req-start",
+            "method": "start",
+            "params": {
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "beam",
+                "modelCacheDir": "/tmp/models",
+            },
+        },
+    ],
+)
+def test_is_start_request_frame_rejects_incomplete_or_invalid_model_runtime_config(frame):
+    assert not is_start_request_frame(frame)
 
 
 @pytest.mark.parametrize(

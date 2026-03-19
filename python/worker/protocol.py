@@ -61,6 +61,34 @@ def is_event_frame(frame: Mapping[str, Any]) -> bool:
     return isinstance(frame.get("type"), str) and bool(frame["type"]) and "payload" in frame
 
 
+def is_start_request_frame(frame: Mapping[str, Any]) -> bool:
+    return (
+        is_request_frame(frame)
+        and frame.get("method") == "start"
+        and is_start_params(frame.get("params"))
+    )
+
+
+def is_start_params(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and isinstance(value.get("embeddingModel"), str)
+        and bool(value["embeddingModel"])
+        and isinstance(value.get("rerankerModel"), str)
+        and bool(value["rerankerModel"])
+        and value.get("preferredDevice") in {"cpu", "mps", "cuda"}
+        and isinstance(value.get("modelCacheDir"), str)
+        and bool(value["modelCacheDir"])
+        and (
+            "huggingfaceEndpoint" not in value
+            or (
+                isinstance(value.get("huggingfaceEndpoint"), str)
+                and bool(value["huggingfaceEndpoint"])
+            )
+        )
+    )
+
+
 def is_error_frame(value: Any) -> bool:
     return (
         isinstance(value, Mapping)

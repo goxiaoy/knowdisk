@@ -4,6 +4,22 @@ export type PythonWorkerRequest = {
   params: unknown;
 };
 
+export type PythonWorkerPreferredDevice = "cpu" | "mps" | "cuda";
+
+export type PythonWorkerStartParams = {
+  embeddingModel: string;
+  rerankerModel: string;
+  preferredDevice: PythonWorkerPreferredDevice;
+  modelCacheDir: string;
+  huggingfaceEndpoint?: string;
+};
+
+export type PythonWorkerStartRequest = {
+  id: string;
+  method: "start";
+  params: PythonWorkerStartParams;
+};
+
 export type PythonWorkerError = {
   code: string;
   message: string;
@@ -72,6 +88,14 @@ export function isPythonWorkerEventFrame(value: unknown): value is PythonWorkerE
   );
 }
 
+export function isPythonWorkerStartRequestFrame(value: unknown): value is PythonWorkerStartRequest {
+  if (!isPythonWorkerRequestFrame(value) || value.method !== "start") {
+    return false;
+  }
+
+  return isPythonWorkerStartParams(value.params);
+}
+
 function isPythonWorkerError(value: unknown): value is PythonWorkerError {
   return (
     isRecord(value) &&
@@ -79,6 +103,28 @@ function isPythonWorkerError(value: unknown): value is PythonWorkerError {
     value.code.length > 0 &&
     typeof value.message === "string" &&
     value.message.length > 0
+  );
+}
+
+function isPythonWorkerStartParams(value: unknown): value is PythonWorkerStartParams {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const preferredDevice = value.preferredDevice;
+  const hasPreferredDevice =
+    preferredDevice === "cpu" || preferredDevice === "mps" || preferredDevice === "cuda";
+
+  return (
+    typeof value.embeddingModel === "string" &&
+    value.embeddingModel.length > 0 &&
+    typeof value.rerankerModel === "string" &&
+    value.rerankerModel.length > 0 &&
+    hasPreferredDevice &&
+    typeof value.modelCacheDir === "string" &&
+    value.modelCacheDir.length > 0 &&
+    (value.huggingfaceEndpoint === undefined ||
+      (typeof value.huggingfaceEndpoint === "string" && value.huggingfaceEndpoint.length > 0))
   );
 }
 
