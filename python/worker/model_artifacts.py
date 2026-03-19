@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Any
+from collections.abc import Iterable, Mapping
 
-ModelRepoFile = dict[str, Any]
+from worker.model.types import ModelRepoFile
 
 _EMBEDDING_REQUIRED_FILES = {
     "config.json",
@@ -28,37 +27,22 @@ _RERANKER_REQUIRED_FILES = {
 }
 
 
-def select_embedding_repo_files(siblings: Iterable[ModelRepoFile]) -> list[dict[str, Any]]:
+def select_embedding_repo_files(siblings: Iterable[Mapping[str, object] | ModelRepoFile]) -> list[ModelRepoFile]:
     return _select_required_files(siblings, required_files=_EMBEDDING_REQUIRED_FILES)
 
 
-def select_reranker_repo_files(siblings: Iterable[ModelRepoFile]) -> list[dict[str, Any]]:
+def select_reranker_repo_files(siblings: Iterable[Mapping[str, object] | ModelRepoFile]) -> list[ModelRepoFile]:
     return _select_required_files(siblings, required_files=_RERANKER_REQUIRED_FILES)
 
 
 def _select_required_files(
-    siblings: Iterable[ModelRepoFile],
+    siblings: Iterable[Mapping[str, object] | ModelRepoFile],
     required_files: set[str],
-) -> list[dict[str, Any]]:
-    selected: list[dict[str, Any]] = []
+) -> list[ModelRepoFile]:
+    selected: list[ModelRepoFile] = []
     for item in siblings:
-        path = item.get("rfilename")
-        if not isinstance(path, str) or not path:
+        repo_file = item if isinstance(item, ModelRepoFile) else ModelRepoFile.from_mapping(item)
+        if repo_file.path not in required_files:
             continue
-        if path not in required_files:
-            continue
-        selected.append(
-            {
-                "path": path,
-                "size": _normalize_size(item.get("size")),
-            }
-        )
+        selected.append(repo_file)
     return selected
-
-
-def _normalize_size(value: Any) -> int:
-    if isinstance(value, int) and value > 0:
-        return value
-    if isinstance(value, float) and value.is_integer() and value > 0:
-        return int(value)
-    return 0

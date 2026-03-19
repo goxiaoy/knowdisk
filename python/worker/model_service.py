@@ -1,36 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from worker.model_artifact_manager import ModelArtifactManager
+from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
 from worker.model_runtime_loader import load_local_embedding_runtime, load_local_reranker_runtime
 from worker.status import ModelStatusStore
 
 
-@dataclass(frozen=True)
-class ModelRuntimeConfig:
-    embedding_model: str
-    reranker_model: str
-    preferred_device: str
-    model_cache_dir: Path
-    huggingface_endpoint: str = ""
-
-
-@dataclass(frozen=True)
-class LoadedRerankerRuntime:
-    tokenizer: Any
-    model: Any
-
-
 class EmbeddingRuntimeLoader(Protocol):
-    def __call__(self, model_path: Path, *, preferred_device: str) -> Any: ...
+    def __call__(self, model_path: Path, *, preferred_device: str) -> object: ...
 
 
 class RerankerRuntimeLoader(Protocol):
-    def __call__(self, model_path: Path, *, preferred_device: str) -> Any: ...
+    def __call__(self, model_path: Path, *, preferred_device: str) -> object: ...
 
 
 class ModelService:
@@ -39,8 +24,8 @@ class ModelService:
         status_store: ModelStatusStore,
         verify_embedding: Callable[[], None],
         verify_reranker: Callable[[], None],
-        load_embedding_runtime: Callable[[], Any],
-        load_reranker_runtime: Callable[[], Any],
+        load_embedding_runtime: Callable[[], object],
+        load_reranker_runtime: Callable[[], object],
         *,
         runtime_config: ModelRuntimeConfig | None = None,
         artifact_manager: ModelArtifactManager | None = None,
@@ -56,7 +41,7 @@ class ModelService:
         self._artifact_manager = artifact_manager
         self._embedding_runtime_loader = embedding_runtime_loader or load_local_embedding_runtime
         self._reranker_runtime_loader = reranker_runtime_loader or load_local_reranker_runtime
-        self._embedding_runtime: Any | None = None
+        self._embedding_runtime: object | None = None
         self._reranker_runtime: LoadedRerankerRuntime | None = None
 
     def snapshot(self) -> dict[str, Any]:
@@ -99,12 +84,12 @@ class ModelService:
         )
         return {"ok": True}
 
-    def get_local_embedding_runtime(self) -> Any:
+    def get_local_embedding_runtime(self) -> object:
         if self._runtime_config is None or self._artifact_manager is None:
             return self._legacy_load_embedding_runtime()
         return self._ensure_embedding_runtime()
 
-    def get_local_reranker_runtime(self) -> Any:
+    def get_local_reranker_runtime(self) -> object:
         if self._runtime_config is None or self._artifact_manager is None:
             return self._legacy_load_reranker_runtime()
         return self._ensure_reranker_runtime()
@@ -212,7 +197,7 @@ class ModelService:
             },
         )
 
-    def _ensure_embedding_runtime(self) -> Any:
+    def _ensure_embedding_runtime(self) -> object:
         if self._embedding_runtime is not None:
             return self._embedding_runtime
 

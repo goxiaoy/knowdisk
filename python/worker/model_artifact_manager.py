@@ -4,14 +4,13 @@ import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Literal
+from collections.abc import Callable, Mapping
 
 from worker.model_artifacts import select_embedding_repo_files, select_reranker_repo_files
+from worker.model.types import ModelArtifactKind, ModelRepoFile
 from worker.model_download import download_file
-
-ModelArtifactKind = Literal["embedding", "reranker"]
 ProgressCallback = Callable[[int, int], None]
-FetchCallable = Callable[[str, dict[str, str] | None], Any]
+FetchCallable = Callable[[str, dict[str, str] | None], object]
 
 
 @dataclass(frozen=True)
@@ -19,7 +18,7 @@ class ModelArtifactEnsureResult:
     kind: ModelArtifactKind
     model: str
     model_root: Path
-    files: list[str]
+    files: list[ModelRepoFile]
     downloaded_files: int
     downloaded_bytes: int
 
@@ -35,11 +34,11 @@ class ModelArtifactManager:
         self._huggingface_endpoint = huggingface_endpoint.rstrip("/")
         self._fetch = fetch
 
-    def list_model_files(self, kind: ModelArtifactKind, model: str) -> list[dict[str, Any]]:
+    def list_model_files(self, kind: ModelArtifactKind, model: str) -> list[ModelRepoFile]:
         response = self._fetch(self._model_list_url(model), None)
         self._require_status(response, 200, f"Failed to list model files for {model}")
         payload = self._read_json(response)
-        siblings = payload.get("siblings", []) if isinstance(payload, dict) else []
+        siblings = payload.get("siblings", []) if isinstance(payload, Mapping) else []
         files = self._select_required_files(kind, siblings)
         if not files:
             raise ValueError(f"No required model artifacts found for {kind} model {model}")
@@ -60,20 +59,20 @@ class ModelArtifactManager:
             self._remove_tree(model_root)
 
         files = self.list_model_files(kind, model)
-        total_bytes = sum(file["size"] for file in files)
+        total_bytes = sum(file.size for file in files)
         downloaded_bytes = 0
 
         downloaded_files = 0
         for file in files:
-            destination = model_root / file["path"]
-            file_total = file["size"]
+            destination = model_root / file.path
+            file_total = file.size
 
             def report_progress(downloaded_in_file: int, _file_total: int, *, offset: int = downloaded_bytes) -> None:
                 if on_progress is not None:
                     on_progress(offset + downloaded_in_file, total_bytes)
 
             download_file(
-                self._model_file_url(model, file["path"]),
+                self._model_file_url(model, file.path),
                 destination,
                 self._fetch,
                 on_progress=report_progress,
@@ -87,7 +86,7 @@ class ModelArtifactManager:
             kind=kind,
             model=model,
             model_root=model_root,
-            files=[file["path"] for file in files],
+            files=files,
             downloaded_files=downloaded_files,
             downloaded_bytes=downloaded_bytes,
         )
@@ -95,8 +94,8 @@ class ModelArtifactManager:
     def _select_required_files(
         self,
         kind: ModelArtifactKind,
-        siblings: list[dict[str, Any]] | tuple[dict[str, Any], ...] | list[Any],
-    ) -> list[dict[str, Any]]:
+        siblings: list[Mapping[str, object]] | tuple[Mapping[str, object], ...] | list[object],
+    ) -> list[ModelRepoFile]:
         if kind == "embedding":
             return select_embedding_repo_files(siblings)
         return select_reranker_repo_files(siblings)
@@ -107,7 +106,7 @@ class ModelArtifactManager:
     def _model_file_url(self, model: str, path: str) -> str:
         return f"{self._huggingface_endpoint}/{model}/resolve/main/{path}"
 
-    def _read_json(self, response: Any) -> dict[str, Any]:
+    def _read_json(self, response: object) -> dict[str, object]:
         json_method = getattr(response, "json", None)
         if callable(json_method):
             payload = json_method()
@@ -124,7 +123,7 @@ class ModelArtifactManager:
             return json.loads(b"".join(body).decode("utf-8"))
         raise ValueError("model listing response is not readable")
 
-    def _require_status(self, response: Any, expected: int, message: str) -> None:
+    def _require_status(self, response: object, expected: int, message: str) -> None:
         status = getattr(response, "status", None)
         if status != expected:
             raise ValueError(f"{message}: status {status}")

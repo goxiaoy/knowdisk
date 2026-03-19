@@ -18,7 +18,7 @@ def test_select_embedding_repo_files_keeps_sentence_transformer_assets():
         ]
     )
 
-    assert [item["path"] for item in selected] == [
+    assert [item.path for item in selected] == [
         "config.json",
         "config_sentence_transformers.json",
         "modules.json",
@@ -45,7 +45,7 @@ def test_select_reranker_repo_files_keeps_transformer_assets():
         ]
     )
 
-    assert [item["path"] for item in selected] == [
+    assert [item.path for item in selected] == [
         "config.json",
         "tokenizer.json",
         "tokenizer_config.json",

@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from worker.model_service import LoadedRerankerRuntime, ModelRuntimeConfig, ModelService
+from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
+from worker.model_service import ModelService
 from worker.status import ModelStatusStore
 
 

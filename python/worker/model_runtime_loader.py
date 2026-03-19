@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
 
-RuntimeDevice = Literal["cpu", "mps", "cuda"]
+from worker.model.types import ModelPreferredDevice
+
+RuntimeDevice = ModelPreferredDevice
 DeviceAvailability = Callable[[], bool]
-EmbeddingRuntimeLoader = Callable[[Path, RuntimeDevice], Any]
-RerankerRuntimeLoader = Callable[[Path, RuntimeDevice], Any]
+EmbeddingRuntimeLoader = Callable[[Path, RuntimeDevice], object]
+RerankerRuntimeLoader = Callable[[Path, RuntimeDevice], object]
 
 
 def select_runtime_device(
-    preferred_device: str,
+    preferred_device: ModelPreferredDevice,
     *,
     is_cuda_available: DeviceAvailability,
     is_mps_available: DeviceAvailability,
@@ -26,11 +27,11 @@ def select_runtime_device(
 def load_local_embedding_runtime(
     model_path: str | Path,
     *,
-    preferred_device: str,
+    preferred_device: ModelPreferredDevice,
     is_cuda_available: DeviceAvailability | None = None,
     is_mps_available: DeviceAvailability | None = None,
     loader: EmbeddingRuntimeLoader | None = None,
-) -> Any:
+) -> object:
     resolved_device = select_runtime_device(
         preferred_device,
         is_cuda_available=is_cuda_available or _cuda_is_available,
@@ -43,11 +44,11 @@ def load_local_embedding_runtime(
 def load_local_reranker_runtime(
     model_path: str | Path,
     *,
-    preferred_device: str,
+    preferred_device: ModelPreferredDevice,
     is_cuda_available: DeviceAvailability | None = None,
     is_mps_available: DeviceAvailability | None = None,
     loader: RerankerRuntimeLoader | None = None,
-) -> Any:
+) -> object:
     resolved_device = select_runtime_device(
         preferred_device,
         is_cuda_available=is_cuda_available or _cuda_is_available,
@@ -57,13 +58,13 @@ def load_local_reranker_runtime(
     return runtime_loader(Path(model_path), resolved_device)
 
 
-def _load_local_embedding_runtime(model_path: Path, device: RuntimeDevice) -> Any:
+def _load_local_embedding_runtime(model_path: Path, device: RuntimeDevice) -> object:
     from sentence_transformers import SentenceTransformer
 
     return SentenceTransformer(str(model_path), device=device)
 
 
-def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> Any:
+def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> object:
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
     tokenizer = AutoTokenizer.from_pretrained(str(model_path))

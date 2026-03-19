@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from worker.model_artifact_manager import ModelArtifactManager
+from worker.model.types import ModelRepoFile
 
 
 @dataclass
@@ -50,7 +51,7 @@ def test_lists_model_files_from_configured_endpoint(tmp_path: Path):
 
     files = manager.list_model_files("embedding", "Alibaba-NLP/gte-multilingual-base")
 
-    assert [item["path"] for item in files] == ["config.json", "tokenizer.json"]
+    assert [item.path for item in files] == ["config.json", "tokenizer.json"]
     assert calls == ["https://hf.example/api/models/Alibaba-NLP/gte-multilingual-base"]
 
 
@@ -79,7 +80,7 @@ def test_lists_model_files_from_body_only_response(tmp_path: Path):
 
     files = manager.list_model_files("embedding", "Alibaba-NLP/gte-multilingual-base")
 
-    assert [item["path"] for item in files] == ["config.json", "tokenizer.json"]
+    assert [item.path for item in files] == ["config.json", "tokenizer.json"]
     assert calls == ["https://hf.example/api/models/Alibaba-NLP/gte-multilingual-base"]
 
 
@@ -149,14 +150,14 @@ def test_downloads_all_required_files_into_correct_cache_directory(tmp_path: Pat
 
     assert result.model_root == tmp_path / "cache" / "embedding" / "Alibaba-NLP" / "gte-multilingual-base"
     assert result.files == [
-        "config.json",
-        "modules.json",
-        "tokenizer.json",
-        "tokenizer_config.json",
-        "special_tokens_map.json",
-        "sentence_bert_config.json",
-        "1_Pooling/config.json",
-        "model.safetensors",
+        ModelRepoFile(path="config.json", size=4),
+        ModelRepoFile(path="modules.json", size=4),
+        ModelRepoFile(path="tokenizer.json", size=4),
+        ModelRepoFile(path="tokenizer_config.json", size=4),
+        ModelRepoFile(path="special_tokens_map.json", size=4),
+        ModelRepoFile(path="sentence_bert_config.json", size=4),
+        ModelRepoFile(path="1_Pooling/config.json", size=4),
+        ModelRepoFile(path="model.safetensors", size=4),
     ]
     assert result.downloaded_files == 8
     assert (result.model_root / "config.json").read_bytes() == b"test"
