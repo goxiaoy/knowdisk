@@ -1,6 +1,5 @@
 from collections.abc import Callable, Mapping
 
-from worker.bun_client import BunClient
 from worker.model.types import ModelRuntimeConfig
 from worker.runtime.types import (
     DeleteNodeRequest,
@@ -16,11 +15,9 @@ class PythonWorkerServer:
     def __init__(
         self,
         event_sink: Callable[[dict[str, object]], None],
-        bun_request: Callable[[str, dict[str, object]], dict[str, object]] | None = None,
         services: WorkerServices | dict[str, object] | None = None,
     ) -> None:
         self._event_sink = event_sink
-        self.bun_client = BunClient(bun_request) if bun_request is not None else None
         self.services = coerce_worker_services(services) if services is not None else None
         self.is_running = True
         self.model_runtime_config: ModelRuntimeConfig | None = None
@@ -162,10 +159,9 @@ class PythonWorkerServer:
 
 def create_server(
     event_sink: Callable[[dict[str, object]], None],
-    bun_request: Callable[[str, dict[str, object]], dict[str, object]] | None = None,
     services: WorkerServices | dict[str, object] | None = None,
 ) -> PythonWorkerServer:
-    return PythonWorkerServer(event_sink=event_sink, bun_request=bun_request, services=services)
+    return PythonWorkerServer(event_sink=event_sink, services=services)
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:
