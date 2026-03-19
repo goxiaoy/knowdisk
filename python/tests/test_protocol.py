@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from worker.protocol import decode_frame, encode_frame
+from worker.protocol import decode_frame, encode_frame, is_start_request_frame
+from worker.protocol.types import PythonWorkerStartRequest
 
 
 def test_encode_frame_returns_single_newline_terminated_json_line():
@@ -33,6 +34,18 @@ def test_decode_frame_preserves_start_payload_model_runtime_config():
     assert frame["method"] == "start"
     assert frame["params"]["embeddingModel"] == "Alibaba-NLP/gte-multilingual-base"
     assert frame["params"]["preferredDevice"] == "cpu"
+
+
+def test_decode_frame_returns_typed_start_payload_shape():
+    frame = decode_frame(
+        b'{"id":"req-start","method":"start","params":{"embeddingModel":"Alibaba-NLP/gte-multilingual-base","rerankerModel":"Alibaba-NLP/gte-multilingual-reranker-base","preferredDevice":"cpu","modelCacheDir":"/tmp/models"}}\n'
+    )
+
+    assert is_start_request_frame(frame)
+    typed_frame: PythonWorkerStartRequest = frame
+
+    assert typed_frame["method"] == "start"
+    assert typed_frame["params"]["modelCacheDir"] == "/tmp/models"
 
 
 @pytest.mark.parametrize(
