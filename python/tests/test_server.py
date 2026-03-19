@@ -5,7 +5,18 @@ def test_start_returns_handshake_and_emits_health_event():
     emitted: list[dict] = []
     server = create_server(event_sink=emitted.append)
 
-    response = server.handle_request({"id": "req-1", "method": "start", "params": {}})
+    response = server.handle_request(
+        {
+            "id": "req-1",
+            "method": "start",
+            "params": {
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "cpu",
+                "modelCacheDir": "/tmp/models",
+            },
+        }
+    )
 
     assert response == {
         "id": "req-1",
@@ -14,6 +25,12 @@ def test_start_returns_handshake_and_emits_health_event():
             "worker": "knowdisk-python-worker",
             "version": "0.1.0",
         },
+    }
+    assert server.model_runtime_config == {
+        "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+        "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+        "preferredDevice": "cpu",
+        "modelCacheDir": "/tmp/models",
     }
     assert emitted == [
         {

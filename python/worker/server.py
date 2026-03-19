@@ -15,6 +15,7 @@ class PythonWorkerServer:
         self.bun_client = BunClient(bun_request) if bun_request is not None else None
         self.services = services or {}
         self.is_running = True
+        self.model_runtime_config: dict[str, Any] | None = None
 
     def handle_request(self, frame: dict[str, Any]) -> dict[str, Any]:
         request_id = frame["id"]
@@ -39,13 +40,28 @@ class PythonWorkerServer:
                 },
             }
 
+        if method == "start":
+            try:
+                return {
+                    "id": request_id,
+                    "result": handler(params),
+                }
+            except ValueError as error:
+                return {
+                    "id": request_id,
+                    "error": {
+                        "code": "INVALID_PARAMS",
+                        "message": str(error),
+                    },
+                }
+
         return {
             "id": request_id,
             "result": handler(params),
         }
 
     def _handle_start(self, params: dict[str, Any]) -> dict[str, Any]:
-        _ = params
+        self.model_runtime_config = self._parse_model_runtime_config(params)
         model_service = self.services.get("model_service")
         if model_service is not None:
             model_service.ensure_required_models()
@@ -95,6 +111,29 @@ class PythonWorkerServer:
 
     def _handle_search(self, params: dict[str, Any]) -> list[dict[str, Any]]:
         return self.services["index_service"].search(str(params.get("query", "")))
+
+    def _parse_model_runtime_config(self, params: dict[str, Any]) -> dict[str, Any]:
+        required_fields = ("embeddingModel", "rerankerModel", "preferredDevice", "modelCacheDir")
+        if not all(isinstance(params.get(field), str) and params[field].strip() for field in required_fields):
+            raise ValueError("missing required model runtime configuration")
+
+        preferred_device = str(params["preferredDevice"])
+        if preferred_device not in {"cpu", "mps", "cuda"}:
+            raise ValueError(f"invalid preferred device: {preferred_device}")
+
+        config = {
+            "embeddingModel": str(params["embeddingModel"]),
+            "rerankerModel": str(params["rerankerModel"]),
+            "preferredDevice": preferred_device,
+            "modelCacheDir": str(params["modelCacheDir"]),
+        }
+        huggingface_endpoint = params.get("huggingfaceEndpoint")
+        if huggingface_endpoint is not None:
+            if not isinstance(huggingface_endpoint, str) or not huggingface_endpoint.strip():
+                raise ValueError("invalid huggingface endpoint")
+            config["huggingfaceEndpoint"] = huggingface_endpoint
+
+        return config
 
 
 def create_server(
