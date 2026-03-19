@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,19 +62,6 @@ class ModelArtifactManager:
         total_bytes = sum(file["size"] for file in files)
         downloaded_bytes = 0
 
-        if files and not force_redownload and self._has_complete_manifest(model_root, files):
-            downloaded_bytes = total_bytes
-            if on_progress is not None:
-                on_progress(downloaded_bytes, total_bytes)
-            return ModelArtifactEnsureResult(
-                kind=kind,
-                model=model,
-                model_root=model_root,
-                files=[file["path"] for file in files],
-                downloaded_files=len(files),
-                downloaded_bytes=downloaded_bytes,
-            )
-
         downloaded_files = 0
         for file in files:
             destination = model_root / file["path"]
@@ -94,7 +80,6 @@ class ModelArtifactManager:
             downloaded_bytes += file_total if file_total > 0 else destination.stat().st_size
             downloaded_files += 1
 
-        self._write_manifest(model_root, model, files)
         if on_progress is not None:
             on_progress(downloaded_bytes, total_bytes)
         return ModelArtifactEnsureResult(
@@ -120,27 +105,6 @@ class ModelArtifactManager:
 
     def _model_file_url(self, model: str, path: str) -> str:
         return f"{self._huggingface_endpoint}/{model}/resolve/main/{path}"
-
-    def _write_manifest(self, model_root: Path, model: str, files: list[dict[str, Any]]) -> None:
-        model_root.mkdir(parents=True, exist_ok=True)
-        manifest_path = model_root / ".knowdisk-manifest.json"
-        manifest_path.write_text(
-            f"{json.dumps({'model': model, 'files': [file['path'] for file in files]}, indent=2)}\n",
-            encoding="utf-8",
-        )
-
-    def _has_complete_manifest(self, model_root: Path, files: list[dict[str, Any]]) -> bool:
-        manifest_path = model_root / ".knowdisk-manifest.json"
-        if not manifest_path.exists():
-            return False
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return False
-        expected_files = [file["path"] for file in files]
-        if manifest.get("files") != expected_files:
-            return False
-        return all((model_root / file_path).exists() for file_path in expected_files)
 
     def _read_json(self, response: Any) -> dict[str, Any]:
         json_method = getattr(response, "json", None)
