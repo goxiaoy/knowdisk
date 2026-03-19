@@ -28,6 +28,15 @@ def download_file(
     supports_resume = resumed_bytes > 0 and status == 206
     if not supports_resume:
         resumed_bytes = 0
+    else:
+        content_range = _header_value(_response_headers(response), "content-range")
+        if content_range is None:
+            raise ValueError(f"failed to resume download for {url}: missing content-range")
+        range_start, _range_end, _range_total = _parse_content_range(content_range)
+        if range_start != resumed_bytes:
+            raise ValueError(
+                f"failed to resume download for {url}: expected range start {resumed_bytes}, got {range_start}"
+            )
 
     total_bytes = _compute_total_bytes(response, resumed_bytes)
     if resumed_bytes > 0 and on_progress is not None:
@@ -44,7 +53,7 @@ def download_file(
             if on_progress is not None:
                 on_progress(written_bytes, total_bytes)
 
-    if total_bytes > 0 and written_bytes < total_bytes:
+    if total_bytes > 0 and written_bytes != total_bytes:
         raise ValueError(f"incomplete download for {url}: {written_bytes}/{total_bytes}")
 
     part_path.replace(destination_path)
@@ -117,3 +126,20 @@ def _parse_content_range_total(value: str) -> int:
     except (ValueError, TypeError):
         return 0
     return total if total > 0 else 0
+
+
+def _parse_content_range(value: str) -> tuple[int, int, int]:
+    try:
+        unit_and_range, total_text = value.split("/", 1)
+        _unit, range_text = unit_and_range.split(" ", 1)
+        start_text, end_text = range_text.split("-", 1)
+        start = int(start_text)
+        end = int(end_text)
+        total = int(total_text)
+    except (ValueError, TypeError):
+        raise ValueError("download response has invalid content-range")
+    if start < 0 or end < start or total <= 0:
+        raise ValueError("download response has invalid content-range")
+    if end >= total:
+        raise ValueError("download response has invalid content-range")
+    return start, end, total

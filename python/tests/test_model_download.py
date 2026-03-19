@@ -72,6 +72,56 @@ def test_download_resumes_from_existing_part_file(tmp_path: Path):
     assert progress == [(4, 8), (6, 8), (8, 8)]
 
 
+def test_download_rejects_mismatched_resume_range(tmp_path: Path):
+    destination = tmp_path / "model.bin"
+    part_path = tmp_path / "model.bin.part"
+    part_path.write_bytes(b"test")
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        _ = (url, headers)
+        return FakeResponse(
+            status=206,
+            headers={
+                "content-length": "4",
+                "content-range": "bytes 5-8/9",
+            },
+            body=[b"da", b"ta"],
+        )
+
+    try:
+        download_file("https://example.com/model.bin", destination, fetch)
+    except ValueError as error:
+        assert "expected range start 4" in str(error)
+    else:
+        raise AssertionError("expected download_file to reject mismatched resume range")
+
+    assert not destination.exists()
+    assert part_path.exists()
+    assert part_path.read_bytes() == b"test"
+
+
+def test_download_rejects_over_delivery_against_known_total(tmp_path: Path):
+    destination = tmp_path / "model.bin"
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        _ = (url, headers)
+        return FakeResponse(
+            status=200,
+            headers={"content-length": "4"},
+            body=[b"data", b"!"],
+        )
+
+    try:
+        download_file("https://example.com/model.bin", destination, fetch)
+    except ValueError as error:
+        assert "incomplete download for https://example.com/model.bin: 5/4" in str(error)
+    else:
+        raise AssertionError("expected download_file to reject over-delivery")
+
+    assert not destination.exists()
+    assert destination.with_name("model.bin.part").exists()
+
+
 def test_download_reports_aggregate_progress_across_chunks(tmp_path: Path):
     progress: list[tuple[int, int]] = []
 
