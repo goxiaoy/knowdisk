@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from os.path import basename
 from typing import Any
 
 ModelRepoFile = dict[str, Any]
 
 _EMBEDDING_REQUIRED_FILES = {
     "config.json",
+    "config_sentence_transformers.json",
     "modules.json",
     "tokenizer.json",
     "tokenizer_config.json",
     "special_tokens_map.json",
     "sentence_bert_config.json",
+    "1_Pooling/config.json",
     "model.safetensors",
     "pytorch_model.bin",
 }
@@ -44,7 +45,7 @@ def _select_required_files(
         path = item.get("rfilename")
         if not isinstance(path, str) or not path:
             continue
-        if basename(path) not in required_files:
+        if path not in required_files:
             continue
         selected.append(
             {
