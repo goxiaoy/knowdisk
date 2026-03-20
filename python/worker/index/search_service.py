@@ -20,6 +20,7 @@ class SearchService:
         *,
         query: str,
         query_embedding: tuple[float, ...],
+        reranker_runtime: object | None,
         title_only: bool = False,
         limit: int = 10,
     ) -> SearchResponsePayload:
@@ -36,7 +37,11 @@ class SearchService:
             )
         ]
         merged_candidates = _merge_candidates(fts_results, vector_results)
-        reranked_results = list(merged_candidates)
+        reranked_results = _rerank_candidates(
+            query=query,
+            candidates=merged_candidates,
+            reranker_runtime=reranker_runtime,
+        )
         final_results = reranked_results[:limit]
         return {
             "query": query,
@@ -91,3 +96,37 @@ def _merge_candidates(
         existing["matchedBy"] = matched_by
 
     return [merged[chunk_id] for chunk_id in ordered_chunk_ids]
+
+
+def _rerank_candidates(
+    *,
+    query: str,
+    candidates: list[SearchResultSnapshot],
+    reranker_runtime: object | None,
+) -> list[SearchResultSnapshot]:
+    scored: list[tuple[float, int, SearchResultSnapshot]] = []
+    for index, candidate in enumerate(candidates):
+        rerank_score = _score_with_reranker(reranker_runtime, query, candidate)
+        enriched = dict(candidate)
+        enriched["rerankScore"] = rerank_score
+        scored.append((rerank_score, index, enriched))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [candidate for _, _, candidate in scored]
+
+
+def _score_with_reranker(
+    reranker_runtime: object | None,
+    query: str,
+    candidate: SearchResultSnapshot,
+) -> float:
+    if callable(reranker_runtime):
+        score = reranker_runtime(query, candidate)
+        if isinstance(score, (int, float)):
+            return float(score)
+    vector_score = candidate.get("vectorScore")
+    if isinstance(vector_score, (int, float)):
+        return float(vector_score)
+    fts_score = candidate.get("ftsScore")
+    if isinstance(fts_score, (int, float)):
+        return float(fts_score)
+    return 0.0

@@ -23,6 +23,14 @@ class KeywordEmbeddingRuntime:
         return [0.0, 0.0]
 
 
+class KeywordRerankerRuntime:
+    def __call__(self, query: str, candidate: dict[str, object]) -> float:
+        text = str(candidate.get("text") or "")
+        title = str(candidate.get("title") or "")
+        haystack = f"{title}\n{text}".lower()
+        return 10.0 if query.lower() in haystack else 0.0
+
+
 def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
@@ -44,7 +52,10 @@ def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
         model_service=type(
             "ModelServiceStub",
             (),
-            {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
         )(),
         vector_repository=repository,
         chunk_store=chunk_store,
@@ -97,7 +108,10 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
         model_service=type(
             "ModelServiceStub",
             (),
-            {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
         )(),
         vector_repository=repository,
         chunk_store=chunk_store,
@@ -149,7 +163,10 @@ def test_search_returns_repository_rows(tmp_path):
         model_service=type(
             "ModelServiceStub",
             (),
-            {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
         )(),
         vector_repository=repository,
         chunk_store=chunk_store,
@@ -213,7 +230,10 @@ def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
         model_service=type(
             "ModelServiceStub",
             (),
-            {"get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime()},
+            {
+                "get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
         )(),
         vector_repository=repository,
         chunk_store=chunk_store,
@@ -266,7 +286,10 @@ def test_index_node_persists_chunk_rows_into_sqlite_fts(tmp_path):
         model_service=type(
             "ModelServiceStub",
             (),
-            {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
         )(),
         vector_repository=repository,
         chunk_store=chunk_store,
@@ -332,7 +355,10 @@ def test_search_merges_fts_and_vector_candidates_into_debug_payload(tmp_path):
         model_service=type(
             "ModelServiceStub",
             (),
-            {"get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime()},
+            {
+                "get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
         )(),
         vector_repository=repository,
         chunk_store=chunk_store,
@@ -363,3 +389,137 @@ def test_search_merges_fts_and_vector_candidates_into_debug_payload(tmp_path):
     assert any(row["text"] == "alpha body text" for row in results["debug"]["vectorResults"])
     assert any(row["text"] == "alpha body text" for row in results["debug"]["mergedCandidates"])
     assert any(row["text"] == "alpha body text" for row in results["debug"]["finalResults"])
+
+
+def test_search_title_only_restricts_fts_matches_to_titles(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
+    service = IndexService(
+        parse_node=lambda node, mount: [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "query appears only in body",
+                "title": "unrelated title",
+                "source": {
+                    "nodeId": node.node_id,
+                    "name": node.name,
+                    "path": "/tmp/title.md",
+                },
+            },
+            {
+                "status": "ok",
+                "chunkIndex": 1,
+                "text": "body does not matter",
+                "title": "query in title",
+                "source": {
+                    "nodeId": node.node_id,
+                    "name": node.name,
+                    "path": "/tmp/title.md",
+                },
+            },
+        ],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {
+                "get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
+        )(),
+        vector_repository=repository,
+        chunk_store=chunk_store,
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    service.index_node(
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-title",
+                name="title.md",
+                source_ref="title.md",
+                provider_type="local",
+                mount_id="m1",
+            ),
+            mount=ParserMount(
+                synced_content_path="",
+                local_file_path="/tmp/title.md",
+                provider_type="local",
+            ),
+        )
+    )
+
+    results = service.search("query", title_only=True)
+
+    assert [row["title"] for row in results["debug"]["ftsResults"]] == ["query in title"]
+
+
+def test_search_reranker_reorders_final_results(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
+
+    class NeutralEmbeddingRuntime:
+        def __call__(self, text: str):
+            _ = text
+            return [0.0]
+
+    class PreferSecondReranker:
+        def __call__(self, query: str, candidate: dict[str, object]) -> float:
+            _ = query
+            return 100.0 if candidate.get("title") == "second" else 1.0
+
+    service = IndexService(
+        parse_node=lambda node, mount: [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "first text",
+                "title": "first",
+                "source": {"nodeId": node.node_id, "name": node.name, "path": "/tmp/rank.md"},
+            },
+            {
+                "status": "ok",
+                "chunkIndex": 1,
+                "text": "second text",
+                "title": "second",
+                "source": {"nodeId": node.node_id, "name": node.name, "path": "/tmp/rank.md"},
+            },
+        ],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {
+                "get_local_embedding_runtime": lambda self: NeutralEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: PreferSecondReranker(),
+            },
+        )(),
+        vector_repository=repository,
+        chunk_store=chunk_store,
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    service.index_node(
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-rerank",
+                name="rank.md",
+                source_ref="rank.md",
+                provider_type="local",
+                mount_id="m1",
+            ),
+            mount=ParserMount(
+                synced_content_path="",
+                local_file_path="/tmp/rank.md",
+                provider_type="local",
+            ),
+        )
+    )
+
+    results = service.search("rank")
+
+    assert results["debug"]["mergedCandidates"][0]["title"] == "first"
+    assert results["debug"]["finalResults"][0]["title"] == "second"

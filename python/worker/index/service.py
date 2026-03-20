@@ -109,10 +109,16 @@ class IndexService:
                 },
             }
         embedding_runtime = self._model_service.get_local_embedding_runtime()
+        reranker_runtime = (
+            self._model_service.get_local_reranker_runtime()
+            if hasattr(self._model_service, "get_local_reranker_runtime")
+            else None
+        )
         query_embedding = tuple(float(value) for value in embedding_runtime(query))
         return self._search_service.search(
             query=query,
             query_embedding=query_embedding,
+            reranker_runtime=reranker_runtime,
             title_only=title_only,
             limit=10,
         )
