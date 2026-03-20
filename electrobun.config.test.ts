@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createBuildCopyConfig, defaultBuildCopyConfig } from "./electrobun.config";
+import config, { createBuildCopyConfig, defaultBuildCopyConfig } from "./electrobun.config";
 
 describe("electrobun config", () => {
   test("includes bundled python runtime resources when staged assets exist", () => {
@@ -25,5 +25,11 @@ describe("electrobun config", () => {
 
   test("exports the default build copy config", () => {
     expect(defaultBuildCopyConfig["dist/assets"]).toBe("views/app/assets");
+  });
+
+  test("points all platform icon settings at the generated app icon assets", () => {
+    expect(config.build.mac?.icons).toBe("assets/icon/icon.iconset");
+    expect(config.build.linux?.icon).toBe("assets/icon/app-icon.png");
+    expect(config.build.win?.icon).toBe("assets/icon/app-icon.png");
   });
 });

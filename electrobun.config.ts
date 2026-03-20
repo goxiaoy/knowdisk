@@ -41,12 +41,15 @@ export default {
     copy: defaultBuildCopyConfig,
     mac: {
       bundleCEF: false,
+      icons: "assets/icon/icon.iconset",
     },
     linux: {
       bundleCEF: false,
+      icon: "assets/icon/app-icon.png",
     },
     win: {
       bundleCEF: false,
+      icon: "assets/icon/app-icon.png",
     },
   },
 } satisfies ElectrobunConfig;

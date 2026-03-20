@@ -34,7 +34,7 @@ test("opens picker and loads recent files on add item", async () => {
   expect(tree.root.findAllByProps({ "data-testid": "chat-picker-result" }).length).toBe(2);
 });
 
-test("supports selecting multiple files and deduplicates by node id", async () => {
+test("keeps a single selected file and replaces it when picking another result", async () => {
   const searchApi = createSearchApi();
   const tree = renderer.create(<ChatPanel searchApi={searchApi} debounceMs={0} />);
   const addButton = tree.root.findByProps({ "data-testid": "chat-add-item-button" });
@@ -49,14 +49,70 @@ test("supports selecting multiple files and deduplicates by node id", async () =
   await act(async () => {
     results[0]!.props.onClick();
     results[1]!.props.onClick();
-    results[0]!.props.onClick();
     await Promise.resolve();
   });
 
   const chips = tree.root.findAllByProps({ "data-testid": "chat-selected-chip" });
-  expect(chips.length).toBe(2);
-  expect(tree.root.findAll((node) => node.children?.includes?.("Alpha.md")).length).toBeGreaterThan(0);
-  expect(tree.root.findAll((node) => node.children?.includes?.("Beta.md")).length).toBeGreaterThan(0);
+  expect(chips.length).toBe(1);
+  expect(chips[0]!.findAll((node) => node.children?.includes?.("Alpha.md")).length).toBe(0);
+  expect(chips[0]!.findAll((node) => node.children?.includes?.("Beta.md")).length).toBeGreaterThan(0);
+});
+
+test("moves add item button after the selected chip", async () => {
+  const searchApi = createSearchApi();
+  const tree = renderer.create(<ChatPanel searchApi={searchApi} debounceMs={0} />);
+  const addButton = tree.root.findByProps({ "data-testid": "chat-add-item-button" });
+
+  await act(async () => {
+    addButton.props.onClick();
+    await Promise.resolve();
+  });
+
+  const result = tree.root.findAllByProps({ "data-testid": "chat-picker-result" })[0]!;
+
+  await act(async () => {
+    result.props.onClick();
+    await Promise.resolve();
+  });
+
+  const row = tree.root.findByProps({ "data-testid": "chat-selected-row" });
+  const selectedChipIndex = row.children.findIndex(
+    (child: unknown) =>
+      typeof child === "object" &&
+      child !== null &&
+      "props" in child &&
+      (child as { props?: { "data-testid"?: string } }).props?.["data-testid"] === "chat-selected-chip"
+  );
+  const addButtonIndex = row.children.findIndex(
+    (child: unknown) =>
+      typeof child === "object" &&
+      child !== null &&
+      "props" in child &&
+      (child as { props?: { "data-testid"?: string } }).props?.["data-testid"] === "chat-add-item-button"
+  );
+
+  expect(selectedChipIndex).toBeGreaterThanOrEqual(0);
+  expect(addButtonIndex).toBeGreaterThan(selectedChipIndex);
+});
+
+test("closes the picker after selecting a file", async () => {
+  const searchApi = createSearchApi();
+  const tree = renderer.create(<ChatPanel searchApi={searchApi} debounceMs={0} />);
+  const addButton = tree.root.findByProps({ "data-testid": "chat-add-item-button" });
+
+  await act(async () => {
+    addButton.props.onClick();
+    await Promise.resolve();
+  });
+
+  const result = tree.root.findAllByProps({ "data-testid": "chat-picker-result" })[0]!;
+
+  await act(async () => {
+    result.props.onClick();
+    await Promise.resolve();
+  });
+
+  expect(tree.root.findAllByProps({ "data-testid": "chat-item-picker" }).length).toBe(0);
 });
 
 test("removes a selected file chip", async () => {

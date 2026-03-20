@@ -19,7 +19,7 @@ export function ChatPanel({
   const [pickerLoading, setPickerLoading] = useState(false);
   const [pickerError, setPickerError] = useState("");
   const [pickerResults, setPickerResults] = useState<SearchResult[]>([]);
-  const [selectedItems, setSelectedItems] = useState<SearchResult[]>([]);
+  const [selectedItem, setSelectedItem] = useState<SearchResult | null>(null);
   const requestRef = useRef(0);
 
   useEffect(() => {
@@ -72,7 +72,24 @@ export function ChatPanel({
       </h1>
 
       <div className="w-full rounded-3xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.08)] md:p-5">
-        <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm text-slate-500" data-testid="chat-selected-row">
+          {selectedItem ? (
+            <div
+              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-700"
+              data-testid="chat-selected-chip"
+            >
+              <span>{getItemLabel(selectedItem)}</span>
+              <button
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition-colors duration-200 hover:bg-slate-200 hover:text-slate-800"
+                data-testid="chat-selected-chip-remove"
+                onClick={() => setSelectedItem(null)}
+                type="button"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
+
           <button
             className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5 transition-colors duration-200 hover:border-slate-300 hover:text-slate-700"
             data-testid="chat-add-item-button"
@@ -83,30 +100,6 @@ export function ChatPanel({
             Add item
           </button>
         </div>
-
-        {selectedItems.length > 0 ? (
-          <div className="mb-4 flex flex-wrap gap-2" data-testid="chat-selected-items">
-            {selectedItems.map((item) => (
-              <div
-                key={item.nodeId}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-700"
-                data-testid="chat-selected-chip"
-              >
-                <span>{getItemLabel(item)}</span>
-                <button
-                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition-colors duration-200 hover:bg-slate-200 hover:text-slate-800"
-                  data-testid="chat-selected-chip-remove"
-                  onClick={() =>
-                    setSelectedItems((items) => items.filter((entry) => entry.nodeId !== item.nodeId))
-                  }
-                  type="button"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
 
         {pickerOpen ? (
           <div
@@ -125,7 +118,7 @@ export function ChatPanel({
             {pickerError ? <p className="mt-2 text-sm text-rose-600">{pickerError}</p> : null}
             <div className="mt-3 grid gap-2">
               {pickerResults.map((item) => {
-                const selected = selectedItems.some((entry) => entry.nodeId === item.nodeId);
+                const selected = selectedItem?.nodeId === item.nodeId;
                 return (
                   <button
                     key={item.nodeId}
@@ -135,11 +128,10 @@ export function ChatPanel({
                         : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                     }`}
                     data-testid="chat-picker-result"
-                    onClick={() =>
-                      setSelectedItems((items) =>
-                        items.some((entry) => entry.nodeId === item.nodeId) ? items : [...items, item]
-                      )
-                    }
+                    onClick={() => {
+                      setSelectedItem(item);
+                      setPickerOpen(false);
+                    }}
                     type="button"
                   >
                     <div className="font-medium">{getItemLabel(item)}</div>
