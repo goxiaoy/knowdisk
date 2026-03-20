@@ -4,7 +4,7 @@
 
 **Goal:** Persist Python indexing requests in a real FIFO SQLite queue, persist chunks in SQLite, add SQLite FTS search plus vector recall and reranking, and return full debug search payloads.
 
-**Architecture:** The Python worker keeps `IndexService` as the top-level orchestration layer for actual indexing work, but pushes request persistence into a FIFO SQLite queue with a separate node-intent table. A queue worker consumes queued jobs serially, skips stale jobs using node state, and delegates valid work to `IndexService`. Search becomes a composed pipeline over SQLite FTS, `zvec`, and the reranker runtime, returning intermediate debug payloads.
+**Architecture:** The Python worker keeps `IndexService` as the top-level orchestration layer for actual indexing work, but pushes request persistence into a FIFO SQLite queue with a separate node-intent table. RPC handlers only enqueue work and return acknowledgements. A background worker owned by `WorkerRuntime` consumes queued jobs serially, requeues orphaned `running` work on startup, skips stale jobs using node state, and delegates valid work to `IndexService`. Search becomes a composed pipeline over SQLite FTS, `zvec`, and the reranker runtime, returning intermediate debug payloads.
 
 **Tech Stack:** Python, SQLite, FTS5, zvec, pytest
 
@@ -47,6 +47,7 @@ git commit -m "feat: add typed python search debug payloads"
 **Files:**
 - Create: `python/worker/index/queue_store.py`
 - Modify: `python/worker/index/queue.py`
+- Modify: `python/worker/runtime/bootstrap.py`
 - Modify: `python/worker/runtime/status.py` if queue status publication needs a public helper
 - Test: `python/tests/test_index_queue.py`
 
@@ -57,6 +58,8 @@ Add tests for:
 - coalescing repeated `index` jobs for the same node
 - `delete` superseding stale `index` work
 - `queueDepth` / running state derived from SQLite
+- enqueue no longer runs jobs inline
+- orphaned `running` jobs are requeued on startup
 
 **Step 2: Run test to verify it fails**
 
@@ -68,7 +71,8 @@ Implement:
 - `index_jobs`
 - `index_node_state`
 - FIFO reserve/mark-running/mark-done/mark-cancelled logic
-- serial queue worker over persisted jobs
+- `requeue_orphaned_running_jobs()`
+- enqueue-only `IndexQueue` plus runtime-owned worker notifications
 - queue status snapshots from SQLite counts
 
 **Step 4: Run test to verify it passes**
@@ -78,15 +82,15 @@ Run: `uv run --project python --extra dev pytest python/tests/test_index_queue.p
 **Step 5: Commit**
 
 ```bash
-git add python/worker/index/queue_store.py python/worker/index/queue.py python/worker/runtime/status.py python/tests/test_index_queue.py
-git commit -m "feat: add fifo sqlite index job queue"
+git add python/worker/index/queue_store.py python/worker/index/queue.py python/worker/runtime/bootstrap.py python/worker/runtime/status.py python/tests/test_index_queue.py
+git commit -m "feat: add async fifo sqlite index queue"
 ```
 
 ### Task 3: Wire FIFO Queue Worker To IndexService
 
 **Files:**
-- Modify: `python/worker/index/queue.py`
 - Modify: `python/worker/protocol/server.py`
+- Modify: `python/worker/runtime/bootstrap.py`
 - Test: `python/tests/test_server.py`
 - Test: `python/tests/test_integration_indexing.py`
 
@@ -94,7 +98,7 @@ git commit -m "feat: add fifo sqlite index job queue"
 
 Add tests asserting:
 - `index_node` RPC enqueues and returns ack-style result
-- queue worker executes jobs serially
+- runtime background worker executes jobs serially
 - stale jobs are skipped when node intent changes
 
 **Step 2: Run test to verify it fails**
@@ -103,7 +107,7 @@ Run: `uv run --project python --extra dev pytest python/tests/test_server.py pyt
 
 **Step 3: Write minimal implementation**
 
-Wire Bun-facing requests into FIFO queue persistence and worker execution.
+Wire Bun-facing requests into FIFO queue persistence and runtime-owned worker execution.
 
 **Step 4: Run test to verify it passes**
 
@@ -112,8 +116,8 @@ Run: `uv run --project python --extra dev pytest python/tests/test_server.py pyt
 **Step 5: Commit**
 
 ```bash
-git add python/worker/index/queue.py python/worker/protocol/server.py python/tests/test_server.py python/tests/test_integration_indexing.py
-git commit -m "feat: drive indexing through fifo queue worker"
+git add python/worker/protocol/server.py python/worker/runtime/bootstrap.py python/tests/test_server.py python/tests/test_integration_indexing.py
+git commit -m "feat: drive indexing through runtime queue worker"
 ```
 
 ### Task 4: Add SQLite chunk store and FTS5

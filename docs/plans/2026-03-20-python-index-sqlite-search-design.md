@@ -16,7 +16,7 @@ The Python indexing stack will be split into three storage concerns:
 - Chunk metadata and FTS documents in SQLite
 - Embeddings in `zvec`
 
-`IndexService` remains the orchestration layer for the actual indexing work. A dedicated queue repository and worker will receive Bun requests, persist them in FIFO order, collapse outdated node intents, and execute the latest valid work serially. On indexing, `IndexService` parses content, writes parser markdown artifacts, writes chunk rows into SQLite/FTS, writes embeddings into `zvec`, and updates vector/index status. On search, it delegates to a new search service that performs FTS recall and vector recall, merges candidates, reranks them, and returns a debug-friendly payload.
+`IndexService` remains the orchestration layer for the actual indexing work. Bun-facing RPC handlers only acknowledge requests and persist queue intent in SQLite. A background worker owned by the Python runtime wakes on new work, reclaims orphaned jobs on startup, claims FIFO jobs serially, collapses outdated node intents, and executes the latest valid work through `IndexService`. On indexing, `IndexService` parses content, writes parser markdown artifacts, writes chunk rows into SQLite/FTS, writes embeddings into `zvec`, and updates vector/index status. On search, it delegates to a new search service that performs FTS recall and vector recall, merges candidates, reranks them, and returns a debug-friendly payload.
 
 ## Data Model
 
@@ -51,6 +51,7 @@ This allows:
 - node-local request collapsing
 - `index_node` requests to be coalesced
 - `delete_node` requests to supersede stale `index_node` work
+- queue requests to return immediately while indexing continues asynchronously
 
 `queueDepth` will be computed directly from SQLite:
 - `queuedCount = count(status='queued')`
@@ -114,13 +115,15 @@ Debug-only fields will include:
 
 ## Protocol Changes
 
-The Python search request must accept `titleOnly`. The Python search response shape must expand from a plain result list to the multi-stage debug payload. Queue-triggering RPCs remain request/acknowledge operations; actual indexing becomes asynchronous behind the FIFO worker.
+The Python search request must accept `titleOnly`. The Python search response shape must expand from a plain result list to the multi-stage debug payload. Queue-triggering RPCs remain request/acknowledge operations; actual indexing becomes asynchronous behind the runtime-owned FIFO worker. `index_node` and `delete_node` should not synchronously execute indexing work in the RPC handler.
 
 ## Testing Strategy
 
 Add tests for:
 
 - FIFO queue insertion, dequeue, and cancellation semantics
+- enqueue-only queue behavior and runtime-owned worker execution
+- orphaned `running` job recovery on startup
 - node intent collapsing (`index` coalescing, `delete` superseding stale `index`)
 - SQLite-backed queue depth and running count semantics
 - SQLite chunk store and FTS queries
