@@ -23,10 +23,6 @@ type NodeIndexingService = {
   deleteNode(input: { nodeId: string }): Promise<unknown>;
 };
 
-type RecoveryIndexingService = NodeIndexingService & {
-  rebuildAllFromLocalNodes(): Promise<unknown>;
-};
-
 export type AppContainerPaths = {
   basePath: string;
   pythonProjectDir: string;
@@ -179,26 +175,6 @@ export function createVfsIndexingHooks(input: {
         );
       }
     },
-  };
-}
-
-export function initializeAppRuntime(app: {
-  vfs: Pick<VfsService, "registerNodeEventHooks">;
-  indexing: Pick<RecoveryIndexingService, "indexNode" | "deleteNode" | "rebuildAllFromLocalNodes">;
-  logger: Pick<Logger, "error">;
-  vectorRepository: Pick<{ consumeRecoveryState(): { recovered: boolean } }, "consumeRecoveryState">;
-}): () => void {
-  const offHooks = app.vfs.registerNodeEventHooks(
-    createVfsIndexingHooks({
-      indexing: app.indexing,
-      logger: app.logger,
-    })
-  );
-  if (app.vectorRepository.consumeRecoveryState().recovered) {
-    void app.indexing.rebuildAllFromLocalNodes();
-  }
-  return () => {
-    offHooks();
   };
 }
 

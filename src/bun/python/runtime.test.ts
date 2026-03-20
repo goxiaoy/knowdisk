@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import { tmpdir } from "node:os";
 import {
   createPythonWorkerRuntime,
   type PythonWorkerRuntimeStartupConfig,
@@ -151,5 +152,20 @@ describe("createPythonWorkerRuntime", () => {
 
     expect(transport.stopped).toBe(1);
     expect(transport.started).toBe(1);
+  });
+
+  test("defaults startup basePath outside the repository cwd", async () => {
+    const transport = createFakeTransport();
+    const runtime = createPythonWorkerRuntime({
+      transport,
+      maxRestarts: 0,
+    });
+
+    await runtime.start();
+
+    expect(transport.requests[0]?.method).toBe("start");
+    expect((transport.requests[0]?.params as { basePath: string }).basePath).toStartWith(
+      tmpdir()
+    );
   });
 });

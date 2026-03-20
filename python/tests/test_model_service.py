@@ -270,6 +270,7 @@ def make_real_model_service(
         load_embedding_runtime=lambda: object(),
         load_reranker_runtime=lambda: object(),
         runtime_config=ModelRuntimeConfig(
+            base_path=artifact_manager.cache_root.parent,
             embedding_model="Alibaba-NLP/gte-multilingual-base",
             reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
             preferred_device="cpu",

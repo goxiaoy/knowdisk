@@ -1,3 +1,5 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { PythonWorkerEvent } from "../../shared/python-worker";
 import type { PythonWorkerTransport } from "./transport";
 
@@ -24,7 +26,7 @@ export type PythonWorkerRuntimeStartupConfig = {
 
 function createDefaultPythonWorkerRuntimeStartupConfig(): PythonWorkerRuntimeStartupConfig {
   return {
-    basePath: process.cwd(),
+    basePath: join(tmpdir(), "knowdisk-python-worker"),
     embeddingModel: "Alibaba-NLP/gte-multilingual-base",
     rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
     preferredDevice: process.platform === "darwin" ? "mps" : "cpu",

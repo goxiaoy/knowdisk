@@ -8,7 +8,6 @@ import { createDefaultCoreConfig } from "@knowdisk/core";
 import {
   createAppContainer,
   createVfsIndexingHooks,
-  initializeAppRuntime,
   type AppContainerDeps,
   type AppContainerPaths,
 } from "./app.container";
@@ -256,69 +255,6 @@ describe("createVfsIndexingHooks", () => {
     });
 
     expect(calls).toEqual(["index:n1", "delete:n1"]);
-  });
-});
-
-describe("initializeAppRuntime", () => {
-  it("starts a background full reindex when vector storage was recovered", async () => {
-    const calls: string[] = [];
-    let resolveWalk: (() => void) | null = null;
-    const walkReady = new Promise<void>((resolve) => {
-      resolveWalk = resolve;
-    });
-
-    const stop = initializeAppRuntime({
-      vfs: {
-        registerNodeEventHooks: () => () => {},
-        walkChildren: mock(async () => ({ items: [], source: "local" as const })),
-      } as never,
-      indexing: {
-        indexNode: async () => ({ indexed: 0 }),
-        deleteNode: async () => {},
-        rebuildAllFromLocalNodes: async () => {
-          calls.push("rebuild");
-          await walkReady;
-          calls.push("rebuilt");
-        },
-        getStatus: () => ({
-          getSnapshot: () => ({
-            phase: "idle" as const,
-            scope: null,
-            processedFiles: 0,
-            totalFiles: 0,
-            activeNodeName: null,
-            error: "",
-          }),
-          subscribe: () => () => {},
-        }),
-        search: async () => ({
-          hybrid: [],
-          fts: [],
-          vector: [],
-          reranked: [],
-          meta: {
-            query: "",
-            topK: 5,
-            titleOnly: false,
-            embeddingProvider: "stub",
-            rerankerProvider: null,
-          },
-        }),
-      } as never,
-      logger: {
-        error: () => {},
-      } as never,
-      vectorRepository: {
-        consumeRecoveryState: () => ({ recovered: true }),
-      } as never,
-    } as never);
-
-    resolveWalk?.();
-    await waitFor(() => calls.includes("rebuilt"));
-
-    expect(calls).toEqual(["rebuild", "rebuilt"]);
-
-    stop();
   });
 });
 
