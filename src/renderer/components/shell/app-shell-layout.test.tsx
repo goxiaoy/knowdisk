@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import renderer from "react-test-renderer";
 import { AppShell } from "./app-shell";
+import { FALLBACK_INDEX_STATUS } from "../../../shared/index-status";
 import { FALLBACK_MODEL_STATUS } from "../../../shared/model-status";
 import { FALLBACK_VECTOR_DB_STATUS } from "../../../shared/vector-db-status";
 import { FALLBACK_VFS_STATUS } from "../../../shared/vfs-status";
@@ -21,6 +22,7 @@ test("app shell keeps the viewport fixed and relies on internal scrolling", () =
         }),
       }}
       modelStatus={FALLBACK_MODEL_STATUS}
+      indexStatus={FALLBACK_INDEX_STATUS}
       onNavigate={() => {}}
       route="/files"
       vfsStatus={FALLBACK_VFS_STATUS}
@@ -53,6 +55,7 @@ test("app shell lets sidebar overlays escape and stack above the main panel", ()
         }),
       }}
       modelStatus={FALLBACK_MODEL_STATUS}
+      indexStatus={FALLBACK_INDEX_STATUS}
       onNavigate={() => {}}
       route="/chat"
       vfsStatus={FALLBACK_VFS_STATUS}
@@ -84,6 +87,7 @@ test("app shell keeps a fixed sidebar width and lets the main panel fill remaini
         }),
       }}
       modelStatus={FALLBACK_MODEL_STATUS}
+      indexStatus={FALLBACK_INDEX_STATUS}
       onNavigate={() => {}}
       route="/chat"
       vfsStatus={FALLBACK_VFS_STATUS}

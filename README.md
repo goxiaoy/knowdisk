@@ -139,16 +139,18 @@ Know Disk includes a mountable VFS layer under `packages/vfs` for multi-provider
   - `mode=remote`: token encodes provider cursor.
 - Boundary:
   - VFS owns mount/node tree/pagination/reconcile trigger only.
-  - Content rendering/chunking (including markdown) is intentionally outside the VFS layer and now lives in `packages/parser`.
+- Content rendering/chunking (including markdown) is intentionally outside the VFS layer and now lives in the Python worker parser pipeline.
 
 ## 3. Runtime Architecture
 
 - **UI (React)**
   Settings, onboarding, status, retrieval interaction
 - **Bun runtime (Electrobun main)**
-  DI container, config persistence, indexing orchestration, MCP endpoint
+  Desktop shell, VFS owner, renderer RPC, Python worker lifecycle
+- **Python worker**
+  Model lifecycle, parser selection (`docling` + simple parser), incremental indexing queue, vector state
 - **Core services**
-  Config, indexing, retrieval, embedding, reranker, vector repo, metadata repo
+  Config, retrieval, metadata repo
 - **Storage**
   - `bun:sqlite` for metadata + FTS
   - `@zvec/zvec` for vector collection
@@ -206,7 +208,7 @@ Default runtime root (macOS/Linux):
 2. Add source folders in Settings
 3. Wait for indexing/reconcile to settle
 4. Run search from Home (normal or title-only)
-5. Use force resync when you want full rebuild
+5. Let the worker catch up incrementally as files change
 
 ## 9. Development
 
@@ -214,13 +216,37 @@ Monorepo note:
 
 - This repo uses Bun workspace packages under `packages/*`.
 - VFS core is extracted to `packages/vfs` and consumed by app/runtime via `@knowdisk/vfs`.
-- Parser pipeline is extracted to `packages/parser`, which reads file bytes from VFS, converts them to markdown, sections them with `remark`, and emits `ParseChunk` streams while caching artifacts under a local `basePath`.
-- Run the parser hook example with `bun run --cwd packages/parser example`.
+- Desktop parsing/indexing now runs inside the Python worker.
+
+Python model runtime defaults:
+
+- Bun passes these local model defaults to the worker on startup:
+  - embedding: `Alibaba-NLP/gte-multilingual-base`
+  - reranker: `Alibaba-NLP/gte-multilingual-reranker-base`
+- Python uses `sentence-transformers` for embedding and `transformers` for reranking.
+- Python no longer uses ONNX as the default local model backend.
+- Current packaged-device support is `mps` on Apple Silicon with `cpu` fallback. `cuda` remains a forward-compatible path, not a current packaging target.
+- The current Python worker runtime is organized by domain under `python/worker/model`, `python/worker/parser`, `python/worker/index`, `python/worker/vector`, `python/worker/protocol`, and `python/worker/runtime`.
+
+Python worker setup:
 
 ```bash
 bun install
+bun run python:setup
+```
+
+Run the desktop app:
+
+```bash
 bun run dev
 ```
+
+The Bun main process will start the Python sidecar automatically via `uv run --project python python -m worker`.
+
+The Python worker runtime depends on:
+
+- `sentence-transformers`
+- `transformers`
 
 HMR mode:
 
@@ -234,11 +260,43 @@ Build:
 bun run build
 ```
 
+Stage a bundled Python runtime for the macOS package:
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run prepare:python-runtime
+```
+
+This expects the runtime source directory to contain a distributable interpreter at `bin/python`.
+
+Build the macOS package with bundled Python assets:
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run build
+```
+
+In packaged macOS builds, the Bun main process resolves the worker from bundled app resources instead of `uv`:
+
+```text
+python-runtime/bin/python
+python-worker/worker/__main__.py
+```
+
+`bun run build` now runs `prepare:python-runtime` internally, so `KNOWDISK_PYTHON_RUNTIME_DIR` must be set for packaged macOS builds.
+
 Test:
 
 ```bash
-bun test
+bun run python:test
 ```
+
+Python worker migration verification used on this branch:
+
+```bash
+bun test src/bun/python-worker-command.test.ts src/bun/python-worker.integration.test.ts src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-status.test.ts electrobun.config.test.ts scripts/prepare-python-runtime.test.ts
+bun run python:test
+```
+
+Note: full `bun test` is not currently a reliable branch verification command because the repo still has pre-existing baseline failures from missing workspace dependencies.
 
 Typecheck (project-safe config):
 

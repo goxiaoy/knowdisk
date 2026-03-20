@@ -1,4 +1,30 @@
+import { existsSync as defaultExistsSync } from "node:fs";
 import type { ElectrobunConfig } from "electrobun";
+
+type BuildCopyConfig = Record<string, string>;
+
+export function createBuildCopyConfig(input?: {
+  existsSync?: (path: string) => boolean;
+}): BuildCopyConfig {
+  const existsSync = input?.existsSync ?? defaultExistsSync;
+  const copy: BuildCopyConfig = {
+    "dist/index.html": "views/app/index.html",
+    "dist/assets": "views/app/assets",
+    "vendor/node_modules/sharp": "node_modules/sharp",
+    "vendor/node_modules/@img": "node_modules/@img",
+  };
+
+  if (existsSync("vendor/python-runtime")) {
+    copy["vendor/python-runtime"] = "python-runtime";
+  }
+  if (existsSync("vendor/python-worker")) {
+    copy["vendor/python-worker"] = "python-worker";
+  }
+
+  return copy;
+}
+
+export const defaultBuildCopyConfig = createBuildCopyConfig();
 
 export default {
   app: {
@@ -9,26 +35,10 @@ export default {
   build: {
     bun: {
       external: [
-        "@huggingface/transformers",
-        // "onnxruntime-node",
-        // "onnxruntime-web",
-        // "onnxruntime-common",
       ],
     },
     // Vite builds to dist/, we copy from there
-    copy: {
-      "dist/index.html": "views/app/index.html",
-      "dist/assets": "views/app/assets",
-      "node_modules/@huggingface/transformers": "node_modules/@huggingface/transformers",
-      "vendor/node_modules/@zvec/bindings-darwin-arm64": "node_modules/@zvec/bindings-darwin-arm64",
-      "vendor/node_modules/onnxruntime-common": "node_modules/onnxruntime-common",
-      "vendor/node_modules/onnxruntime-node": "node_modules/onnxruntime-node",
-      "vendor/node_modules/onnxruntime-web": "node_modules/onnxruntime-web",
-      "vendor/node_modules/sharp": "node_modules/sharp",
-      "vendor/node_modules/detect-libc": "node_modules/detect-libc",
-      "vendor/node_modules/semver": "node_modules/semver",
-      "vendor/node_modules/@img": "node_modules/@img",
-    },
+    copy: defaultBuildCopyConfig,
     mac: {
       bundleCEF: false,
     },

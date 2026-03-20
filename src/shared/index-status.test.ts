@@ -6,6 +6,7 @@ test("provides a stable fallback index status", () => {
     available: false,
     phase: "idle",
     scope: null,
+    queueDepth: 0,
     processedFiles: 0,
     totalFiles: 0,
     activeNodeName: "",

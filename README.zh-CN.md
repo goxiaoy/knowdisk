@@ -139,16 +139,18 @@ Know Disk 在 `packages/vfs` 提供可挂载的 VFS 层，用于多 provider 元
   - `mode=remote`：token 编码 provider 游标。
 - 边界约束：
   - VFS 只负责挂载、节点树、分页与 reconcile 触发。
-  - 内容渲染/分块（包括 markdown）不在 VFS 层内实现，这部分现在放在 `packages/parser`。
+- 内容渲染/分块（包括 markdown）不在 VFS 层内实现，这部分现在放在 Python worker 的 parser 流水线里。
 
 ## 3. 运行时架构
 
 - **UI（React）**
   负责 settings/onboarding/status/retrieval 交互
 - **Bun 主进程（Electrobun）**
-  负责 DI 容器、配置持久化、索引编排、MCP 暴露
+  负责桌面壳层、VFS、renderer RPC，以及 Python worker 生命周期
+- **Python worker**
+  负责 model 生命周期、解析路由（`docling` + simple parser）、增量索引队列和向量状态
 - **Core Services**
-  Config / Indexing / Retrieval / Embedding / Reranker / Vector / Metadata
+  Config / Retrieval / Metadata
 - **存储层**
   - `bun:sqlite`：metadata + FTS
   - `@zvec/zvec`：向量集合
@@ -206,7 +208,7 @@ UI 提供健康与索引状态可视化。
 2. 在 Settings 添加 source 目录
 3. 等待 indexing/reconcile 稳定
 4. 在 Home 检索（普通模式或 titleOnly）
-5. 需要时使用 force resync 做全量重建
+5. 文件变化后由 worker 持续做增量追平
 
 ## 9. 开发命令
 
@@ -214,13 +216,37 @@ Monorepo 说明：
 
 - 当前仓库使用 Bun workspace（`packages/*`）。
 - VFS 核心已拆分到 `packages/vfs`，应用侧通过 `@knowdisk/vfs` 依赖。
-- Parser 流水线已拆分到 `packages/parser`，负责从 VFS 读取字节流、转换成 markdown、用 `remark` 切 section，并在本地 `basePath` 下缓存解析产物后输出 `ParseChunk` 流。
-- parser hook 示例可通过 `bun run --cwd packages/parser example` 运行。
+- 桌面应用正常运行时的解析和索引已经迁到 Python worker。
+
+Python model runtime 默认值：
+
+- Bun 在 worker 启动时会传入默认本地模型：
+  - embedding: `Alibaba-NLP/gte-multilingual-base`
+  - reranker: `Alibaba-NLP/gte-multilingual-reranker-base`
+- Python 侧 embedding 使用 `sentence-transformers`，reranker 使用 `transformers`。
+- Python 不再默认使用 ONNX 作为本地模型后端。
+- 当前打包支持的设备目标是 Apple Silicon 上的 `mps` 和回退用的 `cpu`。`cuda` 目前只保留为前向兼容分支，不是当前打包目标。
+- 当前 Python worker runtime 已按 domain 组织在 `python/worker/model`、`python/worker/parser`、`python/worker/index`、`python/worker/vector`、`python/worker/protocol`、`python/worker/runtime` 下。
+
+Python worker 环境准备：
 
 ```bash
 bun install
+bun run python:setup
+```
+
+启动桌面应用：
+
+```bash
 bun run dev
 ```
+
+Bun 主进程会自动通过 `uv run --project python python -m worker` 拉起 Python sidecar。
+
+Python worker 运行时依赖：
+
+- `sentence-transformers`
+- `transformers`
 
 HMR：
 
@@ -234,11 +260,43 @@ bun run dev:hmr
 bun run build
 ```
 
+为 macOS 安装包准备内置 Python runtime：
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run prepare:python-runtime
+```
+
+这里要求 runtime 源目录里存在可分发解释器：`bin/python`。
+
+构建带 Python sidecar 的 macOS 安装包：
+
+```bash
+KNOWDISK_PYTHON_RUNTIME_DIR=/abs/path/to/python-runtime bun run build
+```
+
+在打包后的 macOS 应用里，Bun 主进程不会再通过 `uv` 启动 worker，而是直接从 app resources 里解析：
+
+```text
+python-runtime/bin/python
+python-worker/worker/__main__.py
+```
+
+现在 `bun run build` 会在内部先执行 `prepare:python-runtime`，所以构建 macOS 安装包时必须提供 `KNOWDISK_PYTHON_RUNTIME_DIR`。
+
 测试：
 
 ```bash
-bun test
+bun run python:test
 ```
+
+当前分支用于 Python worker 迁移的验证命令：
+
+```bash
+bun test src/bun/python-worker-command.test.ts src/bun/python-worker.integration.test.ts src/bun/app.container.test.ts src/bun/python-worker-runtime.test.ts src/bun/python-worker-app-runtime.test.ts src/bun/python-worker-indexing-hooks.test.ts src/bun/python-worker-node-context.test.ts src/bun/python-worker-status.test.ts electrobun.config.test.ts scripts/prepare-python-runtime.test.ts
+bun run python:test
+```
+
+注意：仓库目前仍有一些与本次改动无关的基线依赖缺失问题，所以 `bun test` 还不能作为这个分支的稳定验证命令。
 
 类型检查（不影响运行时构建配置）：
 
