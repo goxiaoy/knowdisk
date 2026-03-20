@@ -48,8 +48,8 @@ def test_request_parsers_normalize_server_params():
                 "mountId": "mount-1",
             },
             "mount": {
-                "directory": "/tmp/mount",
-                "contentDir": "/tmp/content",
+                "syncedContentPath": "/tmp/content/hello.md",
+                "localFilePath": "/tmp/mount/hello.md",
                 "providerType": "local",
             },
         }
@@ -58,6 +58,7 @@ def test_request_parsers_normalize_server_params():
     search_request = parse_search_request({"query": "hello"})
 
     assert index_request.node.node_id == "node-1"
-    assert index_request.mount.content_dir == "/tmp/content"
+    assert index_request.mount.synced_content_path == "/tmp/content/hello.md"
+    assert index_request.mount.local_file_path == "/tmp/mount/hello.md"
     assert delete_request.node_id == "node-2"
     assert search_request.query == "hello"

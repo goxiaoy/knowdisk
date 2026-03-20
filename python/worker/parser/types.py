@@ -40,22 +40,22 @@ class ParserNode:
 
 @dataclass(frozen=True, slots=True)
 class ParserMount:
-    directory: str
-    content_dir: str = ""
+    synced_content_path: str = ""
+    local_file_path: str = ""
     provider_type: str = ""
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> ParserMount:
         return cls(
-            directory=str(value.get("directory") or ""),
-            content_dir=str(value.get("contentDir") or ""),
+            synced_content_path=str(value.get("syncedContentPath") or ""),
+            local_file_path=str(value.get("localFilePath") or ""),
             provider_type=str(value.get("providerType") or ""),
         )
 
     def to_legacy_dict(self) -> dict[str, object]:
         return {
-            "directory": self.directory,
-            "contentDir": self.content_dir,
+            "syncedContentPath": self.synced_content_path,
+            "localFilePath": self.local_file_path,
             "providerType": self.provider_type,
         }
 

@@ -77,8 +77,8 @@ function buildPythonWorkerRebuildItems(input: {
     if (mount.providerType !== "local") {
       continue;
     }
-    const directory = mount.providerExtra.directory;
-    if (typeof directory !== "string" || directory.trim().length === 0) {
+    const localRoot = mount.providerExtra.directory;
+    if (typeof localRoot !== "string" || localRoot.trim().length === 0) {
       continue;
     }
 
@@ -97,8 +97,8 @@ function buildPythonWorkerRebuildItems(input: {
         mount: {
           mountId: mount.mountId,
           providerType: mount.providerType,
-          directory,
-          contentDir: join(input.contentRootDir, mount.mountId),
+          syncedContentPath: join(input.contentRootDir, mount.mountId, node.sourceRef),
+          localFilePath: join(localRoot, node.sourceRef),
         },
       });
     }

@@ -12,8 +12,8 @@ export type PythonWorkerNodeContext = {
   mount: {
     mountId: string;
     providerType: string;
-    directory: string;
-    contentDir: string;
+    syncedContentPath: string;
+    localFilePath: string;
   };
 };
 
@@ -39,7 +39,7 @@ export async function buildPythonWorkerNodeContext(input: {
     throw new Error("python worker only supports local provider mounts");
   }
 
-  const directory = normalizeLocalDirectory(mount.providerExtra);
+  const localFilePath = normalizeLocalDirectory(mount.providerExtra);
   return {
     node: {
       nodeId: node.nodeId,
@@ -51,8 +51,8 @@ export async function buildPythonWorkerNodeContext(input: {
     mount: {
       mountId: node.mountId,
       providerType: mount.providerType,
-      directory,
-      contentDir: join(input.contentRootDir, node.mountId),
+      syncedContentPath: join(input.contentRootDir, node.mountId, node.sourceRef),
+      localFilePath: join(localFilePath, node.sourceRef),
     },
   };
 }

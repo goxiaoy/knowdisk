@@ -51,9 +51,8 @@ def parse_node(
         ]
 
     source_path = resolve_local_source_path(
-        source_ref=parsed_node.source_ref,
-        directory=parsed_mount.directory,
-        content_dir=parsed_mount.content_dir,
+        synced_content_path=parsed_mount.synced_content_path,
+        local_file_path=parsed_mount.local_file_path,
     )
     suffix = Path(parsed_node.name).suffix.lower()
 
@@ -65,13 +64,12 @@ def parse_node(
     return attach_source_path(chunks, str(source_path))
 
 
-def resolve_local_source_path(source_ref: str, directory: str, content_dir: str) -> Path:
-    relative_path = Path(source_ref)
-    if content_dir:
-        candidate = Path(content_dir) / relative_path
+def resolve_local_source_path(synced_content_path: str, local_file_path: str) -> Path:
+    if synced_content_path:
+        candidate = Path(synced_content_path)
         if candidate.exists():
             return candidate
-    return Path(directory) / relative_path
+    return Path(local_file_path)
 
 
 def attach_source_path(chunks: list[dict[str, object]], source_path: str) -> list[dict[str, object]]:

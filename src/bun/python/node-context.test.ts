@@ -54,8 +54,8 @@ describe("buildPythonWorkerNodeContext", () => {
       mount: {
         mountId: "mount-1",
         providerType: "local",
-        directory: "/tmp/source",
-        contentDir: "/app/vfs/content/mount-1",
+        syncedContentPath: "/app/vfs/content/mount-1/docs/note.md",
+        localFilePath: "/tmp/source/docs/note.md",
       },
     });
   });

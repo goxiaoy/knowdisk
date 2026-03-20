@@ -60,8 +60,8 @@ describe("python worker integration", () => {
       mount: {
         mountId: "mount-1",
         providerType: "local",
-        directory: sourceDir,
-        contentDir: "",
+        syncedContentPath: "",
+        localFilePath: join(sourceDir, "note.md"),
       },
     });
 

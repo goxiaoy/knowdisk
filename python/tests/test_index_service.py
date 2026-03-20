@@ -56,8 +56,8 @@ def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
                 mount_id="m1",
             ),
             mount=ParserMount(
-                directory="/tmp",
-                content_dir="",
+                synced_content_path="",
+                local_file_path="/tmp/hello.md",
                 provider_type="local",
             ),
         )
@@ -104,8 +104,8 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
                 mount_id="m1",
             ),
             mount=ParserMount(
-                directory="/tmp",
-                content_dir="",
+                synced_content_path="",
+                local_file_path="/tmp/hello.md",
                 provider_type="local",
             ),
         )
@@ -152,8 +152,8 @@ def test_search_returns_repository_rows(tmp_path):
                 mount_id="m1",
             ),
             mount=ParserMount(
-                directory="/tmp",
-                content_dir="",
+                synced_content_path="",
+                local_file_path="/tmp/hello.md",
                 provider_type="local",
             ),
         )
@@ -212,8 +212,8 @@ def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
                 mount_id="m1",
             ),
             mount=ParserMount(
-                directory="/tmp",
-                content_dir="",
+                synced_content_path="",
+                local_file_path="/tmp/mixed.md",
                 provider_type="local",
             ),
         )

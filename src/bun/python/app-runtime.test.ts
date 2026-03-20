@@ -125,8 +125,8 @@ describe("createPythonWorkerAppRuntime", () => {
       mount: {
         mountId: "mount-local",
         providerType: "local",
-        directory: "/tmp/source",
-        contentDir: "/tmp/content/mount-local",
+        syncedContentPath: "/tmp/content/mount-local/docs/note.md",
+        localFilePath: "/tmp/source/docs/note.md",
       },
     });
 

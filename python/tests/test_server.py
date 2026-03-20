@@ -131,7 +131,7 @@ def test_index_node_delegates_to_index_service():
             "method": "index_node",
             "params": {
                 "node": {"nodeId": "node-1", "name": "a.md"},
-                "mount": {"directory": "/tmp", "contentDir": ""},
+                "mount": {"syncedContentPath": "", "localFilePath": "/tmp/a.md"},
             },
         }
     )
@@ -148,8 +148,8 @@ def test_index_node_delegates_to_index_service():
                 mount_id="",
             ),
             ParserMount(
-                directory="/tmp",
-                content_dir="",
+                synced_content_path="",
+                local_file_path="/tmp/a.md",
                 provider_type="",
             ),
         )

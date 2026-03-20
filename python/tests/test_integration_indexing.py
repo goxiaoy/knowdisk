@@ -41,8 +41,8 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(tmp_path: Pat
                     provider_type="local",
                 ),
                 mount=ParserMount(
-                    directory=str(source_dir),
-                    content_dir="",
+                    synced_content_path="",
+                    local_file_path=str(source_dir / "note.md"),
                     provider_type="local",
                 ),
             ),
@@ -99,8 +99,8 @@ def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: 
                 provider_type="local",
             ),
             mount=ParserMount(
-                directory=str(source_dir),
-                content_dir="",
+                synced_content_path="",
+                local_file_path=str(source_dir / "paper.pdf"),
                 provider_type="local",
             ),
         ),
@@ -143,8 +143,8 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
                     provider_type="local",
                 ),
                 mount=ParserMount(
-                    directory=str(source_dir),
-                    content_dir="",
+                    synced_content_path="",
+                    local_file_path=str(source_dir / "a.md"),
                     provider_type="local",
                 ),
             ),
@@ -162,8 +162,8 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
                     provider_type="local",
                 ),
                 mount=ParserMount(
-                    directory=str(source_dir),
-                    content_dir="",
+                    synced_content_path="",
+                    local_file_path=str(source_dir / "b.txt"),
                     provider_type="local",
                 ),
             ),

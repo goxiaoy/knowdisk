@@ -18,8 +18,8 @@ def test_selects_simple_parser_for_markdown_local_node(tmp_path: Path):
             "sourceRef": "notes.md",
         },
         mount={
-            "directory": str(source_dir),
-            "contentDir": "",
+            "syncedContentPath": "",
+            "localFilePath": str(source_file),
         },
     )
 
@@ -43,8 +43,8 @@ def test_selects_simple_parser_for_typed_markdown_local_node(tmp_path: Path):
             mount_id="mount-1",
         ),
         mount=ParserMount(
-            directory=str(source_dir),
-            content_dir="",
+            synced_content_path="",
+            local_file_path=str(source_file),
             provider_type="local",
         ),
     )
@@ -68,8 +68,8 @@ def test_selects_docling_for_pdf_local_node(tmp_path: Path):
             "sourceRef": "paper.pdf",
         },
         mount={
-            "directory": str(source_dir),
-            "contentDir": "",
+            "syncedContentPath": "",
+            "localFilePath": str(source_file),
         },
         parse_docling=lambda node, source_path: [
             {
@@ -107,8 +107,8 @@ def test_prefers_content_dir_when_available(tmp_path: Path):
             "sourceRef": "doc.txt",
         },
         mount={
-            "directory": str(source_dir),
-            "contentDir": str(content_dir),
+            "syncedContentPath": str(mirrored),
+            "localFilePath": str(source_dir / "doc.txt"),
         },
     )
 
@@ -125,8 +125,8 @@ def test_returns_structured_error_for_unsupported_provider():
             "sourceRef": "remote.md",
         },
         mount={
-            "directory": "/tmp/ignored",
-            "contentDir": "",
+            "syncedContentPath": "",
+            "localFilePath": "/tmp/ignored/remote.md",
         },
     )
 

@@ -19,8 +19,8 @@ def test_parser_domain_models_normalize_mapping_inputs():
     )
     mount = ParserMount.from_mapping(
         {
-            "directory": "/tmp/mount",
-            "contentDir": "/tmp/content",
+            "syncedContentPath": "/tmp/content/notes.md",
+            "localFilePath": "/tmp/mount/notes.md",
             "providerType": "local",
         }
     )
@@ -30,8 +30,8 @@ def test_parser_domain_models_normalize_mapping_inputs():
     assert node.source_ref == "notes.md"
     assert node.provider_type == "local"
     assert node.mount_id == "mount-1"
-    assert mount.directory == "/tmp/mount"
-    assert mount.content_dir == "/tmp/content"
+    assert mount.synced_content_path == "/tmp/content/notes.md"
+    assert mount.local_file_path == "/tmp/mount/notes.md"
 
 
 def test_parsed_chunk_to_legacy_dict_round_trips_nested_source_and_error():
