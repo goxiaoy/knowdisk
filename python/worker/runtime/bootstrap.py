@@ -9,7 +9,6 @@ from tempfile import gettempdir
 from typing import BinaryIO, TextIO
 
 from worker.index.queue import IndexQueue
-from worker.index.queue_store import SQLiteIndexQueueStore
 from worker.index.service import IndexService
 from worker.model.service import ModelService
 from worker.parser.service import parse_node
@@ -87,10 +86,7 @@ def create_worker_runtime(
         embedding_runtime_loader=_fake_embedding_runtime_loader if use_fake_model_runtime else None,
         reranker_runtime_loader=_fake_reranker_runtime_loader if use_fake_model_runtime else None,
     )
-    index_queue = IndexQueue(
-        status_store=index_status_store,
-        queue_store=SQLiteIndexQueueStore(default_base_path / "queue.sqlite3"),
-    )
+    index_queue = IndexQueue(status_store=index_status_store)
     index_service = IndexService(
         parse_node=parse_node,
         model_service=model_service,
