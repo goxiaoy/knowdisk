@@ -6,6 +6,8 @@ dist/
 build/
 out/
 release/
+artifacts/
+vendor/
 
 # TypeScript
 *.tsbuildinfo

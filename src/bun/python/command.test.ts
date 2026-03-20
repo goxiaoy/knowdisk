@@ -93,7 +93,7 @@ describe("resolvePythonWorkerCommand", () => {
     expect(
       resolvePythonWorkerCommandForRuntime({
         platform: "darwin",
-        isPackaged: false,
+        channel: "dev",
         execPath: "/usr/local/bin/bun",
       })
     ).toEqual([
@@ -104,6 +104,19 @@ describe("resolvePythonWorkerCommand", () => {
       "python",
       "-m",
       "worker",
+    ]);
+  });
+
+  test("uses bundled python runtime outside the dev channel on macos", () => {
+    expect(
+      resolvePythonWorkerCommandForRuntime({
+        platform: "darwin",
+        channel: "prod",
+        execPath: "/Applications/Know Disk.app/Contents/MacOS/Know Disk",
+      })
+    ).toEqual([
+      "/Applications/Know Disk.app/Contents/Resources/python-runtime/bin/python",
+      "/Applications/Know Disk.app/Contents/Resources/python-worker/worker/__main__.py",
     ]);
   });
 });

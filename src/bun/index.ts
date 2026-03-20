@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import Electrobun, {
   BrowserWindow,
+  Updater,
   Utils,
   defineElectrobunRPC,
 } from "electrobun/bun";
@@ -37,6 +38,7 @@ import { buildParserDocumentPath, deriveMarkdownTitle } from "./parser-artifacts
 import { createPythonWorkerAppRuntime } from "./python/app-runtime";
 import { resolvePythonWorkerCommandForRuntime } from "./python/command";
 import { sanitizePythonWorkerStderrLine } from "./python/logging";
+import { isDevelopmentChannel } from "./runtime-mode";
 import { createPythonWorkerRuntime } from "./python/runtime";
 import { createPythonWorkerStatusStore } from "./python/status";
 import { createPythonWorkerTransport } from "./python/transport";
@@ -52,6 +54,8 @@ import {
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 const PROD_VIEW_URL = "views://app/index.html";
+const runtimeChannel = await Updater.localInfo.channel();
+const useDevelopmentRuntime = isDevelopmentChannel(runtimeChannel);
 
 type AppRPCSchema = {
   bun: {
@@ -120,7 +124,7 @@ const app = createAppContainer();
 const pythonWorkerTransport = createPythonWorkerTransport({
   command: resolvePythonWorkerCommandForRuntime({
     platform: process.platform,
-    isPackaged: process.env.NODE_ENV !== "development",
+    channel: runtimeChannel,
     execPath: process.execPath,
   }),
 });
@@ -519,7 +523,7 @@ const mainWindow = new BrowserWindow({
   title: "Knowdisk",
   url:
     process.env.ELECTROBUN_RENDERER_URL?.trim() ||
-    (process.env.NODE_ENV === "development" ? DEV_SERVER_URL : PROD_VIEW_URL),
+    (useDevelopmentRuntime ? DEV_SERVER_URL : PROD_VIEW_URL),
   frame: {
     width: 1400,
     height: 900,

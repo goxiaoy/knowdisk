@@ -52,10 +52,10 @@ function findPythonProjectDir(startDir: string): string | null {
 
 export function resolvePythonWorkerCommandForRuntime(input: {
   platform: NodeJS.Platform;
-  isPackaged: boolean;
+  channel: string;
   execPath: string;
 }): [string, ...string[]] {
-  if (input.isPackaged && input.platform === "darwin") {
+  if (input.channel !== "dev" && input.platform === "darwin") {
     return resolvePythonWorkerCommand({
       mode: "packaged-macos",
       repoPythonProjectDir: "",
