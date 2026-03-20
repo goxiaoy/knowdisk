@@ -454,6 +454,7 @@ def test_search_title_only_restricts_fts_matches_to_titles(tmp_path):
     results = service.search("query", title_only=True)
 
     assert [row["title"] for row in results["debug"]["ftsResults"]] == ["query in title"]
+    assert [row["title"] for row in results["debug"]["finalResults"]] == ["query in title"]
 
 
 def test_search_reranker_reorders_final_results(tmp_path):
@@ -523,3 +524,117 @@ def test_search_reranker_reorders_final_results(tmp_path):
 
     assert results["debug"]["mergedCandidates"][0]["title"] == "first"
     assert results["debug"]["finalResults"][0]["title"] == "second"
+
+
+def test_reindex_with_no_valid_chunks_clears_previous_vector_and_sqlite_rows(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
+    parse_results = [
+        [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "stale content",
+                "title": "stale",
+                "source": {"nodeId": "node-stale", "name": "stale.md", "path": "/tmp/stale.md"},
+            }
+        ],
+        [
+            {
+                "status": "skipped",
+                "chunkIndex": 0,
+                "text": "",
+                "title": "",
+                "source": {"nodeId": "node-stale", "name": "stale.md", "path": "/tmp/stale.md"},
+            }
+        ],
+    ]
+    service = IndexService(
+        parse_node=lambda node, mount: parse_results.pop(0),
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
+        )(),
+        vector_repository=repository,
+        chunk_store=chunk_store,
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+    request = IndexNodeRequest(
+        node=ParserNode(
+            node_id="node-stale",
+            name="stale.md",
+            source_ref="stale.md",
+            provider_type="local",
+            mount_id="m1",
+        ),
+        mount=ParserMount(
+            synced_content_path="",
+            local_file_path="/tmp/stale.md",
+            provider_type="local",
+        ),
+    )
+
+    service.index_node(request)
+    assert repository.count_chunks() == 1
+    assert chunk_store.count_chunks() == 1
+
+    service.index_node(request)
+
+    assert repository.count_chunks() == 0
+    assert chunk_store.count_chunks() == 0
+    assert service.search("stale")["debug"]["finalResults"] == []
+
+
+def test_search_escapes_special_fts_characters_in_query(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
+    service = IndexService(
+        parse_node=lambda node, mount: [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "release foo-bar notes",
+                "title": "foo-bar",
+                "source": {"nodeId": node.node_id, "name": node.name, "path": "/tmp/foo.md"},
+            }
+        ],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
+        )(),
+        vector_repository=repository,
+        chunk_store=chunk_store,
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+    service.index_node(
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-special",
+                name="foo.md",
+                source_ref="foo.md",
+                provider_type="local",
+                mount_id="m1",
+            ),
+            mount=ParserMount(
+                synced_content_path="",
+                local_file_path="/tmp/foo.md",
+                provider_type="local",
+            ),
+        )
+    )
+
+    results = service.search('foo-bar "v1"')
+
+    assert any(row["nodeId"] == "node-special" for row in results["debug"]["finalResults"])

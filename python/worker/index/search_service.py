@@ -36,6 +36,10 @@ class SearchService:
                 self._vector_repository.search(query_embedding, limit=limit)
             )
         ]
+        if title_only:
+            vector_results = [
+                row for row in vector_results if _title_matches_query(query, str(row.get("title") or ""))
+            ]
         merged_candidates = _merge_candidates(fts_results, vector_results)
         reranked_results = _rerank_candidates(
             query=query,
@@ -130,3 +134,11 @@ def _score_with_reranker(
     if isinstance(fts_score, (int, float)):
         return float(fts_score)
     return 0.0
+
+
+def _title_matches_query(query: str, title: str) -> bool:
+    normalized_title = title.lower()
+    tokens = [token.lower() for token in query.split() if token]
+    if not tokens:
+        return False
+    return any(token in normalized_title for token in tokens)

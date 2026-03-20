@@ -147,7 +147,12 @@ class SQLiteChunkStore:
 
 
 def _normalize_fts_query(query: str) -> str:
-    tokens = [token for token in query.strip().split() if token]
+    tokens = [_escape_fts_token(token) for token in query.strip().split() if token]
     if not tokens:
         return ""
     return " OR ".join(tokens)
+
+
+def _escape_fts_token(token: str) -> str:
+    normalized = token.replace('"', '""').strip()
+    return f'"{normalized}"'

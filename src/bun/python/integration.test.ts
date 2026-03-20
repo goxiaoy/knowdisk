@@ -77,6 +77,7 @@ describe("python worker integration", () => {
     const searchResult = await transport.request("search", {
       query: "integration",
     });
+    await waitFor(() => statusStore.getIndexStatus().phase === "idle");
 
     expect(statusStore.getIndexStatus().available).toBe(true);
     expect(statusStore.getIndexStatus().phase).toBe("idle");

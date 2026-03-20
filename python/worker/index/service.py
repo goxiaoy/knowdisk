@@ -71,6 +71,8 @@ class IndexService:
             )
             rows.append(row)
 
+        self._vector_repository.delete_by_node_id(parsed_request.node.node_id)
+        self._chunk_store.delete_by_node_id(parsed_request.node.node_id)
         self._vector_repository.upsert_chunks(rows)
         self._chunk_store.upsert_chunks(rows)
         self._search_rows = [
