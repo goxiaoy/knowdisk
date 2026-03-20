@@ -2,6 +2,7 @@ import threading
 from pathlib import Path
 
 import worker.index.queue as queue_module
+import worker.index.queue_store as queue_store_module
 from worker.index.queue import IndexQueue
 from worker.index.queue_store import SQLiteIndexQueueStore
 from worker.runtime.status import IndexStatusStore
@@ -91,26 +92,38 @@ def test_incremental_jobs_persist_through_index_queue_instances(tmp_path: Path):
     }
 
 
-def test_incremental_completion_event_matches_persisted_idle_snapshot(tmp_path: Path):
+def test_incremental_completion_event_matches_persisted_non_idle_snapshot_when_queue_depth_remains(
+    tmp_path: Path,
+):
     emitted: list[dict] = []
+    queue_store = SQLiteIndexQueueStore(tmp_path / "index-queue.sqlite3")
+    queue_store.update(
+        phase="indexing",
+        scope="incremental",
+        queueDepth=1,
+        processedFiles=0,
+        totalFiles=1,
+        activeNodeName="seed.md",
+        error="",
+    )
     queue = IndexQueue(
         status_store=IndexStatusStore(event_sink=emitted.append),
-        queue_store=SQLiteIndexQueueStore(tmp_path / "index-queue.sqlite3"),
+        queue_store=queue_store,
     )
 
     queue.enqueue_incremental("a.md", lambda: None)
 
-    assert emitted[-1]["payload"] == queue.snapshot()
     assert emitted[-1]["payload"] == {
         "available": True,
-        "phase": "idle",
-        "scope": None,
-        "queueDepth": 0,
-        "processedFiles": 1,
+        "phase": "indexing",
+        "scope": "incremental",
+        "queueDepth": 1,
+        "processedFiles": 0,
         "totalFiles": 1,
-        "activeNodeName": "",
+        "activeNodeName": "a.md",
         "error": "",
     }
+    assert queue.snapshot() == emitted[-1]["payload"]
 
 
 def test_default_queue_path_is_shared_between_index_queue_instances(
@@ -207,3 +220,33 @@ def test_shared_sqlite_queue_depth_updates_are_atomic(tmp_path: Path):
         }
     finally:
         queue_module.SQLiteIndexQueueStore.snapshot = original_snapshot  # type: ignore[assignment]
+
+
+def test_stale_persisted_indexing_snapshot_is_reset_on_fresh_store_initialization(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "index-queue.sqlite3"
+    first_store = SQLiteIndexQueueStore(db_path)
+    first_store.update(
+        phase="indexing",
+        scope="incremental",
+        queueDepth=2,
+        processedFiles=0,
+        totalFiles=1,
+        activeNodeName="stale.md",
+        error="",
+    )
+
+    queue_store_module._INITIALIZED_QUEUE_PATHS.clear()
+    second_store = SQLiteIndexQueueStore(db_path)
+
+    assert second_store.snapshot() == {
+        "available": False,
+        "phase": "idle",
+        "scope": None,
+        "queueDepth": 0,
+        "processedFiles": 0,
+        "totalFiles": 0,
+        "activeNodeName": "",
+        "error": "",
+    }

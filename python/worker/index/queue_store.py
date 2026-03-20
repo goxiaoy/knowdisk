@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from typing import cast
 
 from worker.runtime.types import IndexStatusSnapshot, create_default_index_status_snapshot
 
 _MISSING = object()
+_INITIALIZED_QUEUE_PATHS: set[str] = set()
+_INITIALIZED_QUEUE_PATHS_LOCK = threading.Lock()
 
 
 class SQLiteIndexQueueStore:
@@ -14,6 +17,7 @@ class SQLiteIndexQueueStore:
         self._db_path = Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
+        self._normalize_recovered_snapshot_once()
 
     def snapshot(self) -> IndexStatusSnapshot:
         with self._connect() as connection:
@@ -84,16 +88,16 @@ class SQLiteIndexQueueStore:
                 """
                 UPDATE index_queue_snapshot
                 SET available = 1,
-                    phase = 'idle',
-                    scope = NULL,
+                    phase = CASE WHEN queueDepth > 1 THEN phase ELSE 'idle' END,
+                    scope = CASE WHEN queueDepth > 1 THEN scope ELSE NULL END,
                     queueDepth = CASE
                         WHEN queueDepth > 0 THEN queueDepth - 1
                         ELSE 0
                     END,
-                    processedFiles = 1,
-                    totalFiles = 1,
-                    activeNodeName = '',
-                    error = ''
+                    processedFiles = CASE WHEN queueDepth > 1 THEN processedFiles ELSE 1 END,
+                    totalFiles = CASE WHEN queueDepth > 1 THEN totalFiles ELSE 1 END,
+                    activeNodeName = CASE WHEN queueDepth > 1 THEN activeNodeName ELSE '' END,
+                    error = CASE WHEN queueDepth > 1 THEN error ELSE '' END
                 WHERE id = 1
                 """
             )
@@ -126,6 +130,19 @@ class SQLiteIndexQueueStore:
                 ) VALUES (1, 0, 'idle', NULL, 0, 0, 0, '', '')
                 """
             )
+
+    def _normalize_recovered_snapshot_once(self) -> None:
+        path_key = str(self._db_path)
+        with _INITIALIZED_QUEUE_PATHS_LOCK:
+            if path_key in _INITIALIZED_QUEUE_PATHS:
+                return
+            _INITIALIZED_QUEUE_PATHS.add(path_key)
+
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            snapshot = self._read_snapshot(connection)
+            if snapshot["phase"] == "indexing":
+                self._persist(connection, create_default_index_status_snapshot())
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path, timeout=30)
