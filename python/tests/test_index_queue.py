@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import worker.index.queue as queue_module
 from worker.index.queue import IndexQueue
 from worker.index.queue_store import SQLiteIndexQueueStore
 from worker.runtime.status import IndexStatusStore
@@ -87,3 +88,33 @@ def test_incremental_jobs_persist_through_index_queue_instances(tmp_path: Path):
         "activeNodeName": "",
         "error": "",
     }
+
+
+def test_default_queue_path_is_shared_between_index_queue_instances(
+    monkeypatch, tmp_path: Path
+):
+    monkeypatch.setattr(queue_module, "gettempdir", lambda: str(tmp_path))
+
+    first_queue = IndexQueue(status_store=IndexStatusStore(event_sink=lambda event: None))
+    snapshots: list[dict] = []
+
+    def job() -> None:
+        second_queue = IndexQueue(
+            status_store=IndexStatusStore(event_sink=lambda event: None),
+        )
+        snapshots.append(second_queue.snapshot())
+
+    first_queue.enqueue_incremental("a.md", job)
+
+    assert snapshots == [
+        {
+            "available": True,
+            "phase": "indexing",
+            "scope": "incremental",
+            "queueDepth": 1,
+            "processedFiles": 0,
+            "totalFiles": 1,
+            "activeNodeName": "a.md",
+            "error": "",
+        }
+    ]
