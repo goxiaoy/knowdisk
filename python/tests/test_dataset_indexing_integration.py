@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from worker.index.service import IndexService
@@ -60,22 +61,26 @@ def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
     assert "Image described markdown" in (
         parser_dir / "node-image" / "document.md"
     ).read_text(encoding="utf-8")
+    with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
+        count = connection.execute("SELECT COUNT(*) FROM index_chunks").fetchone()[0]
+    assert count == 4
+
+    markdown_search = index_service.search("github markup")
+    assert markdown_search["debug"]["ftsResults"]
+    assert markdown_search["debug"]["vectorResults"]
+    assert markdown_search["debug"]["rerankedResults"]
     assert any(
         result["nodeId"] == "node-md"
-        for result in index_service.search("github markup")["debug"]["finalResults"]
+        for result in markdown_search["debug"]["finalResults"]
     )
-    assert any(
-        result["nodeId"] == "node-json"
-        for result in index_service.search("parser example")["debug"]["finalResults"]
-    )
-    assert any(
-        result["nodeId"] == "node-pdf"
-        for result in index_service.search("paper extracted")["debug"]["finalResults"]
-    )
-    assert any(
-        result["nodeId"] == "node-image"
-        for result in index_service.search("image described")["debug"]["finalResults"]
-    )
+    assert isinstance(markdown_search["debug"]["finalResults"][0]["rerankScore"], float)
+
+    json_search = index_service.search("parser example")
+    assert any(result["nodeId"] == "node-json" for result in json_search["debug"]["finalResults"])
+    pdf_search = index_service.search("paper extracted")
+    assert any(result["nodeId"] == "node-pdf" for result in pdf_search["debug"]["finalResults"])
+    image_search = index_service.search("image described")
+    assert any(result["nodeId"] == "node-image" for result in image_search["debug"]["finalResults"])
 
 
 def create_dataset_parser():
@@ -114,10 +119,14 @@ def create_dataset_parser():
 
 
 def create_model_service() -> ModelService:
+    def rerank(query: str, candidate: dict[str, object]) -> float:
+        haystack = f'{candidate.get("title", "")}\n{candidate.get("text", "")}'.lower()
+        return 100.0 if query.lower() in haystack else 0.0
+
     return ModelService(
         status_store=ModelStatusStore(event_sink=lambda event: None),
         verify_embedding=lambda: None,
         verify_reranker=lambda: None,
         load_embedding_runtime=lambda: lambda text: [float(len(text))],
-        load_reranker_runtime=lambda: {"provider": "stub-reranker"},
+        load_reranker_runtime=lambda: rerank,
     )

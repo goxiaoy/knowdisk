@@ -75,6 +75,10 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(
         assert runtime.server.services.index_queue.snapshot()["phase"] == "idle"
         assert runtime.server.services.index_service.vector_status_snapshot()["chunkCount"] == 1
         search_payload = runtime.server.services.index_service.search("integration")
+        assert search_payload["debug"]["ftsResults"]
+        assert search_payload["debug"]["vectorResults"]
+        assert search_payload["debug"]["rerankedResults"]
+        assert isinstance(search_payload["debug"]["finalResults"][0]["rerankScore"], float)
         assert search_payload["debug"]["finalResults"][0]["sourceRef"] == "note.md"
         with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
             row = connection.execute(
