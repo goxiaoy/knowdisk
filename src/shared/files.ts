@@ -51,6 +51,38 @@ export type GetFileMarkdownRequest = {
   nodeId: string;
 };
 
+export type SearchRequest = {
+  query: string;
+  titleOnly?: boolean;
+};
+
+export type SearchResult = {
+  chunkId?: string;
+  nodeId: string;
+  mountId?: string;
+  sourceRef?: string;
+  name?: string;
+  title?: string;
+  text?: string;
+  score?: number;
+  ftsScore?: number;
+  vectorScore?: number;
+  rerankScore?: number;
+  matchedBy?: string[];
+};
+
+export type SearchResponse =
+  | {
+      ok: true;
+      query: string;
+      titleOnly: boolean;
+      finalResults: SearchResult[];
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
 export type GetFileMarkdownResponse =
   | {
       ok: true;

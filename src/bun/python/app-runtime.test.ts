@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { createPythonWorkerAppRuntime } from "./app-runtime";
 
 describe("createPythonWorkerAppRuntime", () => {
-  test("replays local file contexts through index_node during startup", async () => {
+  test("does not replay local file contexts through index_node during startup", async () => {
     const request = mock(async () => ({ ok: true }));
     const offHooks = mock(() => {});
 
@@ -113,22 +113,7 @@ describe("createPythonWorkerAppRuntime", () => {
 
     await runtime.start();
 
-    expect(request).toHaveBeenCalledTimes(1);
-    expect(request).toHaveBeenCalledWith("index_node", {
-      node: {
-        nodeId: "file-1",
-        mountId: "mount-local",
-        name: "note.md",
-        sourceRef: "docs/note.md",
-        providerVersion: "v1",
-      },
-      mount: {
-        mountId: "mount-local",
-        providerType: "local",
-        syncedContentPath: "/tmp/content/mount-local/docs/note.md",
-        localFilePath: "/tmp/source/docs/note.md",
-      },
-    });
+    expect(request).not.toHaveBeenCalled();
 
     runtime.stop();
     expect(offHooks).toHaveBeenCalledTimes(1);

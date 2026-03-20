@@ -21,6 +21,8 @@ import type {
   PickLocalDirectoryResponse,
   RenameFileNodeRequest,
   RenameFileNodeResponse,
+  SearchRequest,
+  SearchResponse,
 } from "../shared/files";
 import { type RendererIndexStatus } from "../shared/index-status";
 import { type RendererModelStatus } from "../shared/model-status";
@@ -39,6 +41,7 @@ import { createPythonWorkerRuntime } from "./python/runtime";
 import { createPythonWorkerStatusStore } from "./python/status";
 import { createPythonWorkerTransport } from "./python/transport";
 import { isMissingRpcSendTransportError } from "./rpc-transport";
+import { buildRecentFileSearchResults } from "./search";
 import {
   applyMountNodeChange,
   applyVfsSyncerEvent,
@@ -96,6 +99,10 @@ type AppRPCSchema = {
       getVectorDbStatus: {
         params: undefined;
         response: RendererVectorDbStatus;
+      };
+      search: {
+        params: SearchRequest;
+        response: SearchResponse;
       };
     };
     messages: Record<never, never>;
@@ -417,6 +424,62 @@ async function getVectorDbStatus(): Promise<RendererVectorDbStatus> {
   return pythonWorkerStatus.getVectorDbStatus();
 }
 
+async function search(input: SearchRequest): Promise<SearchResponse> {
+  const query = input.query.trim();
+  if (!query) {
+    return {
+      ok: true,
+      query,
+      titleOnly: Boolean(input.titleOnly),
+      finalResults: buildRecentFileSearchResults({
+        nodesByMount: app.vfsRepository
+          .listNodeMountExts()
+          .map((mount) => app.vfsRepository.listNodesByMountId(mount.mountId)),
+      }),
+    };
+  }
+
+  try {
+    const response = (await pythonWorkerTransport.request("search", {
+      query,
+      titleOnly: Boolean(input.titleOnly),
+    })) as {
+      query: string;
+      titleOnly: boolean;
+      debug?: { finalResults?: Array<Record<string, unknown>> };
+    };
+
+    return {
+      ok: true,
+      query: response.query,
+      titleOnly: response.titleOnly,
+      finalResults: Array.isArray(response.debug?.finalResults)
+        ? response.debug!.finalResults.map((result) => ({
+            chunkId: typeof result.chunkId === "string" ? result.chunkId : undefined,
+            nodeId: String(result.nodeId ?? ""),
+            mountId: typeof result.mountId === "string" ? result.mountId : undefined,
+            sourceRef: typeof result.sourceRef === "string" ? result.sourceRef : undefined,
+            name: typeof result.name === "string" ? result.name : undefined,
+            title: typeof result.title === "string" ? result.title : undefined,
+            text: typeof result.text === "string" ? result.text : undefined,
+            score: typeof result.score === "number" ? result.score : undefined,
+            ftsScore: typeof result.ftsScore === "number" ? result.ftsScore : undefined,
+            vectorScore: typeof result.vectorScore === "number" ? result.vectorScore : undefined,
+            rerankScore: typeof result.rerankScore === "number" ? result.rerankScore : undefined,
+            matchedBy: Array.isArray(result.matchedBy)
+              ? result.matchedBy.filter((item): item is string => typeof item === "string")
+              : undefined,
+          }))
+        : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 void hydrateMountedVfsStatus().catch((error) => {
   app.logger.error(
     {
@@ -446,6 +509,7 @@ const rpc = defineElectrobunRPC<AppRPCSchema>("bun", {
       deleteFileNode,
       renameFileNode,
       getVectorDbStatus,
+      search,
     },
     messages: {},
   },

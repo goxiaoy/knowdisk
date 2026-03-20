@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import renderer from "react-test-renderer";
+import renderer, { act } from "react-test-renderer";
 import { AppShell } from "./app-shell";
 import { FALLBACK_INDEX_STATUS } from "../../../shared/index-status";
 import { FALLBACK_MODEL_STATUS } from "../../../shared/model-status";
@@ -20,6 +20,10 @@ test("app shell keeps the viewport fixed and relies on internal scrolling", () =
           ok: true,
           node: { nodeId: "n1", parentId: null, name: "demo", kind: "file" },
         }),
+      }}
+      searchApi={{
+        search: async () => ({ ok: true, query: "", titleOnly: false, finalResults: [] }),
+        getFileMarkdown: async () => ({ ok: true, markdown: "", title: null }),
       }}
       modelStatus={FALLBACK_MODEL_STATUS}
       indexStatus={FALLBACK_INDEX_STATUS}
@@ -54,6 +58,10 @@ test("app shell lets sidebar overlays escape and stack above the main panel", ()
           node: { nodeId: "n1", parentId: null, name: "demo", kind: "file" },
         }),
       }}
+      searchApi={{
+        search: async () => ({ ok: true, query: "", titleOnly: false, finalResults: [] }),
+        getFileMarkdown: async () => ({ ok: true, markdown: "", title: null }),
+      }}
       modelStatus={FALLBACK_MODEL_STATUS}
       indexStatus={FALLBACK_INDEX_STATUS}
       onNavigate={() => {}}
@@ -86,6 +94,10 @@ test("app shell keeps a fixed sidebar width and lets the main panel fill remaini
           node: { nodeId: "n1", parentId: null, name: "demo", kind: "file" },
         }),
       }}
+      searchApi={{
+        search: async () => ({ ok: true, query: "", titleOnly: false, finalResults: [] }),
+        getFileMarkdown: async () => ({ ok: true, markdown: "", title: null }),
+      }}
       modelStatus={FALLBACK_MODEL_STATUS}
       indexStatus={FALLBACK_INDEX_STATUS}
       onNavigate={() => {}}
@@ -104,4 +116,79 @@ test("app shell keeps a fixed sidebar width and lets the main panel fill remaini
   expect(grid).toBeTruthy();
   expect(String(grid.props.className)).toContain("w-full");
   expect(String(grid.props.className)).toContain("max-w-none");
+});
+
+test("app shell preserves search panel state across route switches", async () => {
+  const searchApi = {
+    search: async ({ query }: { query: string; titleOnly?: boolean }) => ({
+      ok: true as const,
+      query,
+      titleOnly: false as const,
+      finalResults: [{ nodeId: "node-1", title: "Alpha", text: "Alpha snippet" }],
+    }),
+    getFileMarkdown: async () => ({ ok: true as const, markdown: "# Alpha", title: "Alpha" }),
+  };
+  const filesApi = {
+    listFilesNodes: async () => ({ items: [] }),
+    pickLocalDirectory: async () => ({ ok: true as const, cancelled: true as const }),
+    mountLocalDirectory: async () => ({ ok: true as const, mountId: "mount-1" }),
+    getFileMarkdown: async () => ({ ok: true as const, markdown: "", title: null }),
+    getFileNodeMetadata: async () => ({ ok: false as const, error: "not implemented" }),
+    deleteFileNode: async () => ({ ok: true as const }),
+    renameFileNode: async () => ({
+      ok: true as const,
+      node: { nodeId: "n1", parentId: null, name: "demo", kind: "file" as const },
+    }),
+  };
+  const tree = renderer.create(
+    <AppShell
+      filesApi={filesApi}
+      searchApi={searchApi}
+      modelStatus={FALLBACK_MODEL_STATUS}
+      indexStatus={FALLBACK_INDEX_STATUS}
+      onNavigate={() => {}}
+      route="/search"
+      vfsStatus={FALLBACK_VFS_STATUS}
+      vectorDbStatus={FALLBACK_VECTOR_DB_STATUS}
+    />
+  );
+
+  const input = tree.root.findByProps({ id: "search-query" });
+  await act(async () => {
+    input.props.onChange({ target: { value: "alpha" } });
+  });
+
+  await act(async () => {
+    tree.update(
+      <AppShell
+        filesApi={filesApi}
+        searchApi={searchApi}
+        modelStatus={FALLBACK_MODEL_STATUS}
+        indexStatus={FALLBACK_INDEX_STATUS}
+        onNavigate={() => {}}
+        route="/chat"
+        vfsStatus={FALLBACK_VFS_STATUS}
+        vectorDbStatus={FALLBACK_VECTOR_DB_STATUS}
+      />
+    );
+  });
+
+  await act(async () => {
+    tree.update(
+      <AppShell
+        filesApi={filesApi}
+        searchApi={searchApi}
+        modelStatus={FALLBACK_MODEL_STATUS}
+        indexStatus={FALLBACK_INDEX_STATUS}
+        onNavigate={() => {}}
+        route="/search"
+        vfsStatus={FALLBACK_VFS_STATUS}
+        vectorDbStatus={FALLBACK_VECTOR_DB_STATUS}
+      />
+    );
+    await Promise.resolve();
+  });
+
+  const nextInput = tree.root.findByProps({ id: "search-query" });
+  expect(nextInput.props.value).toBe("alpha");
 });

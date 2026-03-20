@@ -7,6 +7,7 @@ import type {
   MountLocalDirectoryResponse,
   PickLocalDirectoryResponse,
   RenameFileNodeResponse,
+  SearchResponse,
 } from "../shared/files";
 import { AppShell, type MainRoute } from "@/components/app-shell";
 import { FALLBACK_INDEX_STATUS, type RendererIndexStatus } from "../shared/index-status";
@@ -14,6 +15,7 @@ import { FALLBACK_MODEL_STATUS, type RendererModelStatus } from "../shared/model
 import { ELECTROBUN_RPC_MAX_REQUEST_TIME } from "./rpc-config";
 import { FALLBACK_VECTOR_DB_STATUS, type RendererVectorDbStatus } from "../shared/vector-db-status";
 import { FALLBACK_VFS_STATUS, type RendererVfsStatus } from "../shared/vfs-status";
+import { loadInitialAppState } from "./app-startup";
 
 const DEFAULT_ROUTE: MainRoute = "/chat";
 
@@ -64,6 +66,10 @@ type AppRPCSchema = {
         params: undefined;
         response: RendererVectorDbStatus;
       };
+      search: {
+        params: { query: string; titleOnly?: boolean };
+        response: SearchResponse;
+      };
     };
     messages: Record<never, never>;
   };
@@ -98,6 +104,8 @@ function readRouteFromWindow(): MainRoute {
 
 interface AppProps {
   initialRoute?: MainRoute;
+  initialReady?: boolean;
+  initialStartupError?: string;
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -110,8 +118,10 @@ function isRetryableRpcError(error: unknown): boolean {
   return lowered.includes("timed out") || lowered.includes("rpc unavailable");
 }
 
-export function App({ initialRoute }: AppProps) {
+export function App({ initialRoute, initialReady = false, initialStartupError = "" }: AppProps) {
   const [route, setRoute] = useState<MainRoute>(() => initialRoute ?? readRouteFromWindow());
+  const [appReady, setAppReady] = useState(initialReady);
+  const [startupError, setStartupError] = useState(initialStartupError);
   const [modelStatus, setModelStatus] = useState<RendererModelStatus>(FALLBACK_MODEL_STATUS);
   const [indexStatus, setIndexStatus] = useState<RendererIndexStatus>(FALLBACK_INDEX_STATUS);
   const [vfsStatus, setVfsStatus] = useState<RendererVfsStatus>(FALLBACK_VFS_STATUS);
@@ -134,6 +144,7 @@ export function App({ initialRoute }: AppProps) {
       getVfsStatus: () => Promise<RendererVfsStatus>;
       renameFileNode: (input: { nodeId: string; name: string }) => Promise<RenameFileNodeResponse>;
       getVectorDbStatus: () => Promise<RendererVectorDbStatus>;
+      search: (input: { query: string; titleOnly?: boolean }) => Promise<SearchResponse>;
     };
   }>(null);
 
@@ -156,6 +167,9 @@ export function App({ initialRoute }: AppProps) {
   );
 
   useEffect(() => {
+    if (initialReady || initialStartupError) {
+      return;
+    }
     if (typeof window === "undefined") {
       return;
     }
@@ -208,29 +222,44 @@ export function App({ initialRoute }: AppProps) {
         });
         new Electroview({ rpc });
         rpcRef.current = rpc;
+        if (!cancelled) {
+          setStartupError("");
+          setAppReady(true);
+        }
 
-        const status = await requestWithRetry(() => rpc.request.getModelStatus());
-        if (!cancelled) {
-          setModelStatus(status);
-        }
-        const nextVfsStatus = await requestWithRetry(() => rpc.request.getVfsStatus());
-        if (!cancelled) {
-          setVfsStatus(nextVfsStatus);
-        }
-        const nextIndexStatus = await requestWithRetry(() => rpc.request.getIndexStatus());
-        if (!cancelled) {
-          setIndexStatus(nextIndexStatus);
-        }
-        const nextVectorDbStatus = await requestWithRetry(() => rpc.request.getVectorDbStatus());
-        if (!cancelled) {
-          setVectorDbStatus(nextVectorDbStatus);
-        }
-      } catch {
+        void loadInitialAppState({
+          requestWithRetry,
+          rpc: {
+            getModelStatus: rpc.request.getModelStatus,
+            getVfsStatus: rpc.request.getVfsStatus,
+            getIndexStatus: rpc.request.getIndexStatus,
+            getVectorDbStatus: rpc.request.getVectorDbStatus,
+          },
+        }).then((state) => {
+          if (cancelled) {
+            return;
+          }
+          setModelStatus(state.modelStatus);
+          setVfsStatus(state.vfsStatus);
+          setIndexStatus(state.indexStatus);
+          setVectorDbStatus(state.vectorDbStatus);
+        }).catch(() => {
+          if (cancelled) {
+            return;
+          }
+          setModelStatus(FALLBACK_MODEL_STATUS);
+          setIndexStatus(FALLBACK_INDEX_STATUS);
+          setVfsStatus(FALLBACK_VFS_STATUS);
+          setVectorDbStatus(FALLBACK_VECTOR_DB_STATUS);
+        });
+      } catch (error) {
         if (!cancelled) {
           setModelStatus(FALLBACK_MODEL_STATUS);
           setIndexStatus(FALLBACK_INDEX_STATUS);
           setVfsStatus(FALLBACK_VFS_STATUS);
           setVectorDbStatus(FALLBACK_VECTOR_DB_STATUS);
+          setStartupError(error instanceof Error ? error.message : String(error));
+          setAppReady(false);
         }
       }
     };
@@ -390,6 +419,16 @@ export function App({ initialRoute }: AppProps) {
     [requestWithRetry]
   );
 
+  const search = useCallback(
+    async (input: { query: string; titleOnly?: boolean }): Promise<SearchResponse> => {
+      if (!rpcRef.current) {
+        return { ok: false, error: "RPC unavailable" };
+      }
+      return requestWithRetry(() => rpcRef.current!.request.search(input));
+    },
+    [requestWithRetry]
+  );
+
   const filesApi = useMemo(
     () => ({
       listFilesNodes,
@@ -411,6 +450,44 @@ export function App({ initialRoute }: AppProps) {
     ]
   );
 
+  const searchApi = useMemo(
+    () => ({
+      search,
+      getFileMarkdown,
+    }),
+    [getFileMarkdown, search]
+  );
+
+  if (!appReady) {
+    if (startupError) {
+      return (
+        <main
+          className="flex h-screen items-center justify-center bg-[radial-gradient(circle_at_80%_-10%,#dbeafe,transparent_35%),radial-gradient(circle_at_0%_100%,#ecfeff,transparent_45%),#f8fafc] px-6 text-slate-900"
+          data-testid="app-startup-error"
+        >
+          <section className="w-full max-w-md rounded-3xl border border-rose-200 bg-white/90 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.07)]">
+            <h1 className="text-xl font-semibold text-slate-900">Knowdisk failed to start</h1>
+            <p className="mt-2 text-sm text-slate-600">{startupError}</p>
+          </section>
+        </main>
+      );
+    }
+
+    return (
+      <main
+        className="flex h-screen items-center justify-center bg-[radial-gradient(circle_at_80%_-10%,#dbeafe,transparent_35%),radial-gradient(circle_at_0%_100%,#ecfeff,transparent_45%),#f8fafc] px-6 text-slate-900"
+        data-testid="app-startup-loading"
+      >
+        <section className="w-full max-w-md rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.07)]">
+          <h1 className="text-xl font-semibold text-slate-900">Starting Knowdisk</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Connecting runtime and loading workspace state...
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <AppShell
       route={route}
@@ -420,6 +497,7 @@ export function App({ initialRoute }: AppProps) {
       vfsStatus={vfsStatus}
       vectorDbStatus={vectorDbStatus}
       filesApi={filesApi}
+      searchApi={searchApi}
     />
   );
 }

@@ -1,6 +1,67 @@
-import { ArrowUp, CirclePlus, Plus, SlidersHorizontal } from "lucide-react";
+import { ArrowUp, CirclePlus, Plus, SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type { SearchResult } from "../../../shared/files";
+import type { ShellSearchApi } from "./types";
 
-export function ChatPanel() {
+function getItemLabel(item: SearchResult): string {
+  return item.title?.trim() || item.name?.trim() || item.sourceRef?.trim() || item.nodeId;
+}
+
+export function ChatPanel({
+  searchApi,
+  debounceMs = 250,
+}: {
+  searchApi: ShellSearchApi;
+  debounceMs?: number;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState("");
+  const [pickerResults, setPickerResults] = useState<SearchResult[]>([]);
+  const [selectedItems, setSelectedItems] = useState<SearchResult[]>([]);
+  const requestRef = useRef(0);
+
+  useEffect(() => {
+    if (!pickerOpen) {
+      return;
+    }
+
+    const requestId = ++requestRef.current;
+    setPickerLoading(true);
+    setPickerError("");
+
+    const runSearch = () => {
+      void searchApi.search({ query: pickerQuery.trim(), titleOnly: false }).then((response) => {
+        if (requestRef.current !== requestId) {
+          return;
+        }
+        setPickerLoading(false);
+        if (!response.ok) {
+          setPickerError(response.error);
+          setPickerResults([]);
+          return;
+        }
+        setPickerResults(response.finalResults);
+      }).catch((error) => {
+        if (requestRef.current !== requestId) {
+          return;
+        }
+        setPickerLoading(false);
+        setPickerError(error instanceof Error ? error.message : String(error));
+        setPickerResults([]);
+      });
+    };
+
+    if (debounceMs <= 0) {
+      runSearch();
+      return;
+    }
+
+    const timer = globalThis.setTimeout(runSearch, debounceMs);
+    return () => globalThis.clearTimeout(timer);
+  }, [debounceMs, pickerOpen, pickerQuery, searchApi]);
+
   return (
     <section
       className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center gap-8"
@@ -14,12 +75,81 @@ export function ChatPanel() {
         <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
           <button
             className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5 transition-colors duration-200 hover:border-slate-300 hover:text-slate-700"
+            data-testid="chat-add-item-button"
+            onClick={() => setPickerOpen((value) => !value)}
             type="button"
           >
             <Plus className="h-4 w-4" />
             Add item
           </button>
         </div>
+
+        {selectedItems.length > 0 ? (
+          <div className="mb-4 flex flex-wrap gap-2" data-testid="chat-selected-items">
+            {selectedItems.map((item) => (
+              <div
+                key={item.nodeId}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-700"
+                data-testid="chat-selected-chip"
+              >
+                <span>{getItemLabel(item)}</span>
+                <button
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 transition-colors duration-200 hover:bg-slate-200 hover:text-slate-800"
+                  data-testid="chat-selected-chip-remove"
+                  onClick={() =>
+                    setSelectedItems((items) => items.filter((entry) => entry.nodeId !== item.nodeId))
+                  }
+                  type="button"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {pickerOpen ? (
+          <div
+            className="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-3"
+            data-testid="chat-item-picker"
+          >
+            <input
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-400"
+              data-testid="chat-item-picker-input"
+              placeholder="Search files to attach"
+              type="text"
+              value={pickerQuery}
+              onChange={(event) => setPickerQuery(event.target.value)}
+            />
+            {pickerLoading ? <p className="mt-2 text-sm text-slate-500">Searching...</p> : null}
+            {pickerError ? <p className="mt-2 text-sm text-rose-600">{pickerError}</p> : null}
+            <div className="mt-3 grid gap-2">
+              {pickerResults.map((item) => {
+                const selected = selectedItems.some((entry) => entry.nodeId === item.nodeId);
+                return (
+                  <button
+                    key={item.nodeId}
+                    className={`rounded-2xl border px-3 py-2 text-left text-sm transition-colors duration-200 ${
+                      selected
+                        ? "border-sky-300 bg-sky-50 text-sky-900"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                    }`}
+                    data-testid="chat-picker-result"
+                    onClick={() =>
+                      setSelectedItems((items) =>
+                        items.some((entry) => entry.nodeId === item.nodeId) ? items : [...items, item]
+                      )
+                    }
+                    type="button"
+                  >
+                    <div className="font-medium">{getItemLabel(item)}</div>
+                    <div className="mt-1 text-slate-500">{item.text?.trim() || item.sourceRef?.trim() || ""}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         <p className="mb-10 text-lg text-slate-400">Ask now, @ to select an item</p>
 
