@@ -16,6 +16,7 @@ from worker.runtime.types import (
 )
 
 EventSink = Callable[[WorkerStatusEvent], None]
+_MISSING = object()
 
 
 class ModelStatusStore:
@@ -62,7 +63,7 @@ class IndexStatusStore:
         self,
         *,
         phase: str | None = None,
-        scope: str | None = None,
+        scope: str | None | object = _MISSING,
         queueDepth: int | None = None,
         processedFiles: int | None = None,
         totalFiles: int | None = None,
@@ -73,7 +74,7 @@ class IndexStatusStore:
         next_snapshot = deepcopy(self._snapshot)
         if phase is not None:
             next_snapshot["phase"] = phase
-        if scope is not None:
+        if scope is not _MISSING:
             next_snapshot["scope"] = scope
         if queueDepth is not None:
             next_snapshot["queueDepth"] = queueDepth

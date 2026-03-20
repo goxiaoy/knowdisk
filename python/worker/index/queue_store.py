@@ -1,15 +1,31 @@
 from __future__ import annotations
 
 import sqlite3
-import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from worker.runtime.types import IndexStatusSnapshot, create_default_index_status_snapshot
 
-_MISSING = object()
-_INITIALIZED_QUEUE_PATHS: set[str] = set()
-_INITIALIZED_QUEUE_PATHS_LOCK = threading.Lock()
+
+@dataclass(frozen=True, slots=True)
+class QueueJob:
+    job_id: int
+    node_id: str
+    job_type: str
+    payload_json: str
+
+
+@dataclass(frozen=True, slots=True)
+class QueueClaimResult:
+    job: QueueJob | None
+    cancelled_job_ids: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class QueueEnqueueResult:
+    job: QueueJob
+    status: str
 
 
 class SQLiteIndexQueueStore:
@@ -17,191 +33,305 @@ class SQLiteIndexQueueStore:
         self._db_path = Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
-        self._normalize_recovered_snapshot_once()
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path
 
     def snapshot(self) -> IndexStatusSnapshot:
         with self._connect() as connection:
-            row = self._read_snapshot_row(connection)
-            if row is None:
-                return create_default_index_status_snapshot()
-            return self._row_to_snapshot(row)
+            return self._snapshot_from_connection(connection)
 
-    def update(
+    def enqueue_job(
         self,
-        *,
-        phase: str | None = None,
-        scope: str | None | object = _MISSING,
-        queueDepth: int | None = None,
-        processedFiles: int | None = None,
-        totalFiles: int | None = None,
-        activeNodeName: str | None = None,
-        error: str | None = None,
-        available: bool | None = None,
-    ) -> IndexStatusSnapshot:
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            next_snapshot = self._read_snapshot(connection)
-            if phase is not None:
-                next_snapshot["phase"] = phase
-            if scope is not _MISSING:
-                next_snapshot["scope"] = scope
-            if queueDepth is not None:
-                next_snapshot["queueDepth"] = queueDepth
-            if processedFiles is not None:
-                next_snapshot["processedFiles"] = processedFiles
-            if totalFiles is not None:
-                next_snapshot["totalFiles"] = totalFiles
-            if activeNodeName is not None:
-                next_snapshot["activeNodeName"] = activeNodeName
-            if error is not None:
-                next_snapshot["error"] = error
-            next_snapshot["available"] = True if available is None else available
-            self._persist(connection, next_snapshot)
-            return next_snapshot
+        node_id: str,
+        job_type: str,
+        payload_json: str = "{}",
+    ) -> QueueEnqueueResult:
+        if job_type not in {"index", "delete"}:
+            raise ValueError(f"unsupported job type: {job_type}")
 
-    def reserve_incremental(self, node_name: str) -> IndexStatusSnapshot:
+        now = _now_iso()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
+            state_row = self._read_node_state_row(connection, node_id)
+            if state_row is not None:
+                latest_job_id = int(state_row[0])
+                latest_desired_type = str(state_row[1])
+                if latest_desired_type == job_type and self._is_live_job(
+                    connection, latest_job_id
+                ):
+                    status_row = connection.execute(
+                        "SELECT status FROM index_jobs WHERE job_id = ?",
+                        (latest_job_id,),
+                    ).fetchone()
+                    live_status = "" if status_row is None else str(status_row[0])
+                    connection.execute(
+                        """
+                        UPDATE index_node_state
+                        SET payload_json = ?,
+                            version = version + 1,
+                            updated_at = ?
+                        WHERE node_id = ?
+                        """,
+                        (payload_json, now, node_id),
+                    )
+                    return QueueEnqueueResult(
+                        job=self._read_job(connection, latest_job_id),
+                        status=live_status,
+                    )
+
+            cursor = connection.execute(
                 """
-                UPDATE index_queue_snapshot
-                SET available = 1,
-                    phase = 'indexing',
-                    scope = 'incremental',
-                    queueDepth = queueDepth + 1,
-                    processedFiles = 0,
-                    totalFiles = 1,
-                    activeNodeName = ?,
-                    error = ''
-                WHERE id = 1
+                INSERT INTO index_jobs (
+                    node_id, job_type, payload_json, status,
+                    created_at, updated_at, started_at, finished_at, error
+                ) VALUES (?, ?, ?, 'queued', ?, ?, NULL, NULL, '')
                 """,
-                (node_name,),
+                (node_id, job_type, payload_json, now, now),
             )
-            snapshot = self._read_snapshot(connection)
-            self._persist(connection, snapshot)
-            return snapshot
+            job_id = int(cursor.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO index_node_state (
+                    node_id, latest_job_id, desired_type, payload_json,
+                    version, updated_at
+                ) VALUES (?, ?, ?, ?, 1, ?)
+                ON CONFLICT(node_id) DO UPDATE SET
+                    latest_job_id = excluded.latest_job_id,
+                    desired_type = excluded.desired_type,
+                    payload_json = excluded.payload_json,
+                    version = index_node_state.version + 1,
+                    updated_at = excluded.updated_at
+                """,
+                (node_id, job_id, job_type, payload_json, now),
+            )
+            return QueueEnqueueResult(
+                job=QueueJob(
+                    job_id=job_id,
+                    node_id=node_id,
+                    job_type=job_type,
+                    payload_json=payload_json,
+                ),
+                status="queued",
+            )
 
-    def complete_incremental(self) -> IndexStatusSnapshot:
+    def claim_next_job(self) -> QueueClaimResult:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cancelled_job_ids: list[int] = []
+            while True:
+                row = connection.execute(
+                    """
+                    SELECT job_id, node_id, job_type, payload_json
+                    FROM index_jobs
+                    WHERE status = 'queued'
+                    ORDER BY job_id
+                    LIMIT 1
+                    """
+                ).fetchone()
+                if row is None:
+                    return QueueClaimResult(job=None, cancelled_job_ids=tuple(cancelled_job_ids))
+
+                job = QueueJob(
+                    job_id=int(row[0]),
+                    node_id=str(row[1]),
+                    job_type=str(row[2]),
+                    payload_json=str(row[3]),
+                )
+                state_row = self._read_node_state_row(connection, job.node_id)
+                if state_row is None or int(state_row[0]) != job.job_id or str(state_row[1]) != job.job_type:
+                    self._mark_job_cancelled(connection, job.job_id, "stale")
+                    cancelled_job_ids.append(job.job_id)
+                    continue
+
+                now = _now_iso()
+                connection.execute(
+                    """
+                    UPDATE index_jobs
+                    SET status = 'running',
+                        started_at = COALESCE(started_at, ?),
+                        updated_at = ?
+                    WHERE job_id = ?
+                    """,
+                    (now, now, job.job_id),
+                )
+                return QueueClaimResult(job=job, cancelled_job_ids=tuple(cancelled_job_ids))
+
+    def mark_done(self, job_id: int) -> None:
+        self._mark_terminal(job_id, "done", error="")
+
+    def mark_failed(self, job_id: int, error: str) -> None:
+        self._mark_terminal(job_id, "failed", error=error)
+
+    def mark_cancelled(self, job_id: int, error: str = "stale") -> None:
+        self._mark_terminal(job_id, "cancelled", error=error)
+
+    def _mark_terminal(self, job_id: int, status: str, *, error: str) -> None:
+        now = _now_iso()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 """
-                UPDATE index_queue_snapshot
-                SET available = 1,
-                    phase = CASE WHEN queueDepth > 1 THEN phase ELSE 'idle' END,
-                    scope = CASE WHEN queueDepth > 1 THEN scope ELSE NULL END,
-                    queueDepth = CASE
-                        WHEN queueDepth > 0 THEN queueDepth - 1
-                        ELSE 0
-                    END,
-                    processedFiles = CASE WHEN queueDepth > 1 THEN processedFiles ELSE 1 END,
-                    totalFiles = CASE WHEN queueDepth > 1 THEN totalFiles ELSE 1 END,
-                    activeNodeName = CASE WHEN queueDepth > 1 THEN activeNodeName ELSE '' END,
-                    error = CASE WHEN queueDepth > 1 THEN error ELSE '' END
-                WHERE id = 1
-                """
+                UPDATE index_jobs
+                SET status = ?,
+                    finished_at = ?,
+                    updated_at = ?,
+                    error = ?
+                WHERE job_id = ?
+                """,
+                (status, now, now, error, job_id),
             )
-            snapshot = self._read_snapshot(connection)
-            self._persist(connection, snapshot)
-            return snapshot
 
     def _initialize(self) -> None:
         with self._connect() as connection:
             connection.execute(
                 """
-                CREATE TABLE IF NOT EXISTS index_queue_snapshot (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    available INTEGER NOT NULL,
-                    phase TEXT NOT NULL,
-                    scope TEXT,
-                    queueDepth INTEGER NOT NULL,
-                    processedFiles INTEGER NOT NULL,
-                    totalFiles INTEGER NOT NULL,
-                    activeNodeName TEXT NOT NULL,
+                CREATE TABLE IF NOT EXISTS index_jobs (
+                    job_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    node_id TEXT NOT NULL,
+                    job_type TEXT NOT NULL CHECK (job_type IN ('index', 'delete')),
+                    payload_json TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK (
+                        status IN ('queued', 'running', 'done', 'failed', 'cancelled')
+                    ),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    started_at TEXT,
+                    finished_at TEXT,
                     error TEXT NOT NULL
                 )
                 """
             )
             connection.execute(
                 """
-                INSERT OR IGNORE INTO index_queue_snapshot (
-                    id, available, phase, scope, queueDepth,
-                    processedFiles, totalFiles, activeNodeName, error
-                ) VALUES (1, 0, 'idle', NULL, 0, 0, 0, '', '')
+                CREATE TABLE IF NOT EXISTS index_node_state (
+                    node_id TEXT PRIMARY KEY,
+                    latest_job_id INTEGER NOT NULL,
+                    desired_type TEXT NOT NULL CHECK (desired_type IN ('index', 'delete')),
+                    payload_json TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
                 """
             )
 
-    def _normalize_recovered_snapshot_once(self) -> None:
-        path_key = str(self._db_path)
-        with _INITIALIZED_QUEUE_PATHS_LOCK:
-            if path_key in _INITIALIZED_QUEUE_PATHS:
-                return
-            _INITIALIZED_QUEUE_PATHS.add(path_key)
+    def _snapshot_from_connection(self, connection: sqlite3.Connection) -> IndexStatusSnapshot:
+        has_state = connection.execute(
+            "SELECT 1 FROM index_node_state LIMIT 1"
+        ).fetchone() is not None
+        has_jobs = connection.execute(
+            "SELECT 1 FROM index_jobs LIMIT 1"
+        ).fetchone() is not None
+        if not has_state and not has_jobs:
+            return create_default_index_status_snapshot()
 
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            snapshot = self._read_snapshot(connection)
-            if snapshot["phase"] == "indexing":
-                self._persist(connection, create_default_index_status_snapshot())
+        queued_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM index_jobs WHERE status = 'queued'"
+            ).fetchone()[0]
+        )
+        running_row = connection.execute(
+            """
+            SELECT node_id
+            FROM index_jobs
+            WHERE status = 'running'
+            ORDER BY started_at, job_id
+            LIMIT 1
+            """
+        ).fetchone()
+
+        running_count = int(
+            connection.execute(
+                "SELECT COUNT(*) FROM index_jobs WHERE status = 'running'"
+            ).fetchone()[0]
+        )
+        if running_count > 0:
+            phase = "indexing"
+            scope = "incremental"
+            processed_files = 0
+            total_files = 1
+            active_node_name = "" if running_row is None else str(running_row[0])
+        else:
+            phase = "idle"
+            scope = None
+            processed_files = 1
+            total_files = 1
+            active_node_name = ""
+        return cast(
+            IndexStatusSnapshot,
+            {
+                "available": True,
+                "phase": phase,
+                "scope": scope,
+                "queueDepth": queued_count,
+                "processedFiles": processed_files,
+                "totalFiles": total_files,
+                "activeNodeName": active_node_name,
+                "error": "",
+            },
+        )
+
+    def _is_live_job(self, connection: sqlite3.Connection, job_id: int) -> bool:
+        row = connection.execute(
+            "SELECT status FROM index_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        return row is not None and str(row[0]) in {"queued", "running"}
+
+    def _read_node_state_row(
+        self, connection: sqlite3.Connection, node_id: str
+    ) -> tuple[object, ...] | None:
+        return connection.execute(
+            """
+            SELECT latest_job_id, desired_type, payload_json, version, updated_at
+            FROM index_node_state
+            WHERE node_id = ?
+            """,
+            (node_id,),
+        ).fetchone()
+
+    def _read_job(self, connection: sqlite3.Connection, job_id: int) -> QueueJob:
+        row = connection.execute(
+            """
+            SELECT job_id, node_id, job_type, payload_json
+            FROM index_jobs
+            WHERE job_id = ?
+            """,
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(f"missing job row: {job_id}")
+        return QueueJob(
+            job_id=int(row[0]),
+            node_id=str(row[1]),
+            job_type=str(row[2]),
+            payload_json=str(row[3]),
+        )
+
+    def _mark_job_cancelled(
+        self, connection: sqlite3.Connection, job_id: int, error: str
+    ) -> None:
+        now = _now_iso()
+        connection.execute(
+            """
+            UPDATE index_jobs
+            SET status = 'cancelled',
+                finished_at = ?,
+                updated_at = ?,
+                error = ?
+            WHERE job_id = ?
+            """,
+            (now, now, error, job_id),
+        )
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path, timeout=30)
         connection.execute("PRAGMA busy_timeout = 30000")
         return connection
 
-    def _read_snapshot(self, connection: sqlite3.Connection) -> IndexStatusSnapshot:
-        row = self._read_snapshot_row(connection)
-        if row is None:
-            return create_default_index_status_snapshot()
-        return self._row_to_snapshot(row)
 
-    def _read_snapshot_row(self, connection: sqlite3.Connection) -> tuple[object, ...] | None:
-        return connection.execute(
-            """
-            SELECT available, phase, scope, queueDepth, processedFiles,
-                   totalFiles, activeNodeName, error
-            FROM index_queue_snapshot
-            WHERE id = 1
-            """
-        ).fetchone()
+def _now_iso() -> str:
+    from datetime import datetime, timezone
 
-    def _row_to_snapshot(self, row: tuple[object, ...]) -> IndexStatusSnapshot:
-        return cast(
-            IndexStatusSnapshot,
-            {
-                "available": bool(row[0]),
-                "phase": str(row[1]),
-                "scope": row[2],
-                "queueDepth": int(row[3]),
-                "processedFiles": int(row[4]),
-                "totalFiles": int(row[5]),
-                "activeNodeName": str(row[6]),
-                "error": str(row[7]),
-            },
-        )
-
-    def _persist(self, connection: sqlite3.Connection, snapshot: IndexStatusSnapshot) -> None:
-        connection.execute(
-            """
-            UPDATE index_queue_snapshot
-            SET available = ?,
-                phase = ?,
-                scope = ?,
-                queueDepth = ?,
-                processedFiles = ?,
-                totalFiles = ?,
-                activeNodeName = ?,
-                error = ?
-            WHERE id = 1
-            """,
-            (
-                1 if snapshot["available"] else 0,
-                snapshot["phase"],
-                snapshot["scope"],
-                snapshot["queueDepth"],
-                snapshot["processedFiles"],
-                snapshot["totalFiles"],
-                snapshot["activeNodeName"],
-                snapshot["error"],
-            ),
-        )
+    return datetime.now(timezone.utc).isoformat()
