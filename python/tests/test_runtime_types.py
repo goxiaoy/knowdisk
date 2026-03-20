@@ -55,10 +55,34 @@ def test_request_parsers_normalize_server_params():
         }
     )
     delete_request = parse_delete_node_request({"nodeId": "node-2"})
-    search_request = parse_search_request({"query": "hello"})
+    search_request = parse_search_request({"query": "hello", "titleOnly": True})
+    default_search_request = parse_search_request({"query": "world"})
 
     assert index_request.node.node_id == "node-1"
     assert index_request.mount.synced_content_path == "/tmp/content/hello.md"
     assert index_request.mount.local_file_path == "/tmp/mount/hello.md"
     assert delete_request.node_id == "node-2"
     assert search_request.query == "hello"
+    assert search_request.title_only is True
+    assert default_search_request.title_only is False
+
+
+def test_search_response_debug_payload_types_are_structured():
+    from worker.runtime.types import SearchResponseDebugPayload, SearchResponsePayload
+
+    debug_payload: SearchResponseDebugPayload = {
+        "ftsResults": [],
+        "vectorResults": [],
+        "mergedCandidates": [],
+        "rerankedResults": [],
+        "finalResults": [],
+    }
+    response_payload: SearchResponsePayload = {
+        "query": "hello",
+        "titleOnly": True,
+        "debug": debug_payload,
+    }
+
+    assert response_payload["query"] == "hello"
+    assert response_payload["titleOnly"] is True
+    assert response_payload["debug"]["finalResults"] == []

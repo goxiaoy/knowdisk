@@ -91,13 +91,43 @@ class DeleteNodeRequest:
 @dataclass(frozen=True, slots=True)
 class SearchRequest:
     query: str
+    title_only: bool = False
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> SearchRequest:
         query = value.get("query")
         if not isinstance(query, str):
             raise ValueError("search request must include query")
-        return cls(query=query)
+        title_only = value.get("titleOnly", False)
+        if not isinstance(title_only, bool):
+            raise ValueError("search request titleOnly must be a boolean")
+        return cls(query=query, title_only=title_only)
+
+
+class SearchResultSnapshot(TypedDict, total=False):
+    chunkId: str
+    nodeId: str
+    mountId: str
+    sourceRef: str
+    name: str
+    title: str
+    text: str
+    embedding: list[float]
+    score: float
+
+
+class SearchResponseDebugPayload(TypedDict, total=False):
+    ftsResults: list[SearchResultSnapshot]
+    vectorResults: list[SearchResultSnapshot]
+    mergedCandidates: list[SearchResultSnapshot]
+    rerankedResults: list[SearchResultSnapshot]
+    finalResults: list[SearchResultSnapshot]
+
+
+class SearchResponsePayload(TypedDict):
+    query: str
+    titleOnly: bool
+    debug: SearchResponseDebugPayload
 
 
 class ModelServiceProtocol(Protocol):
