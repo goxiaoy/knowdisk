@@ -38,6 +38,9 @@ export function createLocalVfsProvider(
       const entries = await readdir(dirPath, { withFileTypes: true });
       const items: VfsNode[] = [];
       for (const entry of entries) {
+        if (isHiddenName(entry.name)) {
+          continue;
+        }
         const absPath = join(dirPath, entry.name);
         const entryStat = await stat(absPath);
         const sourceRef = toSourceRef(config.directory, absPath);
@@ -94,6 +97,9 @@ export function createLocalVfsProvider(
     async getMetadata(input) {
       const config = parseLocalMount(mount);
       const id = input.id ?? (input as unknown as { sourceRef?: string }).sourceRef ?? "";
+      if (isHiddenSourceRef(id)) {
+        return null;
+      }
       logger.info(
         {
           mountId: mount.mountId,
@@ -122,6 +128,9 @@ export function createLocalVfsProvider(
     async getVersion(input) {
       const config = parseLocalMount(mount);
       const id = input.id ?? (input as unknown as { sourceRef?: string }).sourceRef ?? "";
+      if (isHiddenSourceRef(id)) {
+        return null;
+      }
       const targetPath = resolveRefPath(config.directory, id);
       try {
         const st = await stat(targetPath);
@@ -227,11 +236,23 @@ export function createLocalVfsProvider(
       const config = parseLocalMount(mount as VfsMountConfig);
       logger.info({ mountId: mount.mountId }, "local watch started");
       const watcher = chokidar.watch(config.directory, {
+        ignored: (path, stats) => {
+          if (path === config.directory) {
+            return false;
+          }
+          if (!stats) {
+            return isHiddenAbsolutePath(config.directory, path);
+          }
+          return isHiddenAbsolutePath(config.directory, path);
+        },
         ignoreInitial: true,
         persistent: true,
       });
       const emit = (type: "add" | "update" | "delete", absPath: string) => {
         const id = toSourceRef(config.directory, absPath);
+        if (isHiddenSourceRef(id)) {
+          return;
+        }
         logger.info(
           {
             mountId: mount.mountId,
@@ -381,4 +402,22 @@ function sanitizeName(name: string): string {
     throw new Error("name is invalid");
   }
   return trimmed;
+}
+
+function isHiddenName(name: string): boolean {
+  return name.startsWith(".") && name !== "." && name !== "..";
+}
+
+function isHiddenSourceRef(ref: string | null | undefined): boolean {
+  if (!ref) {
+    return false;
+  }
+  return normalizeSourceRef(ref)
+    .split("/")
+    .some((part) => isHiddenName(part));
+}
+
+function isHiddenAbsolutePath(root: string, absPath: string): boolean {
+  const sourceRef = toSourceRef(root, absPath);
+  return isHiddenSourceRef(sourceRef);
 }

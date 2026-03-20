@@ -5,6 +5,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from collections.abc import Iterable
@@ -110,6 +111,7 @@ def create_worker_runtime(
         vector_repository=VectorRepository(collection_path=str(default_base_path / "index" / "index.zvec")),
         vector_status_store=vector_status_store,
         parser_base_dir=default_base_path / "parser",
+        logger=logger,
     )
     server = create_server(
         event_sink=emit_event,
@@ -170,6 +172,7 @@ def _create_index_worker_controls(
                         jobType=job.job_type,
                         nodeId=job.node_id,
                         error=str(exc),
+                        traceback=traceback.format_exc(),
                     )
                 else:
                     index_queue.mark_done(job.job_id)

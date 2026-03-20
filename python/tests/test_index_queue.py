@@ -153,6 +153,16 @@ def test_orphaned_running_jobs_are_requeued_on_startup(tmp_path: Path):
     assert row == ("queued", None, None)
 
 
+def test_snapshot_does_not_fallback_to_node_id_when_payload_has_no_name(tmp_path: Path):
+    db_path = tmp_path / "index-queue.sqlite3"
+    queue_store = SQLiteIndexQueueStore(db_path)
+    queue_store.enqueue_job("node-legacy", "index", payload_json='{"node":{"nodeId":"node-legacy"}}')
+
+    snapshot = queue_store.snapshot()
+
+    assert snapshot["activeNodeName"] == ""
+
+
 def _index_request(node_id: str, name: str, path: str) -> IndexNodeRequest:
     return IndexNodeRequest(
         node=ParserNode(

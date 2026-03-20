@@ -61,7 +61,13 @@ def load_local_reranker_runtime(
 def _load_local_embedding_runtime(model_path: Path, device: RuntimeDevice) -> object:
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(str(model_path), device=device, trust_remote_code=True)
+    model = SentenceTransformer(str(model_path), device=device, trust_remote_code=True)
+
+    def embed(text: str) -> list[float]:
+        encoded = model.encode(text)
+        return [float(value) for value in encoded]
+
+    return embed
 
 
 def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> object:

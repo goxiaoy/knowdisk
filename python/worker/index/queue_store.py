@@ -398,12 +398,12 @@ def _display_name_from_payload(payload_json: str, fallback: str) -> str:
     try:
         payload = json.loads(payload_json)
     except json.JSONDecodeError:
-        return fallback
+        return ""
     if not isinstance(payload, dict):
-        return fallback
+        return ""
     node = payload.get("node")
     if isinstance(node, dict):
         name = node.get("name")
         if isinstance(name, str) and name:
             return name
-    return fallback
+    return ""

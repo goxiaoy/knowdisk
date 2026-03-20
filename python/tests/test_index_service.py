@@ -31,6 +31,26 @@ class KeywordRerankerRuntime:
         return 10.0 if query.lower() in haystack else 0.0
 
 
+class CloseTrackingBackend:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def upsert(self, rows):
+        return None
+
+    def delete_by_node_id(self, node_id: str) -> None:
+        return None
+
+    def count(self) -> int:
+        return 0
+
+    def search(self, query_embedding: tuple[float, ...], limit: int):
+        return []
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
@@ -91,6 +111,7 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
     chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
+    parser_dir = tmp_path / "parser"
     service = IndexService(
         parse_node=lambda node, mount: [
             {
@@ -116,7 +137,7 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
         vector_repository=repository,
         chunk_store=chunk_store,
         vector_status_store=vector_store,
-        parser_base_dir=tmp_path / "parser",
+        parser_base_dir=parser_dir,
     )
 
     service.index_node(
@@ -140,6 +161,7 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
     assert repository.count_chunks() == 0
     assert service.vector_status_snapshot()["chunkCount"] == 0
     assert chunk_store.count_chunks() == 0
+    assert (parser_dir / "node-1").exists() is False
 
 
 def test_search_returns_repository_rows(tmp_path):
@@ -285,6 +307,41 @@ def test_set_storage_base_path_moves_sqlite_and_vector_store_into_index_dir(tmp_
 
     assert service._vector_repository.collection_path == str(tmp_path / "index" / "index.zvec")
     assert service._chunk_store._db_path == tmp_path / "index" / "index.sqlite3"
+
+
+def test_set_storage_base_path_closes_previous_vector_repository(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    backend = CloseTrackingBackend()
+    service = IndexService(
+        parse_node=lambda node, mount: [],
+        model_service=object(),
+        vector_repository=VectorRepository(
+            collection_path=str(tmp_path / "old-index.zvec"),
+            backend=backend,
+        ),
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    service.set_storage_base_path(tmp_path)
+
+    assert backend.closed is True
+
+
+def test_set_storage_base_path_is_noop_when_vector_path_is_unchanged(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    service = IndexService(
+        parse_node=lambda node, mount: [],
+        model_service=object(),
+        vector_repository=VectorRepository(collection_path=str(tmp_path / "index" / "index.zvec")),
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+    original_repository = service._vector_repository
+
+    service.set_storage_base_path(tmp_path)
+
+    assert service._vector_repository is original_repository
 
 
 def test_vector_status_is_available_on_startup(tmp_path):
@@ -630,6 +687,64 @@ def test_reindex_with_no_valid_chunks_clears_previous_vector_and_sqlite_rows(tmp
     assert repository.count_chunks() == 0
     assert chunk_store.count_chunks() == 0
     assert service.search("stale")["debug"]["finalResults"] == []
+
+
+def test_index_node_with_only_skipped_chunks_indexes_zero_rows(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
+    service = IndexService(
+        parse_node=lambda node, mount: [
+            {
+                "status": "skipped",
+                "chunkIndex": 0,
+                "text": "",
+                "title": "clip",
+                "source": {
+                    "nodeId": node.node_id,
+                    "name": node.name,
+                    "path": "/tmp/clip.mkv",
+                },
+                "error": {
+                    "code": "UNSUPPORTED_FILE_TYPE",
+                    "message": "parser whitelist does not support file suffix .mkv",
+                },
+            }
+        ],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
+        )(),
+        vector_repository=repository,
+        chunk_store=chunk_store,
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    result = service.index_node(
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-skip-1",
+                name="clip.mkv",
+                source_ref="clip.mkv",
+                provider_type="local",
+                mount_id="m1",
+            ),
+            mount=ParserMount(
+                synced_content_path="",
+                local_file_path="/tmp/clip.mkv",
+                provider_type="local",
+            ),
+        )
+    )
+
+    assert result.indexed == 0
+    assert repository.count_chunks() == 0
+    assert chunk_store.count_chunks() == 0
 
 
 def test_search_escapes_special_fts_characters_in_query(tmp_path):

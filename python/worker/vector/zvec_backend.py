@@ -60,6 +60,15 @@ class ZvecVectorBackend:
         )
         return [self._doc_to_row(doc) for doc in docs]
 
+    def close(self) -> None:
+        collection = self._collection
+        if collection is None:
+            return
+        close = getattr(collection, "close", None)
+        if callable(close):
+            close()
+        self._collection = None
+
     def _ensure_collection(self, *, dimension: int):
         existing = self._get_collection()
         if existing is not None:

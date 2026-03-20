@@ -42,3 +42,31 @@ test("renders mount names in cloud sync tooltip", () => {
     ).length
   ).toBeGreaterThan(0);
 });
+
+test("renders healthy zero-pending sync state in green", () => {
+  const tree = renderer.create(
+    <VfsStatusIndicator
+      status={{
+        available: true,
+        phase: "idle",
+        error: "",
+        syncingMounts: 0,
+        mounts: [
+          {
+            mountId: "mount-1",
+            name: "My Docs",
+            phase: "idle",
+            pendingUnits: 0,
+            error: "",
+          },
+        ],
+      }}
+    />
+  ).root;
+
+  const button = tree.findByProps({ "data-testid": "global-vfs-status-indicator" });
+
+  expect(button.props.className).toContain("border-emerald-200");
+  expect(button.props.className).toContain("bg-emerald-50");
+  expect(button.props.className).toContain("text-emerald-700");
+});

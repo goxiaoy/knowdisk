@@ -38,6 +38,18 @@ class FakeBackend:
             for row in list(self.rows.values())[:limit]
         ]
 
+    def close(self) -> None:
+        return None
+
+
+class CloseTrackingBackend(FakeBackend):
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
 
 def test_repository_initializes_with_collection_path(tmp_path: Path):
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"), backend=FakeBackend())
@@ -139,3 +151,12 @@ def test_repository_searches_by_query_embedding(tmp_path: Path):
             "score": 0.0,
         }
     ]
+
+
+def test_repository_close_delegates_to_backend(tmp_path: Path):
+    backend = CloseTrackingBackend()
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"), backend=backend)
+
+    repository.close()
+
+    assert backend.closed is True

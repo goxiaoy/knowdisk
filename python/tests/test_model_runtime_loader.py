@@ -120,10 +120,15 @@ def test_reranker_runtime_loader_errors_propagate():
 
 def test_internal_embedding_runtime_loader_enables_trusted_remote_code(monkeypatch):
     calls: list[tuple[str, str, bool]] = []
+    encode_calls: list[str] = []
 
     class FakeSentenceTransformer:
         def __init__(self, model_path: str, *, device: str, trust_remote_code: bool):
             calls.append((model_path, device, trust_remote_code))
+
+        def encode(self, text: str):
+            encode_calls.append(text)
+            return (1.0, 2.0)
 
     monkeypatch.setitem(
         sys.modules,
@@ -133,8 +138,9 @@ def test_internal_embedding_runtime_loader_enables_trusted_remote_code(monkeypat
 
     runtime = _load_local_embedding_runtime(Path("/models/embed"), "mps")
 
-    assert isinstance(runtime, FakeSentenceTransformer)
     assert calls == [("/models/embed", "mps", True)]
+    assert list(runtime("hello")) == [1.0, 2.0]
+    assert encode_calls == ["hello"]
 
 
 def test_internal_reranker_runtime_loader_enables_trusted_remote_code(monkeypatch):

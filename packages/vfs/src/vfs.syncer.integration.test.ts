@@ -35,6 +35,9 @@ async function walkLocalFs(
     const dir = queue.shift()!;
     const entries = await readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
+      if (entry.name.startsWith(".")) {
+        continue;
+      }
       const abs = join(dir, entry.name);
       const rel = relative(root, abs).split("\\").join("/");
       const st = await stat(abs);

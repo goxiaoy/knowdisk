@@ -39,11 +39,16 @@ export function MarkdownViewer({ markdown }: { markdown: string }) {
           [value]
         );
 
-        if (editor.loading) {
-          return <div className="text-sm text-slate-500">Rendering markdown...</div>;
-        }
-
-        return <Milkdown />;
+        return (
+          <div className="relative">
+            {editor.loading ? (
+              <div className="absolute inset-x-0 top-0 z-10 text-sm pointer-events-none text-slate-500">
+                Rendering markdown...
+              </div>
+            ) : null}
+            <Milkdown />
+          </div>
+        );
       };
 
       const DynamicRenderer = ({ markdown: value }: MilkdownRendererProps) => (
@@ -66,7 +71,7 @@ export function MarkdownViewer({ markdown }: { markdown: string }) {
 
   const fallback = useMemo(
     () => (
-      <article className="prose prose-slate max-w-none whitespace-pre-wrap text-sm leading-7 text-slate-700">
+      <article className="text-sm leading-7 prose whitespace-pre-wrap prose-slate max-w-none text-slate-700">
         {markdown}
       </article>
     ),

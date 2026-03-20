@@ -32,7 +32,16 @@ function formatMountPhase(phase: string): string {
 }
 
 export function VfsStatusIndicator({ status }: { status: RendererVfsStatus }) {
-  const styles = phaseStyle(status.phase, status.available);
+  const isHealthyIdle =
+    status.available &&
+    status.phase === "idle" &&
+    status.mounts.length > 0 &&
+    status.mounts.every((mount) => mount.pendingUnits === 0 && !mount.error);
+  const styles = isHealthyIdle
+    ? {
+        ring: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      }
+    : phaseStyle(status.phase, status.available);
 
   return (
     <div className="group relative">

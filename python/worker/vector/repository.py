@@ -16,6 +16,8 @@ class VectorBackend(Protocol):
 
     def search(self, query_embedding: tuple[float, ...], limit: int) -> list[VectorChunkRow]: ...
 
+    def close(self) -> None: ...
+
 
 class InMemoryVectorBackend:
     def __init__(self) -> None:
@@ -33,6 +35,9 @@ class InMemoryVectorBackend:
 
     def count(self) -> int:
         return len(self._rows)
+
+    def close(self) -> None:
+        return None
 
 
 class VectorRepository:
@@ -55,6 +60,9 @@ class VectorRepository:
     def search(self, query_embedding: Sequence[float], limit: int = 10) -> list[dict[str, object]]:
         normalized_embedding = tuple(float(value) for value in query_embedding)
         return [row.to_legacy_dict() for row in self.backend.search(normalized_embedding, limit)]
+
+    def close(self) -> None:
+        self.backend.close()
 
 
 def coerce_vector_chunk_row(value: VectorChunkRowInput) -> VectorChunkRow:

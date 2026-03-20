@@ -210,6 +210,33 @@ describe("local vfs provider", () => {
     }
   });
 
+  test("listChildren ignores hidden files and directories", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-hidden-list-"));
+    try {
+      writeFileSync(join(dir, "a.txt"), "a");
+      writeFileSync(join(dir, ".hidden.txt"), "hidden");
+      await mkdir(join(dir, ".secret"), { recursive: true });
+      writeFileSync(join(dir, ".secret", "inside.txt"), "inside");
+      await mkdir(join(dir, "visible"), { recursive: true });
+
+      const provider = createLocalVfsProvider(makeMount(dir));
+      const first = await provider.listChildren({
+        parentId: null,
+        limit: 10,
+      });
+
+      expect(first.items.map((item) => `${item.kind}:${item.name}`)).toEqual([
+        "file:a.txt",
+        "folder:visible",
+      ]);
+      expect(await provider.getMetadata!({ id: ".hidden.txt" })).toBeNull();
+      expect(await provider.getMetadata!({ id: ".secret" })).toBeNull();
+      expect(await provider.getMetadata!({ id: ".secret/inside.txt" })).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("create uses untitled naming with collision suffix; rename and delete mutate filesystem", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-mutate-"));
     try {
@@ -243,6 +270,38 @@ describe("local vfs provider", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("watch ignores hidden files and files inside hidden directories", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-hidden-watch-"));
+    try {
+      const provider = createLocalVfsProvider(makeMount(dir));
+      const events: Array<{ type: "add" | "update" | "delete"; id: string }> = [];
+      const watcher = await provider.watch!({
+        onEvent(event) {
+          events.push({ type: event.type, id: event.id });
+        },
+      });
+
+      writeFileSync(join(dir, ".hidden.txt"), "x");
+      await mkdir(join(dir, ".secret"), { recursive: true });
+      writeFileSync(join(dir, ".secret", "inside.txt"), "y");
+      writeFileSync(join(dir, "visible.txt"), "z");
+
+      const sawVisible = await waitUntil(
+        () => events.some((event) => event.type === "add" && event.id === "visible.txt"),
+        4000
+      );
+      await Bun.sleep(200);
+      await watcher.close();
+
+      expect(sawVisible).toBe(true);
+      expect(events.some((event) => event.id === ".hidden.txt")).toBe(false);
+      expect(events.some((event) => event.id === ".secret")).toBe(false);
+      expect(events.some((event) => event.id === ".secret/inside.txt")).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15000);
 
   test("syncName=false: rename only changes metadata name without renaming real file", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-local-sync-name-off-"));
