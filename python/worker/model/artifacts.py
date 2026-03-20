@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 
 from worker.model.types import ModelRepoFile
 
@@ -26,6 +27,21 @@ _RERANKER_REQUIRED_FILES = {
     "pytorch_model.bin",
 }
 
+_EMBEDDING_REQUIRED_LOCAL_FILES = {
+    "config.json",
+    "modules.json",
+    "1_Pooling/config.json",
+}
+
+_RERANKER_REQUIRED_LOCAL_FILES = {
+    "config.json",
+}
+
+_MODEL_WEIGHT_FILES = {
+    "model.safetensors",
+    "pytorch_model.bin",
+}
+
 
 def select_embedding_repo_files(siblings: Iterable[Mapping[str, object] | ModelRepoFile]) -> list[ModelRepoFile]:
     return _select_required_files(siblings, required_files=_EMBEDDING_REQUIRED_FILES)
@@ -33,6 +49,31 @@ def select_embedding_repo_files(siblings: Iterable[Mapping[str, object] | ModelR
 
 def select_reranker_repo_files(siblings: Iterable[Mapping[str, object] | ModelRepoFile]) -> list[ModelRepoFile]:
     return _select_required_files(siblings, required_files=_RERANKER_REQUIRED_FILES)
+
+
+def has_complete_local_model_artifacts(kind: str, model_root: str | Path) -> bool:
+    root = Path(model_root)
+    if not root.exists():
+        return False
+    if has_resumable_partial_downloads(root):
+        return False
+
+    if kind == "embedding":
+        required_files = _EMBEDDING_REQUIRED_LOCAL_FILES
+    else:
+        required_files = _RERANKER_REQUIRED_LOCAL_FILES
+
+    if not all((root / relative_path).is_file() for relative_path in required_files):
+        return False
+
+    return any((root / relative_path).is_file() for relative_path in _MODEL_WEIGHT_FILES)
+
+
+def has_resumable_partial_downloads(model_root: str | Path) -> bool:
+    root = Path(model_root)
+    if not root.exists():
+        return False
+    return any(path.is_file() and path.name.endswith(".part") for path in root.rglob("*"))
 
 
 def _select_required_files(

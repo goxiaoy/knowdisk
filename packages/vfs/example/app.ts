@@ -69,7 +69,7 @@ export async function createVfsExampleApp(input?: {
 
   const repository = createVfsRepository({ dbPath });
   const exampleContainer = rootContainer.createChildContainer();
-  exampleContainer.register("logger", { useValue: logger });
+  exampleContainer.register("LoggerService", { useValue: logger });
   const registry = createVfsProviderRegistry(exampleContainer);
   if (input?.providerOverrides) {
     for (const [providerType, factory] of Object.entries(input.providerOverrides)) {

@@ -20,8 +20,5 @@ function resolveLogger(container: DependencyContainer): Logger | undefined {
   if (container.isRegistered("LoggerService", true)) {
     return container.resolve<Logger>("LoggerService");
   }
-  if (container.isRegistered("logger", true)) {
-    return container.resolve<Logger>("logger");
-  }
   return undefined;
 }

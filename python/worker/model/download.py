@@ -13,6 +13,25 @@ def download_file(
     destination: str | Path,
     fetch: DownloadFetch,
     on_progress: ProgressCallback | None = None,
+    max_attempts: int = 3,
+) -> Path:
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be at least 1")
+    attempt = 0
+    while True:
+        try:
+            return _download_file_once(url, destination, fetch, on_progress=on_progress)
+        except Exception as error:
+            attempt += 1
+            if attempt >= max_attempts or not _is_retryable_download_error(error):
+                raise
+
+
+def _download_file_once(
+    url: str,
+    destination: str | Path,
+    fetch: DownloadFetch,
+    on_progress: ProgressCallback | None = None,
 ) -> Path:
     destination_path = Path(destination)
     part_path = destination_path.with_name(f"{destination_path.name}.part")
@@ -58,6 +77,14 @@ def download_file(
 
     part_path.replace(destination_path)
     return destination_path
+
+
+def _is_retryable_download_error(error: Exception) -> bool:
+    if isinstance(error, (OSError, TimeoutError, EOFError)):
+        return True
+    if isinstance(error, ValueError):
+        return "incomplete download" in str(error)
+    return False
 
 
 def _existing_part_size(part_path: Path) -> int:

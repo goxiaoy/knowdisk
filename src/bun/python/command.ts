@@ -1,4 +1,22 @@
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export function resolveRepoPythonProjectDirFromModule(
+  moduleUrl: string,
+  input?: { cwd?: string }
+): string {
+  const searchRoots = [dirname(fileURLToPath(moduleUrl)), input?.cwd ?? process.cwd()];
+
+  for (const root of searchRoots) {
+    const projectDir = findPythonProjectDir(root);
+    if (projectDir) {
+      return projectDir;
+    }
+  }
+
+  return resolve(searchRoots[0], "..", "..", "..", "python");
+}
 
 export function resolvePythonWorkerCommand(input: {
   mode: "development" | "packaged-macos";
@@ -15,11 +33,27 @@ export function resolvePythonWorkerCommand(input: {
   return ["uv", "run", "--project", input.repoPythonProjectDir, "python", "-m", "worker"];
 }
 
+function findPythonProjectDir(startDir: string): string | null {
+  let current = resolve(startDir);
+
+  while (true) {
+    const candidate = join(current, "python");
+    if (existsSync(join(candidate, "pyproject.toml"))) {
+      return candidate;
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
 export function resolvePythonWorkerCommandForRuntime(input: {
   platform: NodeJS.Platform;
   isPackaged: boolean;
   execPath: string;
-  cwd: string;
 }): [string, ...string[]] {
   if (input.isPackaged && input.platform === "darwin") {
     return resolvePythonWorkerCommand({
@@ -31,7 +65,7 @@ export function resolvePythonWorkerCommandForRuntime(input: {
 
   return resolvePythonWorkerCommand({
     mode: "development",
-    repoPythonProjectDir: join(input.cwd, "python"),
+    repoPythonProjectDir: resolveRepoPythonProjectDirFromModule(import.meta.url),
     resourcesDir: "",
   });
 }

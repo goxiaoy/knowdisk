@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import threading
 from pathlib import Path
 from typing import Any, Protocol
 
 from worker.model.artifact_manager import ModelArtifactManager
+from worker.model.artifacts import has_complete_local_model_artifacts, has_resumable_partial_downloads
 from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
 from worker.model.runtime_loader import load_local_embedding_runtime, load_local_reranker_runtime
+from worker.runtime.logging import WorkerLogger
 from worker.runtime.status import ModelStatusStore
 
 
@@ -22,27 +24,32 @@ class ModelService:
     def __init__(
         self,
         status_store: ModelStatusStore,
-        verify_embedding: Callable[[], None],
-        verify_reranker: Callable[[], None],
-        load_embedding_runtime: Callable[[], object],
-        load_reranker_runtime: Callable[[], object],
         *,
         runtime_config: ModelRuntimeConfig | None = None,
         artifact_manager: ModelArtifactManager | None = None,
         embedding_runtime_loader: EmbeddingRuntimeLoader | None = None,
         reranker_runtime_loader: RerankerRuntimeLoader | None = None,
+        logger: WorkerLogger | None = None,
     ) -> None:
         self._status_store = status_store
-        self._verify_embedding = verify_embedding
-        self._verify_reranker = verify_reranker
-        self._legacy_load_embedding_runtime = load_embedding_runtime
-        self._legacy_load_reranker_runtime = load_reranker_runtime
         self._runtime_config = runtime_config
         self._artifact_manager = artifact_manager
         self._embedding_runtime_loader = embedding_runtime_loader or load_local_embedding_runtime
         self._reranker_runtime_loader = reranker_runtime_loader or load_local_reranker_runtime
+        self._logger = logger
         self._embedding_runtime: object | None = None
-        self._reranker_runtime: LoadedRerankerRuntime | None = None
+        self._reranker_runtime: object | None = None
+        self._last_logged_progress_pct: dict[str, int] = {}
+        self._ensure_lock = threading.Lock()
+        self._task_condition = threading.Condition()
+        self._task_inflight: dict[str, bool] = {
+            "embedding": False,
+            "reranker": False,
+        }
+        self._task_errors: dict[str, str] = {
+            "embedding": "",
+            "reranker": "",
+        }
 
     def configure_runtime(
         self,
@@ -54,122 +61,75 @@ class ModelService:
         self._artifact_manager = artifact_manager
         self._embedding_runtime = None
         self._reranker_runtime = None
+        with self._task_condition:
+            self._task_errors = {"embedding": "", "reranker": ""}
+            self._task_inflight = {"embedding": False, "reranker": False}
 
     def snapshot(self) -> dict[str, Any]:
         return self._status_store.snapshot()
 
     def ensure_required_models(self) -> dict[str, bool]:
         if self._runtime_config is None or self._artifact_manager is None:
-            return self._ensure_legacy_models()
-
-        self._set_status(
-            phase="verifying",
-            progressPct=0,
-            error="",
-            embedding_state="waiting",
-            reranker_state="waiting",
-            embedding_progress=0,
-            reranker_progress=0,
-        )
-
-        try:
-            self._set_task_state("embedding", "verifying", 0)
-            self._ensure_embedding_runtime()
-        except Exception as error:
-            self._mark_task_failed("embedding", str(error))
-            return {"ok": False}
-
-        try:
-            self._set_task_state("reranker", "verifying", 0)
-            self._ensure_reranker_runtime()
-        except Exception as error:
-            self._mark_task_failed("reranker", str(error))
-            return {"ok": False}
-
-        self._set_status(
-            phase="completed",
-            progressPct=100,
-            error="",
-            embedding_state="ready",
-            reranker_state="ready",
-            embedding_progress=100,
-            reranker_progress=100,
-        )
-        return {"ok": True}
-
-    def get_local_embedding_runtime(self) -> object:
-        if self._runtime_config is None or self._artifact_manager is None:
-            return self._legacy_load_embedding_runtime()
-        return self._ensure_embedding_runtime()
-
-    def get_local_reranker_runtime(self) -> object:
-        if self._runtime_config is None or self._artifact_manager is None:
-            return self._legacy_load_reranker_runtime()
-        return self._ensure_reranker_runtime()
-
-    def _ensure_legacy_models(self) -> dict[str, bool]:
-        self._status_store.update(
-            phase="verifying",
-            progressPct=0,
-            error="",
-            tasks={
-                "embedding": {
-                    "id": "embedding-local",
-                    "model": "embedding",
-                    "state": "verifying",
-                    "progressPct": 0,
-                    "error": "",
-                },
-                "reranker": {
-                    "id": "reranker-local",
-                    "model": "reranker",
-                    "state": "verifying",
-                    "progressPct": 0,
-                    "error": "",
-                },
-            },
-        )
-
-        try:
-            self._verify_embedding()
-            self._verify_reranker()
-        except Exception as error:
             self._status_store.update(
                 phase="failed",
-                error=str(error),
+                progressPct=0,
+                error="model runtime is not configured",
                 tasks={
-                    **self.snapshot()["tasks"],
-                    "embedding": {
-                        **(self.snapshot()["tasks"]["embedding"] or {}),
-                        "state": "failed",
-                        "error": str(error),
-                    },
+                    "embedding": self._task_status("embedding-local", "embedding", "failed", 0, ""),
+                    "reranker": self._task_status("reranker-local", "reranker", "failed", 0, ""),
                 },
             )
             return {"ok": False}
 
-        self._status_store.update(
-            phase="completed",
-            progressPct=100,
-            error="",
-            tasks={
-                "embedding": {
-                    "id": "embedding-local",
-                    "model": "embedding",
-                    "state": "ready",
-                    "progressPct": 100,
-                    "error": "",
-                },
-                "reranker": {
-                    "id": "reranker-local",
-                    "model": "reranker",
-                    "state": "ready",
-                    "progressPct": 100,
-                    "error": "",
-                },
-            },
-        )
-        return {"ok": True}
+        with self._ensure_lock:
+            self._set_status(
+                phase="verifying",
+                progressPct=0,
+                error="",
+                embedding_state="waiting",
+                reranker_state="waiting",
+                embedding_progress=0,
+                reranker_progress=0,
+            )
+
+            try:
+                self._begin_task_wait("embedding")
+                self._set_task_state("embedding", "verifying", 0)
+                self._ensure_embedding_runtime()
+            except Exception as error:
+                self._finish_task_wait("embedding", error=str(error))
+                self._mark_task_failed("embedding", str(error))
+                return {"ok": False}
+            else:
+                self._finish_task_wait("embedding", error="")
+
+            try:
+                self._begin_task_wait("reranker")
+                self._set_task_state("reranker", "verifying", 0)
+                self._ensure_reranker_runtime()
+            except Exception as error:
+                self._finish_task_wait("reranker", error=str(error))
+                self._mark_task_failed("reranker", str(error))
+                return {"ok": False}
+            else:
+                self._finish_task_wait("reranker", error="")
+
+            self._set_status(
+                phase="completed",
+                progressPct=100,
+                error="",
+                embedding_state="ready",
+                reranker_state="ready",
+                embedding_progress=100,
+                reranker_progress=100,
+            )
+            return {"ok": True}
+
+    def get_local_embedding_runtime(self) -> object:
+        return self._wait_for_runtime("embedding")
+
+    def get_local_reranker_runtime(self) -> object:
+        return self._wait_for_runtime("reranker")
 
     def _set_status(
         self,
@@ -219,7 +179,7 @@ class ModelService:
         model_root = self._artifact_manager.resolve_model_root(
             "embedding", self._runtime_config.embedding_model
         )
-        if model_root.exists():
+        if has_complete_local_model_artifacts("embedding", model_root):
             try:
                 self._embedding_runtime = self._embedding_runtime_loader(
                     model_root,
@@ -227,8 +187,13 @@ class ModelService:
                 )
                 self._update_task_state("embedding", "ready", 100, self._runtime_config.embedding_model)
                 return self._embedding_runtime
-            except Exception:
-                pass
+            except Exception as error:
+                self._log_cached_runtime_load_failure(
+                    kind="embedding",
+                    model=self._runtime_config.embedding_model,
+                    model_root=model_root,
+                    error=error,
+                )
 
         self._update_task_state(
             "embedding",
@@ -236,10 +201,11 @@ class ModelService:
             0,
             self._runtime_config.embedding_model,
         )
+        force_redownload = model_root.exists() and not has_resumable_partial_downloads(model_root)
         artifact = self._artifact_manager.ensure_artifacts(
             kind="embedding",
             model=self._runtime_config.embedding_model,
-            force_redownload=model_root.exists(),
+            force_redownload=force_redownload,
             on_progress=lambda downloaded, total: self._update_progress(
                 "embedding",
                 downloaded,
@@ -254,7 +220,7 @@ class ModelService:
         self._update_task_state("embedding", "ready", 100, self._runtime_config.embedding_model)
         return self._embedding_runtime
 
-    def _ensure_reranker_runtime(self) -> LoadedRerankerRuntime:
+    def _ensure_reranker_runtime(self) -> object:
         if self._reranker_runtime is not None:
             return self._reranker_runtime
 
@@ -263,7 +229,7 @@ class ModelService:
         model_root = self._artifact_manager.resolve_model_root(
             "reranker", self._runtime_config.reranker_model
         )
-        if model_root.exists():
+        if has_complete_local_model_artifacts("reranker", model_root):
             try:
                 loaded = self._reranker_runtime_loader(
                     model_root,
@@ -272,8 +238,13 @@ class ModelService:
                 self._reranker_runtime = self._coerce_reranker_runtime(loaded)
                 self._update_task_state("reranker", "ready", 100, self._runtime_config.reranker_model)
                 return self._reranker_runtime
-            except Exception:
-                pass
+            except Exception as error:
+                self._log_cached_runtime_load_failure(
+                    kind="reranker",
+                    model=self._runtime_config.reranker_model,
+                    model_root=model_root,
+                    error=error,
+                )
 
         self._update_task_state(
             "reranker",
@@ -281,10 +252,11 @@ class ModelService:
             0,
             self._runtime_config.reranker_model,
         )
+        force_redownload = model_root.exists() and not has_resumable_partial_downloads(model_root)
         artifact = self._artifact_manager.ensure_artifacts(
             kind="reranker",
             model=self._runtime_config.reranker_model,
-            force_redownload=model_root.exists(),
+            force_redownload=force_redownload,
             on_progress=lambda downloaded, total: self._update_progress(
                 "reranker",
                 downloaded,
@@ -300,12 +272,12 @@ class ModelService:
         self._update_task_state("reranker", "ready", 100, self._runtime_config.reranker_model)
         return self._reranker_runtime
 
-    def _coerce_reranker_runtime(self, runtime: Any) -> LoadedRerankerRuntime:
+    def _coerce_reranker_runtime(self, runtime: Any) -> object:
         if isinstance(runtime, LoadedRerankerRuntime):
             return runtime
         if isinstance(runtime, tuple) and len(runtime) == 2:
             return LoadedRerankerRuntime(tokenizer=runtime[0], model=runtime[1])
-        raise TypeError("reranker runtime must provide tokenizer and model")
+        return runtime
 
     def _mark_task_failed(self, kind: str, error: str) -> None:
         tasks = self.snapshot()["tasks"]
@@ -327,6 +299,14 @@ class ModelService:
             error=error,
             tasks=tasks,
         )
+        if self._logger is not None:
+            self._logger.log(
+                "error",
+                "model task failed",
+                kind=kind,
+                error=error,
+                progressPct=failed_task.get("progressPct", 0) if isinstance(failed_task, dict) else 0,
+            )
 
     def _task_status(
         self,
@@ -381,6 +361,32 @@ class ModelService:
             error="",
             tasks=tasks,
         )
+        last_logged = self._last_logged_progress_pct.get(kind)
+        if self._logger is not None and last_logged != progress_pct:
+            self._last_logged_progress_pct[kind] = progress_pct
+            self._logger.log(
+                "debug",
+                "model download progress",
+                kind=kind,
+                model=model,
+                downloaded=downloaded,
+                total=total,
+                progressPct=progress_pct,
+            )
+
+    def _wait_for_runtime(self, kind: str) -> object:
+        with self._task_condition:
+            while True:
+                runtime = self._runtime_for_kind(kind)
+                if runtime is not None:
+                    return runtime
+                if self._task_inflight[kind]:
+                    self._task_condition.wait()
+                    continue
+                error = self._task_errors[kind]
+                if error:
+                    raise RuntimeError(error)
+                raise RuntimeError(f"{kind} runtime is not ready")
 
     def _aggregate_progress(self, tasks: dict[str, Any]) -> int:
         values = []
@@ -391,3 +397,41 @@ class ModelService:
         if not values:
             return 0
         return round(sum(values) / len(values))
+
+    def _log_cached_runtime_load_failure(
+        self,
+        *,
+        kind: str,
+        model: str,
+        model_root: Path,
+        error: Exception,
+    ) -> None:
+        if self._logger is None:
+            return
+        self._logger.log(
+            "warn",
+            "failed to load cached model runtime, falling back to download",
+            kind=kind,
+            model=model,
+            modelRoot=str(model_root),
+            error=str(error),
+        )
+
+    def _begin_task_wait(self, kind: str) -> None:
+        with self._task_condition:
+            self._task_inflight[kind] = True
+            self._task_errors[kind] = ""
+            self._task_condition.notify_all()
+
+    def _finish_task_wait(self, kind: str, *, error: str) -> None:
+        with self._task_condition:
+            self._task_inflight[kind] = False
+            self._task_errors[kind] = error
+            self._task_condition.notify_all()
+
+    def _runtime_for_kind(self, kind: str) -> object | None:
+        if kind == "embedding":
+            return self._embedding_runtime
+        if kind == "reranker":
+            return self._reranker_runtime
+        raise ValueError(f"unknown model task kind: {kind}")

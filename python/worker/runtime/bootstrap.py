@@ -7,6 +7,7 @@ import threading
 import time
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
+from collections.abc import Iterable
 from pathlib import Path
 from tempfile import gettempdir
 from typing import BinaryIO, Callable, TextIO
@@ -50,7 +51,12 @@ class WorkerRuntime:
                 if not is_request_frame(frame):
                     self.logger.log("warn", "ignored non-request worker frame")
                     continue
-                self.logger.log("info", "handling worker request", method=frame["method"])
+                self.logger.log(
+                    "info",
+                    "handling worker request",
+                    method=frame["method"],
+                    params=frame.get("params"),
+                )
                 response = self.server.handle_request(frame)
                 self.stdout.write(encode_frame(response))
                 self.stdout.flush()
@@ -90,12 +96,9 @@ def create_worker_runtime(
     work_available = threading.Event()
     model_service = ModelService(
         status_store=model_status_store,
-        verify_embedding=lambda: (_ for _ in ()).throw(RuntimeError("model runtime is not configured")),
-        verify_reranker=lambda: (_ for _ in ()).throw(RuntimeError("model runtime is not configured")),
-        load_embedding_runtime=lambda: (_ for _ in ()).throw(RuntimeError("model runtime is not configured")),
-        load_reranker_runtime=lambda: (_ for _ in ()).throw(RuntimeError("model runtime is not configured")),
         embedding_runtime_loader=_fake_embedding_runtime_loader if use_fake_model_runtime else None,
         reranker_runtime_loader=_fake_reranker_runtime_loader if use_fake_model_runtime else None,
+        logger=logger,
     )
     index_queue = IndexQueue(
         status_store=index_status_store,
@@ -104,7 +107,7 @@ def create_worker_runtime(
     index_service = IndexService(
         parse_node=parse_node,
         model_service=model_service,
-        vector_repository=VectorRepository(collection_path=str(default_base_path / "vector")),
+        vector_repository=VectorRepository(collection_path=str(default_base_path / "index" / "index.zvec")),
         vector_status_store=vector_status_store,
         parser_base_dir=default_base_path / "parser",
     )
@@ -205,7 +208,7 @@ def _run_queue_job(job, *, index_service: IndexService) -> None:
     raise ValueError(f"unsupported job type: {job.job_type}")
 
 class FetchResponse:
-    def __init__(self, *, status: int, headers: dict[str, str], body: list[bytes]) -> None:
+    def __init__(self, *, status: int, headers: dict[str, str], body: Iterable[bytes]) -> None:
         self.status = status
         self.headers = headers
         self.body = body
@@ -216,15 +219,27 @@ class FetchResponse:
         return json.loads(b"".join(self.body).decode("utf-8"))
 
 
+class StreamingResponseBody:
+    def __init__(self, response) -> None:
+        self._response = response
+
+    def __iter__(self):
+        try:
+            yield from self._response
+        finally:
+            close = getattr(self._response, "close", None)
+            if callable(close):
+                close()
+
+
 def fetch_model_http(url: str, headers: dict[str, str] | None = None) -> FetchResponse:
     request = Request(url, headers=headers or {})
-    with urlopen(request) as response:
-        body = list(response)
-        return FetchResponse(
-            status=getattr(response, "status", response.getcode()),
-            headers={str(key): str(value) for key, value in response.headers.items()},
-            body=body,
-        )
+    response = urlopen(request)
+    return FetchResponse(
+        status=getattr(response, "status", response.getcode()),
+        headers={str(key): str(value) for key, value in response.headers.items()},
+        body=StreamingResponseBody(response),
+    )
 
 
 def fake_model_fetch(url: str, headers: dict[str, str] | None = None) -> FetchResponse:
@@ -297,4 +312,9 @@ def _fake_embedding_runtime_loader(model_path, *, preferred_device: str) -> obje
 def _fake_reranker_runtime_loader(model_path, *, preferred_device: str) -> object:
     _ = model_path
     _ = preferred_device
-    return ("fake-tokenizer", "fake-reranker-model")
+
+    def rerank(query: str, candidate: dict[str, object]) -> float:
+        haystack = f'{candidate.get("title", "")}\n{candidate.get("text", "")}'.lower()
+        return 100.0 if query.lower() in haystack else 0.0
+
+    return rerank

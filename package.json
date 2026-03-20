@@ -7,8 +7,8 @@
   ],
   "scripts": {
     "build:dev": "bun run prepare:native && vite build && electrobun build",
-    "dev": "bun run build:dev && electrobun dev",
-    "dev:hmr": "concurrently -k --kill-signal SIGINT --success first \"vite --port 5173\" \"bun run dev\"",
+    "dev": "concurrently -k --kill-signal SIGINT --success first \"vite --port 5173\" \"bun run build:dev && electrobun dev\"",
+    "dev:hmr": "concurrently -k --kill-signal SIGINT --success first \"vite --port 5173\" \"bun run build:dev && electrobun dev\"",
     "hmr": "vite --port 5173",
     "prepare:native": "mkdir -p vendor/node_modules; rm -rf vendor/node_modules/sharp vendor/node_modules/@img; copy_pkg(){ PKG=\"$1\"; SRC=$(ls -d \"node_modules/.bun/${PKG}\"@*/node_modules/\"${PKG}\" 2>/dev/null | sort -V | tail -n1); if [ -n \"$SRC\" ]; then cp -R \"$SRC\" vendor/node_modules/; fi; }; copy_scoped(){ KEY=\"$1\"; PKG=\"$2\"; SRC=$(ls -d \"node_modules/.bun/${KEY}\"@*/node_modules/\"${PKG}\" 2>/dev/null | sort -V | tail -n1); if [ -n \"$SRC\" ]; then mkdir -p \"vendor/node_modules/$(dirname \"$PKG\")\"; cp -R \"$SRC\" \"vendor/node_modules/$(dirname \"$PKG\")/\"; fi; }; copy_pkg sharp; copy_scoped @img+colour @img/colour; copy_scoped @img+sharp-darwin-arm64 @img/sharp-darwin-arm64; copy_scoped @img+sharp-libvips-darwin-arm64 @img/sharp-libvips-darwin-arm64",
     "build": "bun run prepare:native && bun run prepare:python-runtime && vite build && electrobun build",

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from worker.index.service import IndexService
 from worker.model.service import ModelService
+from worker.model.types import ModelRuntimeConfig
 from worker.parser.service import parse_node as parse_node_from_mount
 from worker.parser.types import ParserMount, ParserNode
 from worker.runtime.status import ModelStatusStore, VectorStatusStore
@@ -13,7 +14,7 @@ from worker.vector.repository import VectorRepository
 def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
     data_dir = Path(__file__).parent / "data"
     parser_dir = tmp_path / "parser"
-    repository = VectorRepository(collection_path=str(tmp_path / "vector"))
+    repository = VectorRepository(collection_path=str(tmp_path / "index" / "index.zvec"))
     index_service = IndexService(
         parse_node=create_dataset_parser(),
         model_service=create_model_service(),
@@ -61,7 +62,7 @@ def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
     assert "Image described markdown" in (
         parser_dir / "node-image" / "document.md"
     ).read_text(encoding="utf-8")
-    with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
+    with sqlite3.connect(tmp_path / "index" / "index.sqlite3") as connection:
         count = connection.execute("SELECT COUNT(*) FROM index_chunks").fetchone()[0]
     assert count == 4
 
@@ -123,10 +124,27 @@ def create_model_service() -> ModelService:
         haystack = f'{candidate.get("title", "")}\n{candidate.get("text", "")}'.lower()
         return 100.0 if query.lower() in haystack else 0.0
 
-    return ModelService(
+    class FakeArtifactManager:
+        def resolve_model_root(self, kind: str, model: str) -> Path:
+            return Path("/tmp") / kind / model.replace("/", "-")
+
+        def ensure_artifacts(self, kind: str, model: str, force_redownload: bool = False, on_progress=None):
+            _ = (kind, model, force_redownload, on_progress)
+            return type("FakeArtifactResult", (), {"model_root": Path("/tmp"), "files": [], "downloaded_files": 0, "downloaded_bytes": 0})()
+
+    service = ModelService(
         status_store=ModelStatusStore(event_sink=lambda event: None),
-        verify_embedding=lambda: None,
-        verify_reranker=lambda: None,
-        load_embedding_runtime=lambda: lambda text: [float(len(text))],
-        load_reranker_runtime=lambda: rerank,
+        runtime_config=ModelRuntimeConfig(
+            base_path=Path("/tmp"),
+            embedding_model="Alibaba-NLP/gte-multilingual-base",
+            reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+            preferred_device="cpu",
+            model_cache_dir=Path("/tmp/model"),
+            huggingface_endpoint="https://hf.example",
+        ),
+        artifact_manager=FakeArtifactManager(),
+        embedding_runtime_loader=lambda model_path, *, preferred_device: lambda text: [float(len(text))],
+        reranker_runtime_loader=lambda model_path, *, preferred_device: rerank,
     )
+    assert service.ensure_required_models() == {"ok": True}
+    return service

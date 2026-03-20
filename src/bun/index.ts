@@ -115,7 +115,6 @@ const pythonWorkerTransport = createPythonWorkerTransport({
     platform: process.platform,
     isPackaged: process.env.NODE_ENV !== "development",
     execPath: process.execPath,
-    cwd: process.cwd(),
   }),
 });
 const pythonWorkerRuntime = createPythonWorkerRuntime({
@@ -519,12 +518,13 @@ const stopPythonWorkerStderrSubscription = pythonWorkerTransport.subscribeStderr
       };
       const message = typeof parsed.msg === "string" ? parsed.msg : trimmed;
       const level = typeof parsed.level === "string" ? parsed.level : "warn";
+      const { msg: _msg, ...fields } = parsed;
       if (level === "error") {
-        app.logger.error(parsed, message);
+        app.logger.error(fields, message);
       } else if (level === "warn") {
-        app.logger.warn(parsed, message);
+        app.logger.warn(fields, message);
       } else {
-        app.logger.info(parsed, message);
+        app.logger.info(fields, message);
       }
     } catch {
       app.logger.warn({ chunk: trimmed }, "python worker stderr");

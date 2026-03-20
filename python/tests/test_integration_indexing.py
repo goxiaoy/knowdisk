@@ -6,6 +6,7 @@ from pathlib import Path
 from worker.index.queue import IndexQueue
 from worker.index.service import IndexService
 from worker.model.service import ModelService
+from worker.model.types import ModelRuntimeConfig
 from worker.parser.types import ParserMount, ParserNode
 from worker.parser.service import parse_node as parse_node_from_mount
 from worker.runtime.bootstrap import create_worker_runtime
@@ -80,7 +81,7 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(
         assert search_payload["debug"]["rerankedResults"]
         assert isinstance(search_payload["debug"]["finalResults"][0]["rerankScore"], float)
         assert search_payload["debug"]["finalResults"][0]["sourceRef"] == "note.md"
-        with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
+        with sqlite3.connect(tmp_path / "index" / "index.sqlite3") as connection:
             row = connection.execute(
                 "SELECT chunk_id, title, text FROM index_chunks WHERE node_id = ?",
                 ("node-1",),
@@ -225,7 +226,7 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
         assert runtime.server.services.index_queue.snapshot()["processedFiles"] == 1
         assert runtime.server.services.index_queue.snapshot()["totalFiles"] == 1
         assert runtime.server.services.index_service.vector_status_snapshot()["chunkCount"] == 2
-        with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
+        with sqlite3.connect(tmp_path / "index" / "index.sqlite3") as connection:
             count = connection.execute("SELECT COUNT(*) FROM index_chunks").fetchone()[0]
         assert count == 2
     finally:
@@ -233,13 +234,30 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
 
 
 def create_model_service(status_store: ModelStatusStore) -> ModelService:
-    return ModelService(
+    class FakeArtifactManager:
+        def resolve_model_root(self, kind: str, model: str) -> Path:
+            return Path("/tmp") / kind / model.replace("/", "-")
+
+        def ensure_artifacts(self, kind: str, model: str, force_redownload: bool = False, on_progress=None):
+            _ = (kind, model, force_redownload, on_progress)
+            return type("FakeArtifactResult", (), {"model_root": Path("/tmp"), "files": [], "downloaded_files": 0, "downloaded_bytes": 0})()
+
+    service = ModelService(
         status_store=status_store,
-        verify_embedding=lambda: None,
-        verify_reranker=lambda: None,
-        load_embedding_runtime=lambda: lambda text: [float(len(text))],
-        load_reranker_runtime=lambda: {"provider": "stub-reranker"},
+        runtime_config=ModelRuntimeConfig(
+            base_path=Path("/tmp"),
+            embedding_model="Alibaba-NLP/gte-multilingual-base",
+            reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+            preferred_device="cpu",
+            model_cache_dir=Path("/tmp/model"),
+            huggingface_endpoint="https://hf.example",
+        ),
+        artifact_manager=FakeArtifactManager(),
+        embedding_runtime_loader=lambda model_path, *, preferred_device: lambda text: [float(len(text))],
+        reranker_runtime_loader=lambda model_path, *, preferred_device: {"provider": "stub-reranker"},
     )
+    assert service.ensure_required_models() == {"ok": True}
+    return service
 
 
 def _wait_for(predicate, timeout_seconds: float = 5.0) -> None:

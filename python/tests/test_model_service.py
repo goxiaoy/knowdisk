@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
+import threading
+import time
 
 from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
 from worker.model.service import ModelService
+from worker.runtime.logging import create_worker_logger
 from worker.runtime.status import ModelStatusStore
 
 
@@ -48,60 +52,24 @@ class FakeArtifactManager:
         )
 
 
+def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
+    model_root.mkdir(parents=True, exist_ok=True)
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    if kind == "embedding":
+        (model_root / "modules.json").write_text("[]", encoding="utf-8")
+        (model_root / "1_Pooling").mkdir(parents=True, exist_ok=True)
+        (model_root / "1_Pooling" / "config.json").write_text("{}", encoding="utf-8")
+        (model_root / "model.safetensors").write_bytes(b"weights")
+        return
+    (model_root / "pytorch_model.bin").write_bytes(b"weights")
+
+
 def test_default_model_status_is_idle():
     emitted: list[dict] = []
     store = ModelStatusStore(event_sink=emitted.append)
-    service = ModelService(
-        status_store=store,
-        verify_embedding=lambda: None,
-        verify_reranker=lambda: None,
-        load_embedding_runtime=lambda: object(),
-        load_reranker_runtime=lambda: object(),
-    )
+    service = ModelService(status_store=store)
 
     assert service.snapshot()["phase"] == "idle"
-
-
-def test_legacy_ensure_models_marks_tasks_ready():
-    emitted: list[dict] = []
-    store = ModelStatusStore(event_sink=emitted.append)
-    service = ModelService(
-        status_store=store,
-        verify_embedding=lambda: None,
-        verify_reranker=lambda: None,
-        load_embedding_runtime=lambda: object(),
-        load_reranker_runtime=lambda: object(),
-    )
-
-    result = service.ensure_required_models()
-
-    assert result == {"ok": True}
-    assert service.snapshot()["phase"] == "completed"
-    assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
-    assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
-
-
-def test_legacy_download_failure_updates_model_status():
-    emitted: list[dict] = []
-    store = ModelStatusStore(event_sink=emitted.append)
-
-    def fail() -> None:
-        raise RuntimeError("download failed")
-
-    service = ModelService(
-        status_store=store,
-        verify_embedding=fail,
-        verify_reranker=lambda: None,
-        load_embedding_runtime=lambda: object(),
-        load_reranker_runtime=lambda: object(),
-    )
-
-    result = service.ensure_required_models()
-
-    assert result == {"ok": False}
-    assert service.snapshot()["phase"] == "failed"
-    assert service.snapshot()["error"] == "download failed"
-
 
 def test_real_ensure_models_verifies_existing_local_model_by_successful_load(tmp_path: Path):
     emitted: list[dict] = []
@@ -109,8 +77,8 @@ def test_real_ensure_models_verifies_existing_local_model_by_successful_load(tmp
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
     embedding_root = manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
     reranker_root = manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
-    embedding_root.mkdir(parents=True, exist_ok=True)
-    reranker_root.mkdir(parents=True, exist_ok=True)
+    write_complete_local_model_cache("embedding", embedding_root)
+    write_complete_local_model_cache("reranker", reranker_root)
     embedding_runtime = object()
     reranker_tokenizer = object()
     reranker_model = object()
@@ -168,11 +136,11 @@ def test_real_ensure_models_marks_failed_when_verify_by_load_fails(tmp_path: Pat
     emitted: list[dict] = []
     store = ModelStatusStore(event_sink=emitted.append)
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
-    manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "embedding", manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
     )
-    manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
     service = make_real_model_service(
         store,
@@ -190,15 +158,62 @@ def test_real_ensure_models_marks_failed_when_verify_by_load_fails(tmp_path: Pat
     assert manager.calls == [("embedding", "Alibaba-NLP/gte-multilingual-base", True)]
 
 
+def test_real_ensure_models_logs_cached_runtime_load_failures_before_redownload(tmp_path: Path):
+    store = ModelStatusStore(event_sink=lambda event: None)
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    embedding_root = manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
+    write_complete_local_model_cache("embedding", embedding_root)
+    logger_stream = StringIO()
+    service = make_real_model_service(
+        store,
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("boom")),
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        logger=create_worker_logger(logger_stream),
+    )
+
+    result = service.ensure_required_models()
+
+    assert result == {"ok": False}
+    assert '"msg":"failed to load cached model runtime, falling back to download"' in logger_stream.getvalue()
+    assert '"kind":"embedding"' in logger_stream.getvalue()
+    assert '"error":"boom"' in logger_stream.getvalue()
+
+
+def test_real_ensure_models_redownloads_partial_embedding_cache_before_loading(tmp_path: Path):
+    store = ModelStatusStore(event_sink=lambda event: None)
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    embedding_root = manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
+    embedding_root.mkdir(parents=True, exist_ok=True)
+    (embedding_root / "config.json").write_text("{}", encoding="utf-8")
+    (embedding_root / "model.safetensors.part").write_bytes(b"partial")
+
+    embedding_loader_calls: list[Path] = []
+    service = make_real_model_service(
+        store,
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: (
+            embedding_loader_calls.append(model_path) or object()
+        ),
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+    )
+
+    result = service.ensure_required_models()
+
+    assert result == {"ok": True}
+    assert manager.calls[0] == ("embedding", "Alibaba-NLP/gte-multilingual-base", False)
+    assert embedding_loader_calls == [embedding_root]
+
+
 def test_real_ensure_models_marks_only_reranker_failed_when_reranker_load_fails(tmp_path: Path):
     emitted: list[dict] = []
     store = ModelStatusStore(event_sink=emitted.append)
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
-    manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "embedding", manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
     )
-    manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
     service = make_real_model_service(
         store,
@@ -227,12 +242,16 @@ def test_embedding_runtime_is_cached(tmp_path: Path):
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
     )
 
+    assert service.ensure_required_models() == {"ok": True}
     first = service.get_local_embedding_runtime()
     second = service.get_local_embedding_runtime()
 
     assert first is embedding_runtime
     assert second is embedding_runtime
-    assert manager.calls == [("embedding", "Alibaba-NLP/gte-multilingual-base", False)]
+    assert manager.calls == [
+        ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
+        ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
+    ]
 
 
 def test_reranker_runtime_is_cached_as_named_runtime(tmp_path: Path):
@@ -246,6 +265,7 @@ def test_reranker_runtime_is_cached_as_named_runtime(tmp_path: Path):
         reranker_loader=lambda model_path, *, preferred_device: (tokenizer, model),
     )
 
+    assert service.ensure_required_models() == {"ok": True}
     first = service.get_local_reranker_runtime()
     second = service.get_local_reranker_runtime()
 
@@ -253,7 +273,69 @@ def test_reranker_runtime_is_cached_as_named_runtime(tmp_path: Path):
     assert isinstance(first, LoadedRerankerRuntime)
     assert first.tokenizer is tokenizer
     assert first.model is model
-    assert manager.calls == [("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False)]
+    assert manager.calls == [
+        ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
+        ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
+    ]
+
+
+def test_get_local_embedding_runtime_waits_for_inflight_verify(tmp_path: Path):
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    store = ModelStatusStore(event_sink=lambda event: None)
+    loader_started = threading.Event()
+    release_loader = threading.Event()
+    embedding_runtime = object()
+    service = make_real_model_service(
+        store,
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: (
+            loader_started.set(),
+            release_loader.wait(1),
+            embedding_runtime,
+        )[-1],
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+    )
+
+    ensure_thread = threading.Thread(target=service.ensure_required_models)
+    ensure_thread.start()
+    assert loader_started.wait(0.5)
+
+    result: list[object] = []
+    getter_done = threading.Event()
+
+    def read_runtime() -> None:
+        result.append(service.get_local_embedding_runtime())
+        getter_done.set()
+
+    getter_thread = threading.Thread(target=read_runtime)
+    getter_thread.start()
+    time.sleep(0.05)
+    assert getter_done.is_set() is False
+
+    release_loader.set()
+    getter_thread.join(timeout=1)
+    ensure_thread.join(timeout=1)
+
+    assert getter_done.is_set() is True
+    assert result == [embedding_runtime]
+
+
+def test_get_local_embedding_runtime_raises_when_runtime_failed(tmp_path: Path):
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    service = make_real_model_service(
+        ModelStatusStore(event_sink=lambda event: None),
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("boom")),
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+    )
+
+    assert service.ensure_required_models() == {"ok": False}
+    try:
+        service.get_local_embedding_runtime()
+    except RuntimeError as error:
+        assert str(error) == "boom"
+    else:
+        raise AssertionError("expected get_local_embedding_runtime to raise after failed verify")
 
 
 def make_real_model_service(
@@ -262,13 +344,10 @@ def make_real_model_service(
     *,
     embedding_loader,
     reranker_loader,
+    logger=None,
 ) -> ModelService:
     return ModelService(
         status_store=status_store,
-        verify_embedding=lambda: None,
-        verify_reranker=lambda: None,
-        load_embedding_runtime=lambda: object(),
-        load_reranker_runtime=lambda: object(),
         runtime_config=ModelRuntimeConfig(
             base_path=artifact_manager.cache_root.parent,
             embedding_model="Alibaba-NLP/gte-multilingual-base",
@@ -280,4 +359,5 @@ def make_real_model_service(
         artifact_manager=artifact_manager,
         embedding_runtime_loader=embedding_loader,
         reranker_runtime_loader=reranker_loader,
+        logger=logger,
     )

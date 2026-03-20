@@ -8,7 +8,7 @@ from worker.model.download import download_file
 class FakeResponse:
     status: int
     headers: dict[str, str]
-    body: list[bytes]
+    body: object
 
 
 def test_download_writes_part_then_promotes_final_file(tmp_path: Path):
@@ -141,3 +141,39 @@ def test_download_reports_aggregate_progress_across_chunks(tmp_path: Path):
     )
 
     assert progress == [(1, 5), (3, 5), (5, 5)]
+
+
+def test_download_retries_after_network_error_and_resumes_partial_file(tmp_path: Path):
+    calls: list[tuple[str, dict[str, str] | None]] = []
+    destination = tmp_path / "model.bin"
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        calls.append((url, headers))
+        if len(calls) == 1:
+            return FakeResponse(
+                status=200,
+                headers={"content-length": "6"},
+                body=FailingBody(),
+            )
+        return FakeResponse(
+            status=206,
+            headers={
+                "content-length": "4",
+                "content-range": "bytes 2-5/6",
+            },
+            body=[b"ll", b"o!"],
+        )
+
+    download_file("https://example.com/model.bin", destination, fetch)
+
+    assert destination.read_bytes() == b"hello!"
+    assert calls == [
+        ("https://example.com/model.bin", None),
+        ("https://example.com/model.bin", {"Range": "bytes=2-"}),
+    ]
+
+
+class FailingBody:
+    def __iter__(self):
+        yield b"he"
+        raise OSError("connection dropped")

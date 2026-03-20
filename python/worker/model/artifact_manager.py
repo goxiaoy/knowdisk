@@ -58,7 +58,7 @@ class ModelArtifactManager:
         if force_redownload and model_root.exists():
             self._remove_tree(model_root)
 
-        files = self.list_model_files(kind, model)
+        files = self._resolve_file_sizes(model, self.list_model_files(kind, model))
         total_bytes = sum(file.size for file in files)
         downloaded_bytes = 0
 
@@ -66,6 +66,11 @@ class ModelArtifactManager:
         for file in files:
             destination = model_root / file.path
             file_total = file.size
+            if self._is_completed_file(destination, expected_size=file_total):
+                downloaded_bytes += file_total if file_total > 0 else destination.stat().st_size
+                if on_progress is not None:
+                    on_progress(downloaded_bytes, total_bytes)
+                continue
 
             def report_progress(downloaded_in_file: int, _file_total: int, *, offset: int = downloaded_bytes) -> None:
                 if on_progress is not None:
@@ -131,3 +136,56 @@ class ModelArtifactManager:
     def _remove_tree(self, path: Path) -> None:
         if path.exists():
             shutil.rmtree(path)
+
+    def _is_completed_file(self, path: Path, *, expected_size: int) -> bool:
+        if not path.is_file():
+            return False
+        if path.with_name(f"{path.name}.part").exists():
+            return False
+        if expected_size <= 0:
+            return False
+        return path.stat().st_size == expected_size
+
+    def _resolve_file_sizes(self, model: str, files: list[ModelRepoFile]) -> list[ModelRepoFile]:
+        resolved: list[ModelRepoFile] = []
+        for file in files:
+            if file.size > 0:
+                resolved.append(file)
+                continue
+            resolved.append(ModelRepoFile(path=file.path, size=self._probe_file_size(model, file.path)))
+        return resolved
+
+    def _probe_file_size(self, model: str, path: str) -> int:
+        response = self._fetch(
+            self._model_file_url(model, path),
+            {"Range": "bytes=0-0"},
+        )
+        status = getattr(response, "status", None)
+        if status == 206:
+            headers = getattr(response, "headers", {})
+            content_range = None
+            if isinstance(headers, Mapping):
+                for key, value in headers.items():
+                    if isinstance(key, str) and key.lower() == "content-range" and isinstance(value, str):
+                        content_range = value
+                        break
+            if isinstance(content_range, str):
+                try:
+                    _unit_range, total_text = content_range.rsplit("/", 1)
+                    total = int(total_text)
+                except (TypeError, ValueError):
+                    total = 0
+                if total > 0:
+                    return total
+
+        headers = getattr(response, "headers", {})
+        if isinstance(headers, Mapping):
+            for key, value in headers.items():
+                if isinstance(key, str) and key.lower() == "content-length" and isinstance(value, str):
+                    try:
+                        total = int(value)
+                    except ValueError:
+                        total = 0
+                    if total > 0:
+                        return total
+        return 0

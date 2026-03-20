@@ -207,6 +207,72 @@ def test_preserves_partial_downloads_for_resume(tmp_path: Path):
     assert calls[1][1] == {"Range": "bytes=2-"}
 
 
+def test_skips_completed_files_and_reports_existing_bytes_in_progress(tmp_path: Path):
+    calls: list[tuple[str, dict[str, str] | None]] = []
+    progress: list[tuple[int, int]] = []
+    model_root = tmp_path / "cache" / "embedding" / "Alibaba-NLP" / "gte-multilingual-base"
+    model_root.mkdir(parents=True, exist_ok=True)
+    (model_root / "config.json").write_bytes(b"done")
+    (model_root / "modules.json.part").write_bytes(b"te")
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        calls.append((url, headers))
+        if url.endswith("/api/models/Alibaba-NLP/gte-multilingual-base"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={
+                    "siblings": [
+                        {"rfilename": "config.json", "size": 4},
+                        {"rfilename": "modules.json", "size": 4},
+                        {"rfilename": "tokenizer.json", "size": 4},
+                    ]
+                },
+            )
+        if url.endswith("/modules.json"):
+            assert headers == {"Range": "bytes=2-"}
+            return FakeResponse(
+                status=206,
+                headers={
+                    "content-length": "2",
+                    "content-range": "bytes 2-3/4",
+                },
+                body=[b"st"],
+            )
+        assert url.endswith("/tokenizer.json")
+        assert headers is None
+        return FakeResponse(
+            status=200,
+            headers={"content-length": "4"},
+            body=[b"new!"],
+        )
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+
+    result = manager.ensure_artifacts(
+        kind="embedding",
+        model="Alibaba-NLP/gte-multilingual-base",
+        on_progress=lambda downloaded, total: progress.append((downloaded, total)),
+    )
+
+    assert result.model_root == model_root
+    assert result.downloaded_files == 2
+    assert (model_root / "config.json").read_bytes() == b"done"
+    assert (model_root / "modules.json").read_bytes() == b"test"
+    assert (model_root / "tokenizer.json").read_bytes() == b"new!"
+    assert calls == [
+        ("https://hf.example/api/models/Alibaba-NLP/gte-multilingual-base", None),
+        ("https://hf.example/Alibaba-NLP/gte-multilingual-base/resolve/main/modules.json", {"Range": "bytes=2-"}),
+        ("https://hf.example/Alibaba-NLP/gte-multilingual-base/resolve/main/tokenizer.json", None),
+    ]
+    assert progress[0] == (4, 12)
+    assert progress[-1] == (12, 12)
+
+
 def test_force_redownload_replaces_damaged_local_state(tmp_path: Path):
     calls: list[tuple[str, dict[str, str] | None]] = []
     model_root = tmp_path / "cache" / "reranker" / "Alibaba-NLP" / "gte-multilingual-reranker-base"
@@ -253,3 +319,64 @@ def test_force_redownload_replaces_damaged_local_state(tmp_path: Path):
     assert not (model_root / "config.json.part").exists()
     assert (model_root / "config.json").read_bytes() == b"data"
     assert all(headers is None for _url, headers in calls if "/resolve/main/" in _url)
+
+
+def test_resolves_missing_repo_file_sizes_from_range_probe(tmp_path: Path):
+    calls: list[tuple[str, dict[str, str] | None]] = []
+    progress: list[tuple[int, int]] = []
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        calls.append((url, headers))
+        if url.endswith("/api/models/Alibaba-NLP/gte-multilingual-base"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={
+                    "siblings": [
+                        {"rfilename": "config.json"},
+                        {"rfilename": "model.safetensors", "lfs": {"size": 6}},
+                    ]
+                },
+            )
+        if url.endswith("/config.json") and headers == {"Range": "bytes=0-0"}:
+            return FakeResponse(
+                status=206,
+                headers={
+                    "content-length": "1",
+                    "content-range": "bytes 0-0/4",
+                },
+                body=[b"{"],
+            )
+        if url.endswith("/config.json"):
+            return FakeResponse(
+                status=200,
+                headers={"content-length": "4"},
+                body=[b"test"],
+            )
+        return FakeResponse(
+            status=200,
+            headers={"content-length": "6"},
+            body=[b"weight"],
+        )
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+
+    result = manager.ensure_artifacts(
+        kind="embedding",
+        model="Alibaba-NLP/gte-multilingual-base",
+        on_progress=lambda downloaded, total: progress.append((downloaded, total)),
+    )
+
+    assert result.files == [
+        ModelRepoFile(path="config.json", size=4),
+        ModelRepoFile(path="model.safetensors", size=6),
+    ]
+    assert progress[-1] == (10, 10)
+    assert calls[:2] == [
+        ("https://hf.example/api/models/Alibaba-NLP/gte-multilingual-base", None),
+        ("https://hf.example/Alibaba-NLP/gte-multilingual-base/resolve/main/config.json", {"Range": "bytes=0-0"}),
+    ]

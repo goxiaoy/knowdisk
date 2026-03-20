@@ -264,6 +264,47 @@ def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
     assert results["debug"]["finalResults"][0]["text"] == "beta topic"
 
 
+def test_set_storage_base_path_moves_sqlite_and_vector_store_into_index_dir(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    service = IndexService(
+        parse_node=lambda node, mount: [],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {
+                "get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime(),
+                "get_local_reranker_runtime": lambda self: KeywordRerankerRuntime(),
+            },
+        )(),
+        vector_repository=VectorRepository(collection_path=str(tmp_path / "old-index.zvec")),
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    service.set_storage_base_path(tmp_path)
+
+    assert service._vector_repository.collection_path == str(tmp_path / "index" / "index.zvec")
+    assert service._chunk_store._db_path == tmp_path / "index" / "index.sqlite3"
+
+
+def test_vector_status_is_available_on_startup(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    service = IndexService(
+        parse_node=lambda node, mount: [],
+        model_service=object(),
+        vector_repository=VectorRepository(collection_path=str(tmp_path / "index.zvec")),
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    assert service.vector_status_snapshot() == {
+        "available": True,
+        "chunkCount": 0,
+        "lastUpdatedAt": "",
+        "error": "",
+    }
+
+
 def test_index_node_persists_chunk_rows_into_sqlite_fts(tmp_path):
     db_path = tmp_path / "chunks.sqlite3"
     vector_store = VectorStatusStore(event_sink=lambda event: None)

@@ -8,6 +8,21 @@ from worker.runtime.types import DeleteNodeRequest, IndexNodeRequest
 from worker.parser.types import ParserMount, ParserNode
 
 
+def test_default_queue_store_uses_index_sqlite_path(monkeypatch):
+    monkeypatch.setattr("worker.index.queue.gettempdir", lambda: "/tmp/knowdisk-test")
+    queue = IndexQueue(status_store=IndexStatusStore(event_sink=lambda event: None))
+
+    assert queue._queue_store.db_path == Path("/tmp/knowdisk-test") / "knowdisk-python-worker" / "index" / "index.sqlite3"
+
+
+def test_set_storage_base_path_moves_queue_store_into_index_sqlite(tmp_path: Path):
+    queue = IndexQueue(status_store=IndexStatusStore(event_sink=lambda event: None))
+
+    queue.set_storage_base_path(tmp_path)
+
+    assert queue._queue_store.db_path == tmp_path / "index" / "index.sqlite3"
+
+
 def test_enqueue_persists_job_and_notifies_worker_without_running_it(tmp_path: Path):
     db_path = tmp_path / "index-queue.sqlite3"
     wakeups: list[str] = []

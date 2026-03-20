@@ -36,7 +36,7 @@ class IndexService:
         self._chunk_store = (
             chunk_store
             if chunk_store is not None
-            else SQLiteChunkStore(parser_base_dir.parent / "index.sqlite3")
+            else SQLiteChunkStore(parser_base_dir.parent / "index" / "index.sqlite3")
         )
         self._search_service = SearchService(
             chunk_store=self._chunk_store,
@@ -45,6 +45,7 @@ class IndexService:
         self._vector_status_store = vector_status_store
         self._parser_base_dir = parser_base_dir
         self._search_rows: list[dict[str, object]] = []
+        self._refresh_vector_status()
 
     def index_node(
         self,
@@ -130,12 +131,13 @@ class IndexService:
 
     def set_storage_base_path(self, base_path: Path) -> None:
         self._parser_base_dir = base_path / "parser"
-        self._vector_repository = VectorRepository(collection_path=str(base_path / "vector"))
-        self._chunk_store = SQLiteChunkStore(base_path / "index.sqlite3")
+        self._vector_repository = VectorRepository(collection_path=str(base_path / "index" / "index.zvec"))
+        self._chunk_store = SQLiteChunkStore(base_path / "index" / "index.sqlite3")
         self._search_service = SearchService(
             chunk_store=self._chunk_store,
             vector_repository=self._vector_repository,
         )
+        self._refresh_vector_status()
 
     def _persist_markdown_artifact(self, node_id: str, chunks: list[dict[str, object]]) -> None:
         markdown_parts: list[str] = []
@@ -150,6 +152,12 @@ class IndexService:
         artifact_dir = self._parser_base_dir / node_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         (artifact_dir / "document.md").write_text("\n\n".join(markdown_parts), encoding="utf-8")
+
+    def _refresh_vector_status(self) -> None:
+        self._vector_status_store.update(
+            chunkCount=self._vector_repository.count_chunks(),
+            error="",
+        )
 
 
 def now_iso() -> str:

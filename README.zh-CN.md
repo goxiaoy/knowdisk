@@ -241,6 +241,8 @@ bun run python:setup
 bun run dev
 ```
 
+这个命令会同时启动 `http://localhost:5173` 上的 Vite renderer dev server 和 Electrobun 桌面壳层。
+
 Bun 主进程会自动通过 `uv run --project python python -m worker` 拉起 Python sidecar。
 
 Python worker 运行时依赖：
@@ -253,6 +255,8 @@ HMR：
 ```bash
 bun run dev:hmr
 ```
+
+`bun run dev:hmr` 目前只是同一套开发启动流程的别名。
 
 构建：
 

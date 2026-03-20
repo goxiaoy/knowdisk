@@ -29,3 +29,17 @@ def test_model_repo_file_round_trips_to_legacy_dict():
         "rfilename": "config.json",
         "size": 12,
     }
+
+
+def test_model_repo_file_uses_lfs_size_when_top_level_size_is_missing():
+    repo_file = ModelRepoFile.from_mapping(
+        {
+            "rfilename": "model.safetensors",
+            "lfs": {
+                "size": 123,
+            },
+        }
+    )
+
+    assert repo_file.path == "model.safetensors"
+    assert repo_file.size == 123

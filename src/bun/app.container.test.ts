@@ -11,7 +11,10 @@ import {
   type AppContainerDeps,
   type AppContainerPaths,
 } from "./app.container";
-import { resolvePythonWorkerCommand } from "./python/command";
+import {
+  resolvePythonWorkerCommand,
+  resolveRepoPythonProjectDirFromModule,
+} from "./python/command";
 
 describe("createAppContainer", () => {
   it("registers logger/config/vfs services with basePath-derived paths", () => {
@@ -47,8 +50,9 @@ describe("createAppContainer", () => {
     });
 
     expect(app.paths.basePath).toBe(basePath);
-    expect(app.paths.pythonProjectDir).toBe(join(process.cwd(), "python"));
-    expect((app.paths as AppContainerPaths).modelCacheDir).toBe(join(basePath, "models"));
+    expect(app.paths.pythonProjectDir).toBe(
+      resolveRepoPythonProjectDirFromModule(import.meta.url)
+    );
     expect(calls.vfsDbPath).toBe(join(basePath, "vfs", "vfs.db"));
     expect(calls.vfsContentRootParent).toBe(join(basePath, "vfs", "content"));
 

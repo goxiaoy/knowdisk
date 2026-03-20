@@ -17,6 +17,7 @@ import {
 } from "@knowdisk/vfs";
 import type { Logger } from "pino";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
+import { resolveRepoPythonProjectDirFromModule } from "./python/command";
 
 type NodeIndexingService = {
   indexNode(input: { nodeId: string }): Promise<unknown>;
@@ -26,12 +27,8 @@ type NodeIndexingService = {
 export type AppContainerPaths = {
   basePath: string;
   pythonProjectDir: string;
-  modelCacheDir: string;
   vfsDbPath: string;
   vfsContentRootDir: string;
-  parserCacheDir: string;
-  indexingDbPath: string;
-  indexingVectorPath: string;
 };
 
 export type AppContainerDeps = {
@@ -53,10 +50,8 @@ export type AppContainer = {
 
 const TOKENS = {
   loggerService: "LoggerService",
-  loggerServiceLegacy: "logger",
   coreConfig: "CoreConfig",
   fetchService: "Fetch",
-  fetchServiceLegacy: "fetch",
   vfsRepository: "VfsRepository",
   vfsService: "VfsService",
 } as const;
@@ -88,10 +83,8 @@ export function createAppContainer(input?: {
     level: config.logger.level,
   });
   container.registerInstance(TOKENS.loggerService, logger);
-  container.registerInstance(TOKENS.loggerServiceLegacy, logger);
   container.registerInstance(TOKENS.coreConfig, config);
   container.registerInstance(TOKENS.fetchService, fetch);
-  container.registerInstance(TOKENS.fetchServiceLegacy, fetch);
 
   const vfsRepository = deps.createVfsRepository({ dbPath: paths.vfsDbPath });
   const vfsRegistry = deps.createVfsProviderRegistry(container);
@@ -185,22 +178,14 @@ function resolveAppPaths(basePath: string): AppContainerPaths {
   }
   return {
     basePath: normalizedBasePath,
-    pythonProjectDir: join(process.cwd(), "python"),
-    modelCacheDir: join(normalizedBasePath, "models"),
+    pythonProjectDir: resolveRepoPythonProjectDirFromModule(import.meta.url),
     vfsDbPath: join(normalizedBasePath, "vfs", "vfs.db"),
     vfsContentRootDir: join(normalizedBasePath, "vfs", "content"),
-    parserCacheDir: join(normalizedBasePath, "parser", "cache"),
-    indexingDbPath: join(normalizedBasePath, "indexing", "index.db"),
-    indexingVectorPath: join(normalizedBasePath, "indexing", "index.zvec"),
   };
 }
 
 function ensureAppDirectories(paths: AppContainerPaths): void {
   mkdirSync(paths.basePath, { recursive: true });
-  mkdirSync(paths.modelCacheDir, { recursive: true });
   mkdirSync(join(paths.vfsDbPath, ".."), { recursive: true });
   mkdirSync(paths.vfsContentRootDir, { recursive: true });
-  mkdirSync(paths.parserCacheDir, { recursive: true });
-  mkdirSync(join(paths.indexingDbPath, ".."), { recursive: true });
-  mkdirSync(join(paths.indexingVectorPath, ".."), { recursive: true });
 }

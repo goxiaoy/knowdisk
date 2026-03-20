@@ -48,15 +48,27 @@ class FakeArtifactManager:
         )
 
 
+def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
+    model_root.mkdir(parents=True, exist_ok=True)
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    if kind == "embedding":
+        (model_root / "modules.json").write_text("[]", encoding="utf-8")
+        (model_root / "1_Pooling").mkdir(parents=True, exist_ok=True)
+        (model_root / "1_Pooling" / "config.json").write_text("{}", encoding="utf-8")
+        (model_root / "model.safetensors").write_bytes(b"weights")
+        return
+    (model_root / "pytorch_model.bin").write_bytes(b"weights")
+
+
 def test_local_cache_verify_path_uses_existing_files_without_downloading(tmp_path: Path):
     emitted: list[dict] = []
     store = ModelStatusStore(event_sink=emitted.append)
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
-    manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "embedding", manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
     )
-    manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
 
     embedding_runtime = object()
@@ -142,11 +154,11 @@ def test_failed_load_path_marks_only_the_failing_model_failed(tmp_path: Path):
     emitted: list[dict] = []
     store = ModelStatusStore(event_sink=emitted.append)
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
-    manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "embedding", manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
     )
-    manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
     embedding_loader_calls: list[Path] = []
 
@@ -205,11 +217,11 @@ def test_model_status_transitions_cover_success_and_failure_paths(tmp_path: Path
 
     failure_emitted: list[dict] = []
     failure_manager = FakeArtifactManager(cache_root=tmp_path / "failure-cache")
-    failure_manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "embedding", failure_manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
     )
-    failure_manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base").mkdir(
-        parents=True, exist_ok=True
+    write_complete_local_model_cache(
+        "reranker", failure_manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
     failure_service = make_model_service(
         ModelStatusStore(event_sink=failure_emitted.append),
@@ -234,10 +246,6 @@ def make_model_service(
 ) -> ModelService:
     return ModelService(
         status_store=status_store,
-        verify_embedding=lambda: None,
-        verify_reranker=lambda: None,
-        load_embedding_runtime=lambda: object(),
-        load_reranker_runtime=lambda: object(),
         runtime_config=ModelRuntimeConfig(
             base_path=artifact_manager.cache_root.parent,
             embedding_model="Alibaba-NLP/gte-multilingual-base",

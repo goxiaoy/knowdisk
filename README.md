@@ -241,6 +241,8 @@ Run the desktop app:
 bun run dev
 ```
 
+This starts both the Vite renderer dev server on `http://localhost:5173` and the Electrobun desktop shell.
+
 The Bun main process will start the Python sidecar automatically via `uv run --project python python -m worker`.
 
 The Python worker runtime depends on:
@@ -253,6 +255,8 @@ HMR mode:
 ```bash
 bun run dev:hmr
 ```
+
+`bun run dev:hmr` is kept as an alias for the same development startup flow.
 
 Build:
 

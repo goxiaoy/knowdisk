@@ -61,14 +61,17 @@ def load_local_reranker_runtime(
 def _load_local_embedding_runtime(model_path: Path, device: RuntimeDevice) -> object:
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(str(model_path), device=device)
+    return SentenceTransformer(str(model_path), device=device, trust_remote_code=True)
 
 
 def _load_local_reranker_runtime(model_path: Path, device: RuntimeDevice) -> object:
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-    tokenizer = AutoTokenizer.from_pretrained(str(model_path))
-    model = AutoModelForSequenceClassification.from_pretrained(str(model_path))
+    tokenizer = AutoTokenizer.from_pretrained(str(model_path), trust_remote_code=True)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        str(model_path),
+        trust_remote_code=True,
+    )
     if hasattr(model, "to"):
         model = model.to(device)
     if hasattr(model, "eval"):

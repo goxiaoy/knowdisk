@@ -1,6 +1,10 @@
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from worker.model.runtime_loader import (
+    _load_local_embedding_runtime,
+    _load_local_reranker_runtime,
     load_local_embedding_runtime,
     load_local_reranker_runtime,
     select_runtime_device,
@@ -112,3 +116,65 @@ def test_reranker_runtime_loader_errors_propagate():
         assert str(error) == "boom-reranker"
     else:
         raise AssertionError("expected reranker loader error to propagate")
+
+
+def test_internal_embedding_runtime_loader_enables_trusted_remote_code(monkeypatch):
+    calls: list[tuple[str, str, bool]] = []
+
+    class FakeSentenceTransformer:
+        def __init__(self, model_path: str, *, device: str, trust_remote_code: bool):
+            calls.append((model_path, device, trust_remote_code))
+
+    monkeypatch.setitem(
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=FakeSentenceTransformer),
+    )
+
+    runtime = _load_local_embedding_runtime(Path("/models/embed"), "mps")
+
+    assert isinstance(runtime, FakeSentenceTransformer)
+    assert calls == [("/models/embed", "mps", True)]
+
+
+def test_internal_reranker_runtime_loader_enables_trusted_remote_code(monkeypatch):
+    tokenizer_calls: list[tuple[str, bool]] = []
+    model_calls: list[tuple[str, bool]] = []
+
+    class FakeTokenizer:
+        pass
+
+    class FakeModel:
+        def to(self, device: str):
+            return self
+
+        def eval(self):
+            return self
+
+    class FakeAutoTokenizer:
+        @staticmethod
+        def from_pretrained(model_path: str, *, trust_remote_code: bool):
+            tokenizer_calls.append((model_path, trust_remote_code))
+            return FakeTokenizer()
+
+    class FakeAutoModelForSequenceClassification:
+        @staticmethod
+        def from_pretrained(model_path: str, *, trust_remote_code: bool):
+            model_calls.append((model_path, trust_remote_code))
+            return FakeModel()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoTokenizer=FakeAutoTokenizer,
+            AutoModelForSequenceClassification=FakeAutoModelForSequenceClassification,
+        ),
+    )
+
+    tokenizer, model = _load_local_reranker_runtime(Path("/models/reranker"), "cpu")
+
+    assert isinstance(tokenizer, FakeTokenizer)
+    assert isinstance(model, FakeModel)
+    assert tokenizer_calls == [("/models/reranker", True)]
+    assert model_calls == [("/models/reranker", True)]

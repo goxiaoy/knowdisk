@@ -83,6 +83,10 @@ class PythonWorkerServer:
                 self.model_runtime_config,
                 artifact_manager=artifact_manager,
             )
+            if hasattr(self.services.index_queue, "set_storage_base_path"):
+                self.services.index_queue.set_storage_base_path(
+                    self.model_runtime_config.base_path
+                )
             if hasattr(self.services.index_service, "set_storage_base_path"):
                 self.services.index_service.set_storage_base_path(
                     self.model_runtime_config.base_path

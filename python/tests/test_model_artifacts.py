@@ -1,4 +1,11 @@
-from worker.model.artifacts import select_embedding_repo_files, select_reranker_repo_files
+from pathlib import Path
+
+from worker.model.artifacts import (
+    has_resumable_partial_downloads,
+    has_complete_local_model_artifacts,
+    select_embedding_repo_files,
+    select_reranker_repo_files,
+)
 
 
 def test_select_embedding_repo_files_keeps_sentence_transformer_assets():
@@ -74,3 +81,47 @@ def test_selectors_ignore_unrelated_files_and_nested_onnx_assets():
 
     assert selected_embedding == []
     assert selected_reranker == []
+
+
+def test_embedding_local_artifacts_require_sentence_transformers_metadata_and_no_part_files(
+    tmp_path: Path,
+):
+    model_root = tmp_path / "embedding"
+    model_root.mkdir(parents=True, exist_ok=True)
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    (model_root / "modules.json").write_text("[]", encoding="utf-8")
+    (model_root / "1_Pooling").mkdir(parents=True, exist_ok=True)
+    (model_root / "1_Pooling" / "config.json").write_text("{}", encoding="utf-8")
+    (model_root / "model.safetensors.part").write_bytes(b"partial")
+
+    assert has_complete_local_model_artifacts("embedding", model_root) is False
+
+    (model_root / "model.safetensors.part").unlink()
+    (model_root / "model.safetensors").write_bytes(b"weights")
+
+    assert has_complete_local_model_artifacts("embedding", model_root) is True
+
+
+def test_reranker_local_artifacts_require_config_and_weights(tmp_path: Path):
+    model_root = tmp_path / "reranker"
+    model_root.mkdir(parents=True, exist_ok=True)
+
+    assert has_complete_local_model_artifacts("reranker", model_root) is False
+
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    (model_root / "pytorch_model.bin").write_bytes(b"weights")
+
+    assert has_complete_local_model_artifacts("reranker", model_root) is True
+
+
+def test_detects_resumable_partial_downloads(tmp_path: Path):
+    model_root = tmp_path / "embedding"
+    model_root.mkdir(parents=True, exist_ok=True)
+    (model_root / "config.json.part").write_bytes(b"partial")
+
+    assert has_resumable_partial_downloads(model_root) is True
+
+    (model_root / "config.json.part").unlink()
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+
+    assert has_resumable_partial_downloads(model_root) is False

@@ -55,7 +55,7 @@ class ModelRepoFile:
     def from_mapping(cls, value: Mapping[str, object]) -> ModelRepoFile:
         return cls(
             path=str(value["rfilename"]),
-            size=_normalize_size(value.get("size")),
+            size=_normalize_repo_file_size(value),
         )
 
     def to_legacy_dict(self) -> dict[str, object]:
@@ -76,4 +76,16 @@ def _normalize_size(value: object) -> int:
         return value
     if isinstance(value, float) and value.is_integer() and value > 0:
         return int(value)
+    return 0
+
+
+def _normalize_repo_file_size(value: Mapping[str, object]) -> int:
+    direct_size = _normalize_size(value.get("size"))
+    if direct_size > 0:
+        return direct_size
+
+    lfs_value = value.get("lfs")
+    if isinstance(lfs_value, Mapping):
+        return _normalize_size(lfs_value.get("size"))
+
     return 0

@@ -25,6 +25,9 @@ class IndexQueue:
         )
         self._notify_work_available = notify_work_available or (lambda: None)
 
+    def set_storage_base_path(self, base_path: Path) -> None:
+        self._queue_store = SQLiteIndexQueueStore(base_path / "index" / "index.sqlite3")
+
     def snapshot(self) -> IndexStatusSnapshot:
         return self._queue_store.snapshot()
 
@@ -77,4 +80,4 @@ class IndexQueue:
 
 
 def _default_queue_db_path() -> Path:
-    return Path(gettempdir()) / "knowdisk-python-worker" / "index-queue.sqlite3"
+    return Path(gettempdir()) / "knowdisk-python-worker" / "index" / "index.sqlite3"
