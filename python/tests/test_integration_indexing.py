@@ -1,4 +1,5 @@
 import io
+import sqlite3
 import time
 from pathlib import Path
 
@@ -74,6 +75,12 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(
         assert runtime.server.services.index_queue.snapshot()["phase"] == "idle"
         assert runtime.server.services.index_service.vector_status_snapshot()["chunkCount"] == 1
         assert runtime.server.services.index_service.search("integration")[0]["sourceRef"] == "note.md"
+        with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
+            row = connection.execute(
+                "SELECT chunk_id, title, text FROM index_chunks WHERE node_id = ?",
+                ("node-1",),
+            ).fetchone()
+        assert row == ("node-1:0", "note", "# Hello\n\nIntegration body")
         assert (tmp_path / "parser" / "node-1" / "document.md").read_text(encoding="utf-8") == "# Hello\n\nIntegration body"
     finally:
         runtime.stop_index_worker()
@@ -213,6 +220,9 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
         assert runtime.server.services.index_queue.snapshot()["processedFiles"] == 1
         assert runtime.server.services.index_queue.snapshot()["totalFiles"] == 1
         assert runtime.server.services.index_service.vector_status_snapshot()["chunkCount"] == 2
+        with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
+            count = connection.execute("SELECT COUNT(*) FROM index_chunks").fetchone()[0]
+        assert count == 2
     finally:
         runtime.stop_index_worker()
 

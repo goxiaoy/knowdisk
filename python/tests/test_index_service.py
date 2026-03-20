@@ -1,3 +1,6 @@
+import sqlite3
+
+from worker.index.chunk_store import SQLiteChunkStore
 from worker.parser.types import ParserMount, ParserNode
 from worker.runtime.types import IndexNodeRequest
 from worker.index.service import IndexService
@@ -23,6 +26,7 @@ class KeywordEmbeddingRuntime:
 def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
     service = IndexService(
         parse_node=lambda node, mount: [
             {
@@ -43,6 +47,7 @@ def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
             {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
         )(),
         vector_repository=repository,
+        chunk_store=chunk_store,
         vector_status_store=vector_store,
         parser_base_dir=tmp_path / "parser",
     )
@@ -67,11 +72,14 @@ def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
     assert result.indexed == 1
     assert repository.count_chunks() == 1
     assert service.vector_status_snapshot()["chunkCount"] == 1
+    assert chunk_store.count_chunks() == 1
+    assert [row.chunk_id for row in chunk_store.search_fts("hello")] == ["node-1:0"]
 
 
 def test_delete_node_removes_vectors_and_updates_count(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
     service = IndexService(
         parse_node=lambda node, mount: [
             {
@@ -92,6 +100,7 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
             {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
         )(),
         vector_repository=repository,
+        chunk_store=chunk_store,
         vector_status_store=vector_store,
         parser_base_dir=tmp_path / "parser",
     )
@@ -116,11 +125,13 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
 
     assert repository.count_chunks() == 0
     assert service.vector_status_snapshot()["chunkCount"] == 0
+    assert chunk_store.count_chunks() == 0
 
 
 def test_search_returns_repository_rows(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
     service = IndexService(
         parse_node=lambda node, mount: [
             {
@@ -141,6 +152,7 @@ def test_search_returns_repository_rows(tmp_path):
             {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
         )(),
         vector_repository=repository,
+        chunk_store=chunk_store,
         vector_status_store=vector_store,
         parser_base_dir=tmp_path / "parser",
     )
@@ -171,6 +183,7 @@ def test_search_returns_repository_rows(tmp_path):
 def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
     vector_store = VectorStatusStore(event_sink=lambda event: None)
     repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
     service = IndexService(
         parse_node=lambda node, mount: [
             {
@@ -202,6 +215,7 @@ def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
             {"get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime()},
         )(),
         vector_repository=repository,
+        chunk_store=chunk_store,
         vector_status_store=vector_store,
         parser_base_dir=tmp_path / "parser",
     )
@@ -226,3 +240,59 @@ def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
     results = service.search("beta only")
 
     assert results[0]["text"] == "beta topic"
+
+
+def test_index_node_persists_chunk_rows_into_sqlite_fts(tmp_path):
+    db_path = tmp_path / "chunks.sqlite3"
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(db_path)
+    service = IndexService(
+        parse_node=lambda node, mount: [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "fts body text",
+                "title": "fts title",
+                "source": {
+                    "nodeId": node.node_id,
+                    "name": node.name,
+                    "path": "/tmp/fts.md",
+                },
+            }
+        ],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {"get_local_embedding_runtime": lambda self: FakeEmbeddingRuntime()},
+        )(),
+        vector_repository=repository,
+        chunk_store=chunk_store,
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    service.index_node(
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-fts",
+                name="fts.md",
+                source_ref="fts.md",
+                provider_type="local",
+                mount_id="m1",
+            ),
+            mount=ParserMount(
+                synced_content_path="",
+                local_file_path="/tmp/fts.md",
+                provider_type="local",
+            ),
+        )
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT chunk_id, node_id, title, text FROM index_chunks WHERE node_id = ?",
+            ("node-fts",),
+        ).fetchone()
+    assert row == ("node-fts:0", "node-fts", "fts title", "fts body text")
+    assert [row.chunk_id for row in chunk_store.search_fts("title")] == ["node-fts:0"]

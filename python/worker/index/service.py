@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import cast
 
+from worker.index.chunk_store import SQLiteChunkStore
 from worker.runtime.status import VectorStatusStore
 from worker.runtime.types import (
     IndexNodeRequest,
@@ -27,10 +28,16 @@ class IndexService:
         vector_repository: VectorRepository,
         vector_status_store: VectorStatusStore,
         parser_base_dir: Path,
+        chunk_store: SQLiteChunkStore | None = None,
     ) -> None:
         self._parse_node = parse_node
         self._model_service = model_service
         self._vector_repository = vector_repository
+        self._chunk_store = (
+            chunk_store
+            if chunk_store is not None
+            else SQLiteChunkStore(parser_base_dir.parent / "index.sqlite3")
+        )
         self._vector_status_store = vector_status_store
         self._parser_base_dir = parser_base_dir
         self._search_rows: list[dict[str, object]] = []
@@ -61,6 +68,7 @@ class IndexService:
             rows.append(row)
 
         self._vector_repository.upsert_chunks(rows)
+        self._chunk_store.upsert_chunks(rows)
         self._search_rows = [
             row for row in self._search_rows if row["nodeId"] != parsed_request.node.node_id
         ]
@@ -74,6 +82,7 @@ class IndexService:
 
     def delete_node(self, node_id: str) -> None:
         self._vector_repository.delete_by_node_id(node_id)
+        self._chunk_store.delete_by_node_id(node_id)
         self._search_rows = [row for row in self._search_rows if row["nodeId"] != node_id]
         self._vector_status_store.update(
             chunkCount=self._vector_repository.count_chunks(),
@@ -96,6 +105,7 @@ class IndexService:
     def set_storage_base_path(self, base_path: Path) -> None:
         self._parser_base_dir = base_path / "parser"
         self._vector_repository = VectorRepository(collection_path=str(base_path / "vector"))
+        self._chunk_store = SQLiteChunkStore(base_path / "index.sqlite3")
 
     def _persist_markdown_artifact(self, node_id: str, chunks: list[dict[str, object]]) -> None:
         markdown_parts: list[str] = []
