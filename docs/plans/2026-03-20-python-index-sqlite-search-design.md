@@ -2,7 +2,7 @@
 
 ## Goal
 
-Refactor the Python indexing runtime so queue state is persisted in SQLite, parsed chunks are stored in SQLite plus FTS5, and search combines FTS recall with vector recall before reranking. The search response must expose intermediate results for debugging.
+Refactor the Python indexing runtime so indexing requests are persisted in a real FIFO SQLite queue, parsed chunks are stored in SQLite plus FTS5, and search combines FTS recall with vector recall before reranking. The search response must expose intermediate results for debugging.
 
 ## Scope
 
@@ -12,28 +12,51 @@ This design covers the Python worker indexing stack only. It does not include re
 
 The Python indexing stack will be split into three storage concerns:
 
-- Queue state in SQLite
+- FIFO jobs and node intent state in SQLite
 - Chunk metadata and FTS documents in SQLite
 - Embeddings in `zvec`
 
-`IndexService` remains the orchestration layer. On indexing, it parses content, writes parser markdown artifacts, writes chunk rows into SQLite/FTS, writes embeddings into `zvec`, and updates vector/index status. On search, it delegates to a new search service that performs FTS recall and vector recall, merges candidates, reranks them, and returns a debug-friendly payload.
+`IndexService` remains the orchestration layer for the actual indexing work. A dedicated queue repository and worker will receive Bun requests, persist them in FIFO order, collapse outdated node intents, and execute the latest valid work serially. On indexing, `IndexService` parses content, writes parser markdown artifacts, writes chunk rows into SQLite/FTS, writes embeddings into `zvec`, and updates vector/index status. On search, it delegates to a new search service that performs FTS recall and vector recall, merges candidates, reranks them, and returns a debug-friendly payload.
 
 ## Data Model
 
 ### Queue Storage
 
-SQLite-backed queue state will store at least:
+Queue persistence will use two tables:
 
+1. `index_jobs`
 - `job_id`
 - `node_id`
-- `node_name`
-- `status`
-- `attempt_count`
-- `last_error`
+- `job_type` (`index` | `delete`)
+- `payload_json`
+- `status` (`queued` | `running` | `done` | `failed` | `cancelled`)
 - `created_at`
 - `updated_at`
+- `started_at`
+- `finished_at`
+- `error`
 
-The in-process worker loop can still execute serially, but SQLite becomes the source of truth for queue depth and persisted state.
+2. `index_node_state`
+- `node_id`
+- `latest_job_id`
+- `desired_type`
+- `payload_json`
+- `version`
+- `updated_at`
+
+`index_jobs` preserves FIFO order and execution history. `index_node_state` records the latest effective intent for each node so outdated queued jobs can be skipped at execution time.
+
+This allows:
+- FIFO dequeue order
+- node-local request collapsing
+- `index_node` requests to be coalesced
+- `delete_node` requests to supersede stale `index_node` work
+
+`queueDepth` will be computed directly from SQLite:
+- `queuedCount = count(status='queued')`
+- `runningCount = count(status='running')`
+
+The current `queueDepth` UI field should map to `queuedCount`.
 
 ### Chunk Storage
 
@@ -91,13 +114,15 @@ Debug-only fields will include:
 
 ## Protocol Changes
 
-The Python search request must accept `titleOnly`. The Python search response shape must expand from a plain result list to the multi-stage debug payload.
+The Python search request must accept `titleOnly`. The Python search response shape must expand from a plain result list to the multi-stage debug payload. Queue-triggering RPCs remain request/acknowledge operations; actual indexing becomes asynchronous behind the FIFO worker.
 
 ## Testing Strategy
 
 Add tests for:
 
-- SQLite-backed queue persistence and snapshot semantics
+- FIFO queue insertion, dequeue, and cancellation semantics
+- node intent collapsing (`index` coalescing, `delete` superseding stale `index`)
+- SQLite-backed queue depth and running count semantics
 - SQLite chunk store and FTS queries
 - Search pipeline merge/rerank/debug payload
 - `titleOnly` behavior
