@@ -105,8 +105,14 @@ class ZvecVectorBackend:
             title=str(fields.get("title") or ""),
             text=str(fields.get("text") or ""),
             embedding=VectorRowEmbedding.from_iterable(()),
+            score=self._coerce_score(getattr(doc, "score", None)),
         )
 
     def _doc_id_for_chunk(self, chunk_id: str) -> str:
         digest = hashlib.sha1(chunk_id.encode("utf-8")).hexdigest()
         return f"chunk_{digest}"
+
+    def _coerce_score(self, value: object) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None

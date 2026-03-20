@@ -23,7 +23,20 @@ class FakeBackend:
 
     def search(self, query_embedding: tuple[float, ...], limit: int) -> list[VectorChunkRow]:
         self.search_calls.append((query_embedding, limit))
-        return list(self.rows.values())[:limit]
+        return [
+            VectorChunkRow(
+                chunk_id=row.chunk_id,
+                node_id=row.node_id,
+                mount_id=row.mount_id,
+                source_ref=row.source_ref,
+                name=row.name,
+                title=row.title,
+                text=row.text,
+                embedding=row.embedding,
+                score=0.0,
+            )
+            for row in list(self.rows.values())[:limit]
+        ]
 
 
 def test_repository_initializes_with_collection_path(tmp_path: Path):
@@ -123,5 +136,6 @@ def test_repository_searches_by_query_embedding(tmp_path: Path):
             "title": "Hello",
             "text": "hello",
             "embedding": [0.1, 0.2],
+            "score": 0.0,
         }
     ]

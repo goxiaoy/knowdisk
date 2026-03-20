@@ -31,6 +31,7 @@ class VectorChunkRow:
     source_ref: str = ""
     name: str = ""
     title: str = ""
+    score: float | None = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> VectorChunkRow:
@@ -51,10 +52,11 @@ class VectorChunkRow:
             source_ref=str(value.get("sourceRef") or ""),
             name=str(value.get("name") or ""),
             title=str(value.get("title") or ""),
+            score=_normalize_score(value.get("score")),
         )
 
     def to_legacy_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "chunkId": self.chunk_id,
             "nodeId": self.node_id,
             "mountId": self.mount_id,
@@ -64,6 +66,15 @@ class VectorChunkRow:
             "text": self.text,
             "embedding": self.embedding.to_legacy_list(),
         }
+        if self.score is not None:
+            result["score"] = self.score
+        return result
+
+
+def _normalize_score(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 VectorChunkRowInput: TypeAlias = VectorChunkRow | Mapping[str, object]

@@ -76,6 +76,7 @@ describe("python worker integration", () => {
       expect.objectContaining({
         nodeId: "node-1",
         name: "note.md",
+        score: expect.any(Number),
       }),
     ]);
 

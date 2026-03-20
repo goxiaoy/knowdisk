@@ -38,6 +38,7 @@ def test_zvec_backend_upserts_counts_and_searches(tmp_path: Path):
     assert results[0].chunk_id == "chunk-2"
     assert results[0].node_id == "node-2"
     assert results[0].text == "beta topic"
+    assert results[0].score is not None
 
 
 def test_zvec_backend_deletes_rows_by_node_id(tmp_path: Path):
