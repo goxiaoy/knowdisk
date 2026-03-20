@@ -199,7 +199,7 @@ def test_delete_node_enqueues_fifo_delete_job_instead_of_running_immediately():
             deleted.append(node_id)
 
         def search(self, query, title_only=False):
-            return [{"nodeId": "node-1"}]
+            return {"query": query, "titleOnly": title_only, "debug": {"finalResults": [{"nodeId": "node-1"}]}}
 
         def vector_status_snapshot(self):
             return {"chunkCount": 0}
@@ -240,7 +240,7 @@ def test_delete_node_and_search_delegate_to_services():
 
         def search(self, query, title_only=False):
             searched.append((query, title_only))
-            return [{"nodeId": "node-1"}]
+            return {"query": query, "titleOnly": title_only, "debug": {"finalResults": [{"nodeId": "node-1"}]}}
 
         def vector_status_snapshot(self):
             return {"chunkCount": 0}
@@ -269,7 +269,10 @@ def test_delete_node_and_search_delegate_to_services():
     )
 
     assert delete_response == {"id": "req-6", "result": {"ok": True}}
-    assert search_response == {"id": "req-7", "result": [{"nodeId": "node-1"}]}
+    assert search_response == {
+        "id": "req-7",
+        "result": {"query": "hello", "titleOnly": True, "debug": {"finalResults": [{"nodeId": "node-1"}]}},
+    }
     assert queued == [("delete", "node-1")]
     assert deleted == []
     assert searched == [("hello", True)]

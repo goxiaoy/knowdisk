@@ -6,7 +6,7 @@ from worker.runtime.types import (
     DeleteNodeRequest,
     IndexNodeRequest,
     SearchRequest,
-    SearchResultSnapshot,
+    SearchResponsePayload,
     WorkerServices,
     WorkerServicesBundle,
     coerce_worker_services,
@@ -128,7 +128,7 @@ class PythonWorkerServer:
         services.index_queue.enqueue_delete(request)
         return {"ok": True}
 
-    def _handle_search(self, params: object) -> list[SearchResultSnapshot]:
+    def _handle_search(self, params: object) -> SearchResponsePayload:
         services = self._require_services()
         request = SearchRequest.from_mapping(_as_mapping(params))
         return services.index_service.search(request.query, title_only=request.title_only)

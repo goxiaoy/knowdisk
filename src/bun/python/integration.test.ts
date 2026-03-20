@@ -19,6 +19,7 @@ afterEach(async () => {
 describe("python worker integration", () => {
   test("indexes and deletes a local file through the real python worker process", async () => {
     const sourceDir = mkdtempSync(join(tmpdir(), "knowdisk-python-worker-"));
+    const basePath = mkdtempSync(join(tmpdir(), "knowdisk-python-worker-base-"));
     writeFileSync(join(sourceDir, "note.md"), "# Hello\n\nPython worker integration");
 
     const transport = createPythonWorkerTransport({
@@ -38,6 +39,12 @@ describe("python worker integration", () => {
     const runtime = createPythonWorkerRuntime({
       transport,
       maxRestarts: 0,
+      startupConfig: {
+        basePath,
+        embeddingModel: "Alibaba-NLP/gte-multilingual-base",
+        rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+        preferredDevice: "cpu",
+      },
     });
     activeRuntimes.push(runtime);
 
@@ -74,13 +81,20 @@ describe("python worker integration", () => {
     expect(statusStore.getIndexStatus().available).toBe(true);
     expect(statusStore.getIndexStatus().phase).toBe("idle");
     expect(statusStore.getVectorDbStatus().chunkCount).toBe(1);
-    expect(searchResult).toEqual([
+    expect(searchResult).toEqual(
       expect.objectContaining({
-        nodeId: "node-1",
-        name: "note.md",
-        score: expect.any(Number),
-      }),
-    ]);
+        query: "integration",
+        debug: expect.objectContaining({
+          finalResults: [
+            expect.objectContaining({
+              nodeId: "node-1",
+              name: "note.md",
+              score: expect.any(Number),
+            }),
+          ],
+        }),
+      })
+    );
 
     await transport.request("delete_node", { nodeId: "node-1" });
     await waitFor(() => statusStore.getVectorDbStatus().chunkCount === 0);

@@ -133,6 +133,10 @@ class SearchResultSnapshot(TypedDict, total=False):
     text: str
     embedding: list[float]
     score: float
+    ftsScore: float
+    vectorScore: float
+    rerankScore: float
+    matchedBy: list[str]
 
 
 class SearchResponseDebugPayload(TypedDict, total=False):
@@ -170,7 +174,7 @@ class IndexServiceProtocol(Protocol):
 
     def delete_node(self, node_id: str) -> None: ...
 
-    def search(self, query: str, title_only: bool = False) -> list[SearchResultSnapshot]: ...
+    def search(self, query: str, title_only: bool = False) -> SearchResponsePayload: ...
 
     def vector_status_snapshot(self) -> VectorStatusSnapshot: ...
 

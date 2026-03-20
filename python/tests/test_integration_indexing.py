@@ -74,7 +74,8 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(
 
         assert runtime.server.services.index_queue.snapshot()["phase"] == "idle"
         assert runtime.server.services.index_service.vector_status_snapshot()["chunkCount"] == 1
-        assert runtime.server.services.index_service.search("integration")[0]["sourceRef"] == "note.md"
+        search_payload = runtime.server.services.index_service.search("integration")
+        assert search_payload["debug"]["finalResults"][0]["sourceRef"] == "note.md"
         with sqlite3.connect(tmp_path / "index.sqlite3") as connection:
             row = connection.execute(
                 "SELECT chunk_id, title, text FROM index_chunks WHERE node_id = ?",
@@ -139,7 +140,7 @@ def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: 
 
     assert result.indexed == 1
     assert repository.count_chunks() == 1
-    assert index_service.search("docling")[0]["name"] == "paper.pdf"
+    assert index_service.search("docling")["debug"]["finalResults"][0]["name"] == "paper.pdf"
     assert (tmp_path / "parser" / "node-2" / "document.md").read_text(encoding="utf-8") == "Docling integration body"
 
 

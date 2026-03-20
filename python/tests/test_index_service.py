@@ -176,8 +176,9 @@ def test_search_returns_repository_rows(tmp_path):
 
     results = service.search("hello")
 
-    assert results[0]["nodeId"] == "node-1"
-    assert results[0]["text"] == "hello world"
+    assert results["query"] == "hello"
+    assert results["debug"]["vectorResults"][0]["nodeId"] == "node-1"
+    assert results["debug"]["finalResults"][0]["text"] == "hello world"
 
 
 def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
@@ -239,7 +240,8 @@ def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
 
     results = service.search("beta only")
 
-    assert results[0]["text"] == "beta topic"
+    assert results["debug"]["vectorResults"][0]["text"] == "beta topic"
+    assert results["debug"]["finalResults"][0]["text"] == "beta topic"
 
 
 def test_index_node_persists_chunk_rows_into_sqlite_fts(tmp_path):
@@ -296,3 +298,68 @@ def test_index_node_persists_chunk_rows_into_sqlite_fts(tmp_path):
         ).fetchone()
     assert row == ("node-fts:0", "node-fts", "fts title", "fts body text")
     assert [row.chunk_id for row in chunk_store.search_fts("title")] == ["node-fts:0"]
+
+
+def test_search_merges_fts_and_vector_candidates_into_debug_payload(tmp_path):
+    vector_store = VectorStatusStore(event_sink=lambda event: None)
+    repository = VectorRepository(collection_path=str(tmp_path / "index.zvec"))
+    chunk_store = SQLiteChunkStore(tmp_path / "chunks.sqlite3")
+    service = IndexService(
+        parse_node=lambda node, mount: [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "alpha body text",
+                "title": "alpha title",
+                "source": {
+                    "nodeId": "node-a",
+                    "name": "a.md",
+                    "path": "/tmp/a.md",
+                },
+            },
+            {
+                "status": "ok",
+                "chunkIndex": 1,
+                "text": "beta body text",
+                "title": "beta title",
+                "source": {
+                    "nodeId": "node-b",
+                    "name": "b.md",
+                    "path": "/tmp/b.md",
+                },
+            },
+        ],
+        model_service=type(
+            "ModelServiceStub",
+            (),
+            {"get_local_embedding_runtime": lambda self: KeywordEmbeddingRuntime()},
+        )(),
+        vector_repository=repository,
+        chunk_store=chunk_store,
+        vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
+    )
+
+    service.index_node(
+        IndexNodeRequest(
+            node=ParserNode(
+                node_id="node-search",
+                name="search.md",
+                source_ref="search.md",
+                provider_type="local",
+                mount_id="m1",
+            ),
+            mount=ParserMount(
+                synced_content_path="",
+                local_file_path="/tmp/search.md",
+                provider_type="local",
+            ),
+        )
+    )
+
+    results = service.search("alpha")
+
+    assert [row["nodeId"] for row in results["debug"]["ftsResults"]] == ["node-search"]
+    assert any(row["text"] == "alpha body text" for row in results["debug"]["vectorResults"])
+    assert any(row["text"] == "alpha body text" for row in results["debug"]["mergedCandidates"])
+    assert any(row["text"] == "alpha body text" for row in results["debug"]["finalResults"])

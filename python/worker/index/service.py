@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import cast
 
 from worker.index.chunk_store import SQLiteChunkStore
+from worker.index.search_service import SearchService
 from worker.runtime.status import VectorStatusStore
 from worker.runtime.types import (
     IndexNodeRequest,
     IndexNodeResult,
-    SearchResultSnapshot,
+    SearchResponsePayload,
     coerce_index_node_request,
 )
 from worker.vector.repository import VectorRepository
@@ -37,6 +37,10 @@ class IndexService:
             chunk_store
             if chunk_store is not None
             else SQLiteChunkStore(parser_base_dir.parent / "index.sqlite3")
+        )
+        self._search_service = SearchService(
+            chunk_store=self._chunk_store,
+            vector_repository=self._vector_repository,
         )
         self._vector_status_store = vector_status_store
         self._parser_base_dir = parser_base_dir
@@ -90,14 +94,28 @@ class IndexService:
             error="",
         )
 
-    def search(self, query: str, title_only: bool = False) -> list[SearchResultSnapshot]:
-        _ = title_only
+    def search(self, query: str, title_only: bool = False) -> SearchResponsePayload:
         normalized = query.strip().lower()
         if not normalized:
-            return []
+            return {
+                "query": query,
+                "titleOnly": title_only,
+                "debug": {
+                    "ftsResults": [],
+                    "vectorResults": [],
+                    "mergedCandidates": [],
+                    "rerankedResults": [],
+                    "finalResults": [],
+                },
+            }
         embedding_runtime = self._model_service.get_local_embedding_runtime()
-        query_embedding = embedding_runtime(query)
-        return cast(list[SearchResultSnapshot], self._vector_repository.search(query_embedding, limit=10))
+        query_embedding = tuple(float(value) for value in embedding_runtime(query))
+        return self._search_service.search(
+            query=query,
+            query_embedding=query_embedding,
+            title_only=title_only,
+            limit=10,
+        )
 
     def vector_status_snapshot(self) -> dict[str, object]:
         return self._vector_status_store.snapshot()
@@ -106,6 +124,10 @@ class IndexService:
         self._parser_base_dir = base_path / "parser"
         self._vector_repository = VectorRepository(collection_path=str(base_path / "vector"))
         self._chunk_store = SQLiteChunkStore(base_path / "index.sqlite3")
+        self._search_service = SearchService(
+            chunk_store=self._chunk_store,
+            vector_repository=self._vector_repository,
+        )
 
     def _persist_markdown_artifact(self, node_id: str, chunks: list[dict[str, object]]) -> None:
         markdown_parts: list[str] = []
