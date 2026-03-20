@@ -67,6 +67,22 @@ class IndexNodeRequest:
             mount=ParserMount.from_mapping(mount_value),
         )
 
+    def to_mapping(self) -> dict[str, object]:
+        return {
+            "node": {
+                "nodeId": self.node.node_id,
+                "mountId": self.node.mount_id,
+                "name": self.node.name,
+                "sourceRef": self.node.source_ref,
+                "providerType": self.node.provider_type,
+            },
+            "mount": {
+                "providerType": self.mount.provider_type,
+                "syncedContentPath": self.mount.synced_content_path,
+                "localFilePath": self.mount.local_file_path,
+            },
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class IndexNodeResult:
@@ -86,6 +102,9 @@ class DeleteNodeRequest:
         if not isinstance(node_id, str) or not node_id:
             raise ValueError("delete_node request must include nodeId")
         return cls(node_id=node_id)
+
+    def to_mapping(self) -> dict[str, object]:
+        return {"nodeId": self.node_id}
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +160,9 @@ class ModelServiceProtocol(Protocol):
 class IndexQueueProtocol(Protocol):
     def snapshot(self) -> IndexStatusSnapshot: ...
 
-    def enqueue_incremental(self, node_name: str, job: Callable[[], None]) -> None: ...
+    def enqueue_incremental(self, request: IndexNodeRequest) -> None: ...
+
+    def enqueue_delete(self, request: DeleteNodeRequest) -> None: ...
 
 
 class IndexServiceProtocol(Protocol):

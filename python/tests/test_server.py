@@ -1,6 +1,5 @@
-from worker.parser.types import ParserMount, ParserNode
 from worker.protocol.server import create_server
-from worker.runtime.types import IndexNodeResult
+from worker.runtime.types import DeleteNodeRequest, IndexNodeRequest, IndexNodeResult
 
 
 def test_start_returns_handshake_and_emits_health_event():
@@ -116,10 +115,7 @@ def test_index_node_delegates_to_index_service():
                 (),
                 {
                     "snapshot": lambda self: {},
-                    "enqueue_incremental": lambda self, node_name, job: (
-                        queued.append(node_name),
-                        job(),
-                    )[-1],
+                    "enqueue_incremental": lambda self, request: queued.append(request.node.node_id),
                 },
             )(),
             "index_service": IndexServiceStub(),
@@ -137,24 +133,9 @@ def test_index_node_delegates_to_index_service():
         }
     )
 
-    assert response == {"id": "req-5", "result": {"indexed": 1}}
+    assert response == {"id": "req-5", "result": {"queued": True}}
     assert queued == ["node-1"]
-    assert calls == [
-        (
-            ParserNode(
-                node_id="node-1",
-                name="a.md",
-                source_ref="",
-                provider_type="",
-                mount_id="",
-            ),
-            ParserMount(
-                synced_content_path="",
-                local_file_path="/tmp/a.md",
-                provider_type="",
-            ),
-        )
-    ]
+    assert calls == []
 
 
 def test_index_node_queues_by_node_id_not_file_name():
@@ -176,10 +157,7 @@ def test_index_node_queues_by_node_id_not_file_name():
                 (),
                 {
                     "snapshot": lambda self: {"phase": "idle"},
-                    "enqueue_incremental": lambda self, node_id, job: (
-                        queued.append(node_id),
-                        job(),
-                    )[-1],
+                    "enqueue_incremental": lambda self, request: queued.append(request.node.node_id),
                 },
             )(),
             "index_service": IndexServiceStub(),
@@ -207,8 +185,8 @@ def test_index_node_queues_by_node_id_not_file_name():
         }
     )
 
-    assert first_response == {"id": "req-6", "result": {"indexed": 1}}
-    assert second_response == {"id": "req-7", "result": {"indexed": 1}}
+    assert first_response == {"id": "req-6", "result": {"queued": True}}
+    assert second_response == {"id": "req-7", "result": {"queued": True}}
     assert queued == ["node-a", "node-b"]
 
 
@@ -230,9 +208,8 @@ def test_delete_node_enqueues_fifo_delete_job_instead_of_running_immediately():
         def snapshot(self):
             return {"phase": "idle"}
 
-        def enqueue_delete(self, node_id, job):
-            queued.append(("delete", node_id))
-            job()
+        def enqueue_delete(self, request):
+            queued.append(("delete", request.node_id))
 
     server = create_server(
         event_sink=lambda event: None,
@@ -249,7 +226,7 @@ def test_delete_node_enqueues_fifo_delete_job_instead_of_running_immediately():
 
     assert response == {"id": "req-8", "result": {"ok": True}}
     assert queued == [("delete", "node-1")]
-    assert deleted == ["node-1"]
+    assert deleted == []
 
 
 def test_delete_node_and_search_delegate_to_services():
@@ -272,9 +249,8 @@ def test_delete_node_and_search_delegate_to_services():
         def snapshot(self):
             return {"phase": "idle"}
 
-        def enqueue_delete(self, node_id, job):
-            queued.append(("delete", node_id))
-            job()
+        def enqueue_delete(self, request):
+            queued.append(("delete", request.node_id))
 
     server = create_server(
         event_sink=lambda event: None,
@@ -295,5 +271,5 @@ def test_delete_node_and_search_delegate_to_services():
     assert delete_response == {"id": "req-6", "result": {"ok": True}}
     assert search_response == {"id": "req-7", "result": [{"nodeId": "node-1"}]}
     assert queued == [("delete", "node-1")]
-    assert deleted == ["node-1"]
+    assert deleted == []
     assert searched == [("hello", True)]

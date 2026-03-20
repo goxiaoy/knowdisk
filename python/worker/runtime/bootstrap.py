@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
+import threading
+import time
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import gettempdir
-from typing import BinaryIO, TextIO
+from typing import BinaryIO, Callable, TextIO
 
 from worker.index.queue import IndexQueue
 from worker.index.service import IndexService
@@ -16,6 +19,7 @@ from worker.protocol import decode_frame, encode_frame, is_request_frame
 from worker.protocol.server import PythonWorkerServer, create_server
 from worker.runtime.logging import WorkerLogger, create_worker_logger
 from worker.runtime.status import IndexStatusStore, ModelStatusStore, VectorStatusStore
+from worker.runtime.types import DeleteNodeRequest, IndexNodeRequest
 from worker.vector.repository import VectorRepository
 
 _FAKE_MODEL_RUNTIME_ENV = "KNOWDISK_PYTHON_FAKE_MODEL_RUNTIME"
@@ -27,28 +31,34 @@ class WorkerRuntime:
     stdout: BinaryIO
     logger: WorkerLogger
     server: PythonWorkerServer
+    start_index_worker: Callable[[], None]
+    stop_index_worker: Callable[[], None]
 
     def run(self) -> None:
         self.logger.log("info", "python worker started")
 
-        while getattr(self.server, "is_running", False):
-            line = self.stdin.readline()
-            if not line:
-                break
-            try:
-                frame = decode_frame(line)
-            except ValueError:
-                self.logger.log("warn", "failed to decode worker frame")
-                continue
-            if not is_request_frame(frame):
-                self.logger.log("warn", "ignored non-request worker frame")
-                continue
-            self.logger.log("info", "handling worker request", method=frame["method"])
-            response = self.server.handle_request(frame)
-            self.stdout.write(encode_frame(response))
-            self.stdout.flush()
-
-        self.logger.log("info", "python worker stopped")
+        try:
+            while getattr(self.server, "is_running", False):
+                line = self.stdin.readline()
+                if not line:
+                    break
+                try:
+                    frame = decode_frame(line)
+                except ValueError:
+                    self.logger.log("warn", "failed to decode worker frame")
+                    continue
+                if not is_request_frame(frame):
+                    self.logger.log("warn", "ignored non-request worker frame")
+                    continue
+                self.logger.log("info", "handling worker request", method=frame["method"])
+                response = self.server.handle_request(frame)
+                self.stdout.write(encode_frame(response))
+                self.stdout.flush()
+                if frame["method"] == "start":
+                    self.start_index_worker()
+        finally:
+            self.stop_index_worker()
+            self.logger.log("info", "python worker stopped")
 
 
 def main() -> None:
@@ -77,6 +87,7 @@ def create_worker_runtime(
     index_status_store = IndexStatusStore(event_sink=emit_event)
     vector_status_store = VectorStatusStore(event_sink=emit_event)
     default_base_path = Path(gettempdir()) / "knowdisk-python-worker"
+    work_available = threading.Event()
     model_service = ModelService(
         status_store=model_status_store,
         verify_embedding=lambda: (_ for _ in ()).throw(RuntimeError("model runtime is not configured")),
@@ -86,7 +97,10 @@ def create_worker_runtime(
         embedding_runtime_loader=_fake_embedding_runtime_loader if use_fake_model_runtime else None,
         reranker_runtime_loader=_fake_reranker_runtime_loader if use_fake_model_runtime else None,
     )
-    index_queue = IndexQueue(status_store=index_status_store)
+    index_queue = IndexQueue(
+        status_store=index_status_store,
+        notify_work_available=work_available.set,
+    )
     index_service = IndexService(
         parse_node=parse_node,
         model_service=model_service,
@@ -103,7 +117,92 @@ def create_worker_runtime(
         },
         model_fetch=fake_model_fetch if use_fake_model_runtime else fetch_model_http,
     )
-    return WorkerRuntime(stdin=stdin, stdout=stdout, logger=logger, server=server)
+    start_index_worker, stop_index_worker = _create_index_worker_controls(
+        index_queue=index_queue,
+        index_service=index_service,
+        server=server,
+        logger=logger,
+        work_available=work_available,
+    )
+    return WorkerRuntime(
+        stdin=stdin,
+        stdout=stdout,
+        logger=logger,
+        server=server,
+        start_index_worker=start_index_worker,
+        stop_index_worker=stop_index_worker,
+    )
+
+
+def _create_index_worker_controls(
+    *,
+    index_queue: IndexQueue,
+    index_service: IndexService,
+    server: PythonWorkerServer,
+    logger: WorkerLogger,
+    work_available: threading.Event,
+) -> tuple[Callable[[], None], Callable[[], None]]:
+    stop_event = threading.Event()
+    thread_guard = threading.Lock()
+    thread: threading.Thread | None = None
+
+    def worker_loop() -> None:
+        index_queue.requeue_orphaned_running_jobs()
+        work_available.set()
+        while not stop_event.is_set() and getattr(server, "is_running", False):
+            work_available.wait(timeout=0.25)
+            work_available.clear()
+            while not stop_event.is_set() and getattr(server, "is_running", False):
+                job = index_queue.claim_next_job()
+                if job is None:
+                    break
+                try:
+                    _run_queue_job(job, index_service=index_service)
+                except BaseException as exc:
+                    index_queue.mark_failed(job.job_id, str(exc))
+                    logger.log(
+                        "error",
+                        "index worker job failed",
+                        jobId=job.job_id,
+                        jobType=job.job_type,
+                        nodeId=job.node_id,
+                        error=str(exc),
+                    )
+                else:
+                    index_queue.mark_done(job.job_id)
+            time.sleep(0)
+
+    def start() -> None:
+        nonlocal thread
+        with thread_guard:
+            if thread is not None and thread.is_alive():
+                return
+            stop_event.clear()
+            thread = threading.Thread(target=worker_loop, daemon=True, name="index-worker")
+            thread.start()
+
+    def stop() -> None:
+        stop_event.set()
+        work_available.set()
+        with thread_guard:
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=1)
+
+    return start, stop
+
+
+def _run_queue_job(job, *, index_service: IndexService) -> None:
+    payload = json.loads(job.payload_json)
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid job payload for job {job.job_id}")
+    if job.job_type == "index":
+        index_service.index_node(IndexNodeRequest.from_mapping(payload))
+        return
+    if job.job_type == "delete":
+        request = DeleteNodeRequest.from_mapping(payload)
+        index_service.delete_node(request.node_id)
+        return
+    raise ValueError(f"unsupported job type: {job.job_type}")
 
 class FetchResponse:
     def __init__(self, *, status: int, headers: dict[str, str], body: list[bytes]) -> None:

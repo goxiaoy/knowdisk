@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -165,6 +166,23 @@ class SQLiteIndexQueueStore:
                 )
                 return QueueClaimResult(job=job, cancelled_job_ids=tuple(cancelled_job_ids))
 
+    def requeue_orphaned_running_jobs(self) -> None:
+        now = _now_iso()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                UPDATE index_jobs
+                SET status = 'queued',
+                    started_at = NULL,
+                    finished_at = NULL,
+                    updated_at = ?,
+                    error = ''
+                WHERE status = 'running'
+                """,
+                (now,),
+            )
+
     def mark_done(self, job_id: int) -> None:
         self._mark_terminal(job_id, "done", error="")
 
@@ -247,7 +265,7 @@ class SQLiteIndexQueueStore:
         )
         running_row = connection.execute(
             """
-            SELECT node_id
+            SELECT node_id, payload_json
             FROM index_jobs
             WHERE status = 'running'
             ORDER BY started_at, job_id
@@ -265,11 +283,15 @@ class SQLiteIndexQueueStore:
             scope = "incremental"
             processed_files = 0
             total_files = 1
-            active_node_name = "" if running_row is None else str(running_row[0])
+            active_node_name = (
+                ""
+                if running_row is None
+                else _display_name_from_payload(str(running_row[1]), str(running_row[0]))
+            )
         else:
             queued_row = connection.execute(
                 """
-                SELECT j.node_id
+                SELECT j.node_id, j.payload_json
                 FROM index_jobs AS j
                 JOIN index_node_state AS s
                     ON s.latest_job_id = j.job_id
@@ -290,7 +312,9 @@ class SQLiteIndexQueueStore:
                 scope = "incremental"
                 processed_files = 0
                 total_files = 1
-                active_node_name = str(queued_row[0])
+                active_node_name = _display_name_from_payload(
+                    str(queued_row[1]), str(queued_row[0])
+                )
         return cast(
             IndexStatusSnapshot,
             {
@@ -368,3 +392,18 @@ def _now_iso() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat()
+
+
+def _display_name_from_payload(payload_json: str, fallback: str) -> str:
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError:
+        return fallback
+    if not isinstance(payload, dict):
+        return fallback
+    node = payload.get("node")
+    if isinstance(node, dict):
+        name = node.get("name")
+        if isinstance(name, str) and name:
+            return name
+    return fallback
