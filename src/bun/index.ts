@@ -32,11 +32,11 @@ import {
 import { type RendererVectorDbStatus } from "../shared/vector-db-status";
 import { createAppContainer } from "./app.container";
 import { buildParserDocumentPath, deriveMarkdownTitle } from "./parser-artifacts";
-import { createPythonWorkerAppRuntime } from "./python-worker-app-runtime";
-import { resolvePythonWorkerCommandForRuntime } from "./python-worker-command";
-import { createPythonWorkerRuntime } from "./python-worker-runtime";
-import { createPythonWorkerStatusStore } from "./python-worker-status";
-import { createPythonWorkerTransport } from "./python-worker-transport";
+import { createPythonWorkerAppRuntime } from "./python/app-runtime";
+import { resolvePythonWorkerCommandForRuntime } from "./python/command";
+import { createPythonWorkerRuntime } from "./python/runtime";
+import { createPythonWorkerStatusStore } from "./python/status";
+import { createPythonWorkerTransport } from "./python/transport";
 import { isMissingRpcSendTransportError } from "./rpc-transport";
 import {
   applyMountNodeChange,

@@ -17,11 +17,13 @@ import {
 } from "@knowdisk/vfs";
 import type { Logger } from "pino";
 import { container as rootContainer, type DependencyContainer } from "tsyringe";
-import { resolvePythonWorkerCommand } from "./python-worker-command";
 
-type LegacyIndexingService = {
+type NodeIndexingService = {
   indexNode(input: { nodeId: string }): Promise<unknown>;
   deleteNode(input: { nodeId: string }): Promise<unknown>;
+};
+
+type RecoveryIndexingService = NodeIndexingService & {
   rebuildAllFromLocalNodes(): Promise<unknown>;
 };
 
@@ -141,7 +143,7 @@ export function createAppContainer(input?: {
 }
 
 export function createVfsIndexingHooks(input: {
-  indexing: Pick<LegacyIndexingService, "indexNode" | "deleteNode">;
+  indexing: Pick<NodeIndexingService, "indexNode" | "deleteNode">;
   logger: Pick<Logger, "error">;
 }): VfsNodeEventHooks {
   return {
@@ -182,7 +184,7 @@ export function createVfsIndexingHooks(input: {
 
 export function initializeAppRuntime(app: {
   vfs: Pick<VfsService, "registerNodeEventHooks">;
-  indexing: Pick<LegacyIndexingService, "indexNode" | "deleteNode" | "rebuildAllFromLocalNodes">;
+  indexing: Pick<RecoveryIndexingService, "indexNode" | "deleteNode" | "rebuildAllFromLocalNodes">;
   logger: Pick<Logger, "error">;
   vectorRepository: Pick<{ consumeRecoveryState(): { recovered: boolean } }, "consumeRecoveryState">;
 }): () => void {
@@ -198,17 +200,6 @@ export function initializeAppRuntime(app: {
   return () => {
     offHooks();
   };
-}
-
-export function createPythonWorkerCommand(paths: Pick<AppContainerPaths, "pythonProjectDir">): [
-  string,
-  ...string[],
-] {
-  return resolvePythonWorkerCommand({
-    mode: "development",
-    repoPythonProjectDir: paths.pythonProjectDir,
-    resourcesDir: "",
-  });
 }
 
 function resolveAppPaths(basePath: string): AppContainerPaths {

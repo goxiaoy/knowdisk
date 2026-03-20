@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
 import { createDefaultCoreConfig } from "@knowdisk/core";
 import {
-  createPythonWorkerCommand,
   createAppContainer,
   createVfsIndexingHooks,
   initializeAppRuntime,
   type AppContainerDeps,
   type AppContainerPaths,
 } from "./app.container";
+import { resolvePythonWorkerCommand } from "./python/command";
 
 describe("createAppContainer", () => {
   it("registers logger/config/vfs services with basePath-derived paths", () => {
@@ -60,8 +60,10 @@ describe("createAppContainer", () => {
 
   it("builds the python worker command from app paths", () => {
     expect(
-      createPythonWorkerCommand({
-        pythonProjectDir: "/tmp/knowdisk/python",
+      resolvePythonWorkerCommand({
+        mode: "development",
+        repoPythonProjectDir: "/tmp/knowdisk/python",
+        resourcesDir: "",
       })
     ).toEqual(["uv", "run", "--project", "/tmp/knowdisk/python", "python", "-m", "worker"]);
   });
