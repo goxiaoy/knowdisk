@@ -5,11 +5,14 @@ from worker.index.queue_store import SQLiteIndexQueueStore
 from worker.runtime.status import IndexStatusStore
 
 
-def test_incremental_jobs_execute_serially_and_update_queue_depth():
+def test_incremental_jobs_execute_serially_and_update_queue_depth(tmp_path: Path):
     emitted: list[dict] = []
     store = IndexStatusStore(event_sink=emitted.append)
     executed: list[str] = []
-    queue = IndexQueue(status_store=store)
+    queue = IndexQueue(
+        status_store=store,
+        queue_store=SQLiteIndexQueueStore(tmp_path / "index-queue.sqlite3"),
+    )
 
     queue.enqueue_incremental("a.md", lambda: executed.append("a"))
     queue.enqueue_incremental("b.md", lambda: executed.append("b"))
@@ -46,17 +49,21 @@ def test_queue_snapshot_is_persisted_in_sqlite_between_instances(tmp_path: Path)
     }
 
 
-def test_incremental_jobs_read_live_queue_depth_from_sqlite_snapshot(tmp_path: Path):
+def test_incremental_jobs_persist_through_index_queue_instances(tmp_path: Path):
     emitted: list[dict] = []
     status_store = IndexStatusStore(event_sink=emitted.append)
     queue_store = SQLiteIndexQueueStore(tmp_path / "index-queue.sqlite3")
-    queue = IndexQueue(status_store=status_store, queue_store=queue_store)
+    first_queue = IndexQueue(status_store=status_store, queue_store=queue_store)
     snapshots: list[dict] = []
 
     def job() -> None:
-        snapshots.append(queue.snapshot())
+        second_queue = IndexQueue(
+            status_store=IndexStatusStore(event_sink=lambda event: None),
+            queue_store=SQLiteIndexQueueStore(tmp_path / "index-queue.sqlite3"),
+        )
+        snapshots.append(second_queue.snapshot())
 
-    queue.enqueue_incremental("a.md", job)
+    first_queue.enqueue_incremental("a.md", job)
 
     assert snapshots == [
         {
@@ -70,7 +77,7 @@ def test_incremental_jobs_read_live_queue_depth_from_sqlite_snapshot(tmp_path: P
             "error": "",
         }
     ]
-    assert queue.snapshot() == {
+    assert first_queue.snapshot() == {
         "available": True,
         "phase": "idle",
         "scope": None,

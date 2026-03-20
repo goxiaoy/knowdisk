@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 from tempfile import gettempdir
-from uuid import uuid4
 
 from worker.runtime.status import IndexStatusStore
 from worker.runtime.types import IndexStatusSnapshot
@@ -75,4 +75,4 @@ class IndexQueue:
 
 
 def _default_queue_db_path() -> Path:
-    return Path(gettempdir()) / "knowdisk-python-worker" / f"index-queue-{uuid4().hex}.sqlite3"
+    return Path(gettempdir()) / "knowdisk-python-worker" / f"index-queue-{os.getpid()}.sqlite3"
