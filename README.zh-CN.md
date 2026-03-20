@@ -139,7 +139,7 @@ Know Disk 在 `packages/vfs` 提供可挂载的 VFS 层，用于多 provider 元
   - `mode=remote`：token 编码 provider 游标。
 - 边界约束：
   - VFS 只负责挂载、节点树、分页与 reconcile 触发。
-  - 内容渲染/分块（包括 markdown）不在 VFS 层内实现，这部分现在放在 `packages/parser`。
+- 内容渲染/分块（包括 markdown）不在 VFS 层内实现，这部分现在放在 Python worker 的 parser 流水线里。
 
 ## 3. 运行时架构
 
@@ -216,8 +216,7 @@ Monorepo 说明：
 
 - 当前仓库使用 Bun workspace（`packages/*`）。
 - VFS 核心已拆分到 `packages/vfs`，应用侧通过 `@knowdisk/vfs` 依赖。
-- `packages/parser` 目前主要保留 parser 产物约定和示例；桌面应用正常运行时的解析和索引已经迁到 Python worker。
-- parser hook 示例可通过 `bun run --cwd packages/parser example` 运行。
+- 桌面应用正常运行时的解析和索引已经迁到 Python worker。
 
 Python model runtime 默认值：
 

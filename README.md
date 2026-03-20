@@ -139,7 +139,7 @@ Know Disk includes a mountable VFS layer under `packages/vfs` for multi-provider
   - `mode=remote`: token encodes provider cursor.
 - Boundary:
   - VFS owns mount/node tree/pagination/reconcile trigger only.
-  - Content rendering/chunking (including markdown) is intentionally outside the VFS layer and now lives in `packages/parser`.
+- Content rendering/chunking (including markdown) is intentionally outside the VFS layer and now lives in the Python worker parser pipeline.
 
 ## 3. Runtime Architecture
 
@@ -216,8 +216,7 @@ Monorepo note:
 
 - This repo uses Bun workspace packages under `packages/*`.
 - VFS core is extracted to `packages/vfs` and consumed by app/runtime via `@knowdisk/vfs`.
-- `packages/parser` remains in the repo for parser artifact conventions and examples, but normal desktop parsing/indexing now runs inside the Python worker.
-- Run the parser hook example with `bun run --cwd packages/parser example`.
+- Desktop parsing/indexing now runs inside the Python worker.
 
 Python model runtime defaults:
 

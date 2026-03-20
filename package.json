@@ -23,8 +23,7 @@
     "python:setup": "uv sync --project python --extra dev",
     "python:test": "uv run --project python --extra dev pytest python/tests -v",
     "python:worker": "uv run --project python python -m worker",
-    "vfs:example": "bun run --cwd packages/vfs example",
-    "parser:example": "bun run --cwd packages/parser example"
+    "vfs:example": "bun run --cwd packages/vfs example"
   },
   "dependencies": {
     "@knowdisk/core": "workspace:*",
