@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
 from tempfile import gettempdir
 
@@ -29,21 +30,11 @@ class IndexQueue:
         return self._queue_store.snapshot()
 
     def enqueue_incremental(self, node_name: str, job: Job) -> None:
-        snapshot = self.snapshot()
-        queue_depth = int(snapshot["queueDepth"]) + 1
-        self._queue_store.update(
-            phase="indexing",
-            scope="incremental",
-            queueDepth=queue_depth,
-            totalFiles=1,
-            processedFiles=0,
-            activeNodeName=node_name,
-            error="",
-        )
+        snapshot = self._queue_store.reserve_incremental(node_name)
         self._status_store.update(
             phase="indexing",
             scope="incremental",
-            queueDepth=queue_depth,
+            queueDepth=int(snapshot["queueDepth"]),
             totalFiles=1,
             processedFiles=0,
             activeNodeName=node_name,
@@ -53,24 +44,14 @@ class IndexQueue:
         try:
             job()
         finally:
-            self._queue_store.update(
-                phase="idle",
-                scope=None,
-                queueDepth=max(0, queue_depth - 1),
-                processedFiles=1,
-                totalFiles=1,
-                activeNodeName="",
-                error="",
-            )
-            self._status_store.update(
-                phase="idle",
-                scope=None,
-                queueDepth=max(0, queue_depth - 1),
-                processedFiles=1,
-                totalFiles=1,
-                activeNodeName="",
-                error="",
-            )
+            snapshot = self._queue_store.complete_incremental()
+            self._emit_status_snapshot(snapshot)
+
+    def _emit_status_snapshot(self, snapshot: IndexStatusSnapshot) -> None:
+        self._status_store._snapshot = deepcopy(snapshot)  # type: ignore[attr-defined]
+        self._status_store._event_sink(  # type: ignore[attr-defined]
+            {"type": "index_status_changed", "payload": deepcopy(snapshot)}
+        )
 
 
 def _default_queue_db_path() -> Path:

@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import worker.index.queue as queue_module
@@ -90,6 +91,28 @@ def test_incremental_jobs_persist_through_index_queue_instances(tmp_path: Path):
     }
 
 
+def test_incremental_completion_event_matches_persisted_idle_snapshot(tmp_path: Path):
+    emitted: list[dict] = []
+    queue = IndexQueue(
+        status_store=IndexStatusStore(event_sink=emitted.append),
+        queue_store=SQLiteIndexQueueStore(tmp_path / "index-queue.sqlite3"),
+    )
+
+    queue.enqueue_incremental("a.md", lambda: None)
+
+    assert emitted[-1]["payload"] == queue.snapshot()
+    assert emitted[-1]["payload"] == {
+        "available": True,
+        "phase": "idle",
+        "scope": None,
+        "queueDepth": 0,
+        "processedFiles": 1,
+        "totalFiles": 1,
+        "activeNodeName": "",
+        "error": "",
+    }
+
+
 def test_default_queue_path_is_shared_between_index_queue_instances(
     monkeypatch, tmp_path: Path
 ):
@@ -118,3 +141,69 @@ def test_default_queue_path_is_shared_between_index_queue_instances(
             "error": "",
         }
     ]
+
+
+def test_shared_sqlite_queue_depth_updates_are_atomic(tmp_path: Path):
+    db_path = tmp_path / "index-queue.sqlite3"
+    start_barrier = threading.Barrier(2)
+    job_barrier = threading.Barrier(2)
+    original_snapshot = SQLiteIndexQueueStore.snapshot
+    call_count = {"value": 0}
+    call_lock = threading.Lock()
+
+    def snapshot_with_barrier(self: SQLiteIndexQueueStore) -> dict:
+        snapshot = original_snapshot(self)
+        with call_lock:
+            call_count["value"] += 1
+            should_wait = call_count["value"] <= 2
+        if should_wait:
+            start_barrier.wait(timeout=5)
+        return snapshot
+
+    queue_module.SQLiteIndexQueueStore.snapshot = snapshot_with_barrier  # type: ignore[assignment]
+    try:
+        queue_a = IndexQueue(
+            status_store=IndexStatusStore(event_sink=lambda event: None),
+            queue_store=SQLiteIndexQueueStore(db_path),
+        )
+        queue_b = IndexQueue(
+            status_store=IndexStatusStore(event_sink=lambda event: None),
+            queue_store=SQLiteIndexQueueStore(db_path),
+        )
+        observed_depths: list[int] = []
+        errors: list[BaseException] = []
+
+        def make_job(queue: IndexQueue):
+            def job() -> None:
+                job_barrier.wait(timeout=5)
+                observed_depths.append(queue.snapshot()["queueDepth"])
+
+            return job
+
+        def run(queue: IndexQueue, name: str) -> None:
+            try:
+                queue.enqueue_incremental(name, make_job(queue))
+            except BaseException as exc:  # pragma: no cover - diagnostic path
+                errors.append(exc)
+
+        thread_a = threading.Thread(target=run, args=(queue_a, "a.md"))
+        thread_b = threading.Thread(target=run, args=(queue_b, "b.md"))
+        thread_a.start()
+        thread_b.start()
+        thread_a.join(timeout=5)
+        thread_b.join(timeout=5)
+
+        assert errors == []
+        assert observed_depths == [2, 2]
+        assert queue_a.snapshot() == {
+            "available": True,
+            "phase": "idle",
+            "scope": None,
+            "queueDepth": 0,
+            "processedFiles": 1,
+            "totalFiles": 1,
+            "activeNodeName": "",
+            "error": "",
+        }
+    finally:
+        queue_module.SQLiteIndexQueueStore.snapshot = original_snapshot  # type: ignore[assignment]
