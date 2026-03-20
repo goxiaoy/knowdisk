@@ -127,6 +127,7 @@ def test_delete_supersedes_stale_index_jobs_and_cancels_them_when_encountered(
     queue.enqueue_incremental("node-a.md", lambda: executed.append("stale-index"))
     queue.enqueue_delete("node-a.md", lambda: executed.append("delete"))
 
+    assert queue.snapshot()["queueDepth"] == 1
     release_blocker.set()
     blocker_thread.join(timeout=5)
 
@@ -144,6 +145,23 @@ def test_delete_supersedes_stale_index_jobs_and_cancels_them_when_encountered(
         ("node-a.md", "index", "cancelled"),
         ("node-a.md", "delete", "done"),
     ]
+
+
+def test_second_store_cannot_promote_a_new_job_while_another_job_is_running(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "index-queue.sqlite3"
+    first_store = SQLiteIndexQueueStore(db_path)
+    second_store = SQLiteIndexQueueStore(db_path)
+    first_store.enqueue_job("node-a.md", "index")
+    first_store.enqueue_job("node-b.md", "index")
+
+    first_claim = first_store.claim_next_job()
+    assert first_claim.job is not None
+
+    second_claim = second_store.claim_next_job()
+
+    assert second_claim.job is None
 
 
 def test_delete_does_not_preempt_a_running_index_job_for_the_same_node(

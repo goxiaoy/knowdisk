@@ -119,6 +119,13 @@ class SQLiteIndexQueueStore:
     def claim_next_job(self) -> QueueClaimResult:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            running_count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM index_jobs WHERE status = 'running'"
+                ).fetchone()[0]
+            )
+            if running_count > 0:
+                return QueueClaimResult(job=None)
             cancelled_job_ids: list[int] = []
             while True:
                 row = connection.execute(
@@ -228,7 +235,14 @@ class SQLiteIndexQueueStore:
 
         queued_count = int(
             connection.execute(
-                "SELECT COUNT(*) FROM index_jobs WHERE status = 'queued'"
+                """
+                SELECT COUNT(*)
+                FROM index_jobs AS j
+                JOIN index_node_state AS s
+                    ON s.latest_job_id = j.job_id
+                   AND s.desired_type = j.job_type
+                WHERE j.status = 'queued'
+                """
             ).fetchone()[0]
         )
         running_row = connection.execute(
@@ -253,11 +267,30 @@ class SQLiteIndexQueueStore:
             total_files = 1
             active_node_name = "" if running_row is None else str(running_row[0])
         else:
-            phase = "idle"
-            scope = None
-            processed_files = 1
-            total_files = 1
-            active_node_name = ""
+            queued_row = connection.execute(
+                """
+                SELECT j.node_id
+                FROM index_jobs AS j
+                JOIN index_node_state AS s
+                    ON s.latest_job_id = j.job_id
+                   AND s.desired_type = j.job_type
+                WHERE j.status = 'queued'
+                ORDER BY j.job_id
+                LIMIT 1
+                """
+            ).fetchone()
+            if queued_row is None:
+                phase = "idle"
+                scope = None
+                processed_files = 1
+                total_files = 1
+                active_node_name = ""
+            else:
+                phase = "indexing"
+                scope = "incremental"
+                processed_files = 0
+                total_files = 1
+                active_node_name = str(queued_row[0])
         return cast(
             IndexStatusSnapshot,
             {

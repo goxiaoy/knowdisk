@@ -12,8 +12,6 @@ from worker.runtime.types import IndexStatusSnapshot
 
 Job = Callable[[], None]
 
-_DRAIN_LOCKS: dict[str, threading.Lock] = {}
-_DRAIN_LOCKS_GUARD = threading.Lock()
 _PENDING_JOB_CALLABLES: dict[int, Job] = {}
 _PENDING_JOB_CALLABLES_GUARD = threading.Lock()
 
@@ -30,7 +28,6 @@ class IndexQueue:
             if queue_store is not None
             else SQLiteIndexQueueStore(_default_queue_db_path())
         )
-        self._drain_lock = _drain_lock_for(str(self._queue_store.db_path))
 
     def snapshot(self) -> IndexStatusSnapshot:
         return self._queue_store.snapshot()
@@ -49,18 +46,13 @@ class IndexQueue:
         self._drain_if_possible()
 
     def _drain_if_possible(self) -> None:
-        if not self._drain_lock.acquire(blocking=False):
-            return
-        try:
-            while True:
-                claim = self._queue_store.claim_next_job()
-                self._discard_cancelled_jobs(claim.cancelled_job_ids)
-                if claim.job is None:
-                    self._publish_status_snapshot(self._queue_store.snapshot())
-                    return
-                self._run_claimed_job(claim.job)
-        finally:
-            self._drain_lock.release()
+        while True:
+            claim = self._queue_store.claim_next_job()
+            self._discard_cancelled_jobs(claim.cancelled_job_ids)
+            if claim.job is None:
+                self._publish_status_snapshot(self._queue_store.snapshot())
+                return
+            self._run_claimed_job(claim.job)
 
     def _run_claimed_job(self, job: QueueJob) -> None:
         self._publish_status_snapshot(self._queue_store.snapshot())
@@ -107,16 +99,5 @@ class IndexQueue:
             error=snapshot["error"],
             available=snapshot["available"],
         )
-
-
-def _drain_lock_for(db_path: str) -> threading.Lock:
-    with _DRAIN_LOCKS_GUARD:
-        lock = _DRAIN_LOCKS.get(db_path)
-        if lock is None:
-            lock = threading.Lock()
-            _DRAIN_LOCKS[db_path] = lock
-        return lock
-
-
 def _default_queue_db_path() -> Path:
     return Path(gettempdir()) / "knowdisk-python-worker" / "index-queue.sqlite3"
