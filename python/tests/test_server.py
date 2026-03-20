@@ -138,7 +138,7 @@ def test_index_node_delegates_to_index_service():
     )
 
     assert response == {"id": "req-5", "result": {"indexed": 1}}
-    assert queued == ["a.md"]
+    assert queued == ["node-1"]
     assert calls == [
         (
             ParserNode(
@@ -157,8 +157,104 @@ def test_index_node_delegates_to_index_service():
     ]
 
 
+def test_index_node_queues_by_node_id_not_file_name():
+    queued: list[str] = []
+
+    class IndexServiceStub:
+        def index_node(self, request):
+            return IndexNodeResult(indexed=1)
+
+        def vector_status_snapshot(self):
+            return {"chunkCount": 0}
+
+    server = create_server(
+        event_sink=lambda event: None,
+        services={
+            "model_service": type("ModelServiceStub", (), {"snapshot": lambda self: {}})(),
+            "index_queue": type(
+                "IndexQueueStub",
+                (),
+                {
+                    "snapshot": lambda self: {"phase": "idle"},
+                    "enqueue_incremental": lambda self, node_id, job: (
+                        queued.append(node_id),
+                        job(),
+                    )[-1],
+                },
+            )(),
+            "index_service": IndexServiceStub(),
+        },
+    )
+
+    first_response = server.handle_request(
+        {
+            "id": "req-6",
+            "method": "index_node",
+            "params": {
+                "node": {"nodeId": "node-a", "name": "shared.md"},
+                "mount": {"syncedContentPath": "", "localFilePath": "/tmp/a.md"},
+            },
+        }
+    )
+    second_response = server.handle_request(
+        {
+            "id": "req-7",
+            "method": "index_node",
+            "params": {
+                "node": {"nodeId": "node-b", "name": "shared.md"},
+                "mount": {"syncedContentPath": "", "localFilePath": "/tmp/b.md"},
+            },
+        }
+    )
+
+    assert first_response == {"id": "req-6", "result": {"indexed": 1}}
+    assert second_response == {"id": "req-7", "result": {"indexed": 1}}
+    assert queued == ["node-a", "node-b"]
+
+
+def test_delete_node_enqueues_fifo_delete_job_instead_of_running_immediately():
+    queued: list[tuple[str, str]] = []
+    deleted: list[str] = []
+
+    class IndexServiceStub:
+        def delete_node(self, node_id):
+            deleted.append(node_id)
+
+        def search(self, query, title_only=False):
+            return [{"nodeId": "node-1"}]
+
+        def vector_status_snapshot(self):
+            return {"chunkCount": 0}
+
+    class IndexQueueStub:
+        def snapshot(self):
+            return {"phase": "idle"}
+
+        def enqueue_delete(self, node_id, job):
+            queued.append(("delete", node_id))
+            job()
+
+    server = create_server(
+        event_sink=lambda event: None,
+        services={
+            "model_service": type("ModelServiceStub", (), {"snapshot": lambda self: {}})(),
+            "index_queue": IndexQueueStub(),
+            "index_service": IndexServiceStub(),
+        },
+    )
+
+    response = server.handle_request(
+        {"id": "req-8", "method": "delete_node", "params": {"nodeId": "node-1"}}
+    )
+
+    assert response == {"id": "req-8", "result": {"ok": True}}
+    assert queued == [("delete", "node-1")]
+    assert deleted == ["node-1"]
+
+
 def test_delete_node_and_search_delegate_to_services():
     deleted: list[str] = []
+    queued: list[tuple[str, str]] = []
     searched: list[tuple[str, bool]] = []
 
     class IndexServiceStub:
@@ -175,6 +271,10 @@ def test_delete_node_and_search_delegate_to_services():
     class IndexQueueStub:
         def snapshot(self):
             return {"phase": "idle"}
+
+        def enqueue_delete(self, node_id, job):
+            queued.append(("delete", node_id))
+            job()
 
     server = create_server(
         event_sink=lambda event: None,
@@ -194,5 +294,6 @@ def test_delete_node_and_search_delegate_to_services():
 
     assert delete_response == {"id": "req-6", "result": {"ok": True}}
     assert search_response == {"id": "req-7", "result": [{"nodeId": "node-1"}]}
+    assert queued == [("delete", "node-1")]
     assert deleted == ["node-1"]
     assert searched == [("hello", True)]

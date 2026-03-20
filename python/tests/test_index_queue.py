@@ -100,6 +100,35 @@ def test_repeated_index_requests_for_same_node_coalesce_while_one_is_running(
     assert queue.snapshot()["queueDepth"] == 0
 
 
+def test_jobs_for_different_node_ids_with_same_name_do_not_coalesce(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "index-queue.sqlite3"
+    shared_name = "shared.md"
+    executed: list[str] = []
+    queue = IndexQueue(
+        status_store=IndexStatusStore(event_sink=lambda event: None),
+        queue_store=SQLiteIndexQueueStore(db_path),
+    )
+
+    queue.enqueue_incremental("node-a", lambda: executed.append(f"{shared_name}:a"))
+    queue.enqueue_incremental("node-b", lambda: executed.append(f"{shared_name}:b"))
+
+    assert executed == ["shared.md:a", "shared.md:b"]
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT node_id, job_type, status
+            FROM index_jobs
+            ORDER BY job_id
+            """
+        ).fetchall()
+    assert rows == [
+        ("node-a", "index", "done"),
+        ("node-b", "index", "done"),
+    ]
+
+
 def test_delete_supersedes_stale_index_jobs_and_cancels_them_when_encountered(
     tmp_path: Path,
 ):

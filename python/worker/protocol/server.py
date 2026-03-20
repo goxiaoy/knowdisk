@@ -129,13 +129,16 @@ class PythonWorkerServer:
             else:
                 result = typed_result
 
-        services.index_queue.enqueue_incremental(request.node.name, job)
+        services.index_queue.enqueue_incremental(request.node.node_id, job)
         return result
 
     def _handle_delete_node(self, params: object) -> dict[str, object]:
         services = self._require_services()
         request = DeleteNodeRequest.from_mapping(_as_mapping(params))
-        services.index_service.delete_node(request.node_id)
+        services.index_queue.enqueue_delete(
+            request.node_id,
+            lambda: services.index_service.delete_node(request.node_id),
+        )
         return {"ok": True}
 
     def _handle_search(self, params: object) -> list[SearchResultSnapshot]:
