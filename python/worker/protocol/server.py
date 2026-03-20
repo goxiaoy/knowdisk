@@ -82,6 +82,10 @@ class PythonWorkerServer:
                 self.model_runtime_config,
                 artifact_manager=artifact_manager,
             )
+            if hasattr(self.services.index_service, "set_storage_base_path"):
+                self.services.index_service.set_storage_base_path(
+                    self.model_runtime_config.base_path
+                )
             self.services.model_service.ensure_required_models()
         self._event_sink(
             {
@@ -142,7 +146,7 @@ class PythonWorkerServer:
         if not isinstance(params, Mapping):
             raise ValueError("missing required model runtime configuration")
 
-        required_fields = ("embeddingModel", "rerankerModel", "preferredDevice", "modelCacheDir")
+        required_fields = ("basePath", "embeddingModel", "rerankerModel", "preferredDevice")
         if not all(isinstance(params.get(field), str) and params[field].strip() for field in required_fields):
             raise ValueError("missing required model runtime configuration")
 
@@ -156,6 +160,7 @@ class PythonWorkerServer:
             if not isinstance(huggingface_endpoint, str) or not huggingface_endpoint.strip():
                 raise ValueError("invalid huggingface endpoint")
             config = ModelRuntimeConfig(
+                base_path=config.base_path,
                 embedding_model=config.embedding_model,
                 reranker_model=config.reranker_model,
                 preferred_device=config.preferred_device,

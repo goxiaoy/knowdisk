@@ -1,10 +1,10 @@
 import { basename, extname, join } from "node:path";
 
 export function buildParserDocumentPath(input: {
-  parserCacheDir: string;
+  basePath: string;
   nodeId: string;
 }): string {
-  return join(input.parserCacheDir, input.nodeId, "document.md");
+  return join(input.basePath, "parser", input.nodeId, "document.md");
 }
 
 export function deriveMarkdownTitle(markdown: string, fallbackName: string): string | null {

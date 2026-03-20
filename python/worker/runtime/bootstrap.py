@@ -4,6 +4,7 @@ import os
 import sys
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
+from pathlib import Path
 from tempfile import gettempdir
 from typing import BinaryIO, TextIO
 
@@ -75,6 +76,7 @@ def create_worker_runtime(
     model_status_store = ModelStatusStore(event_sink=emit_event)
     index_status_store = IndexStatusStore(event_sink=emit_event)
     vector_status_store = VectorStatusStore(event_sink=emit_event)
+    default_base_path = Path(gettempdir()) / "knowdisk-python-worker"
     model_service = ModelService(
         status_store=model_status_store,
         verify_embedding=lambda: (_ for _ in ()).throw(RuntimeError("model runtime is not configured")),
@@ -88,8 +90,9 @@ def create_worker_runtime(
     index_service = IndexService(
         parse_node=parse_node,
         model_service=model_service,
-        vector_repository=VectorRepository(collection_path=f"{gettempdir()}/knowdisk-python-worker.zvec"),
+        vector_repository=VectorRepository(collection_path=str(default_base_path / "vector")),
         vector_status_store=vector_status_store,
+        parser_base_dir=default_base_path / "parser",
     )
     server = create_server(
         event_sink=emit_event,

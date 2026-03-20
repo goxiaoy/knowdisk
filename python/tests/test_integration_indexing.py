@@ -26,6 +26,7 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(tmp_path: Pat
         model_service=model_service,
         vector_repository=repository,
         vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
     )
     queue = IndexQueue(status_store=index_store)
 
@@ -54,6 +55,7 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(tmp_path: Pat
     assert repository.count_chunks() == 1
     assert index_service.vector_status_snapshot()["chunkCount"] == 1
     assert index_service.search("integration")[0]["sourceRef"] == "note.md"
+    assert (tmp_path / "parser" / "node-1" / "document.md").read_text(encoding="utf-8") == "# Hello\n\nIntegration body"
 
 
 def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: Path):
@@ -87,6 +89,7 @@ def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: 
         model_service=model_service,
         vector_repository=repository,
         vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
     )
 
     result = index_service.index_node(
@@ -109,6 +112,7 @@ def test_docling_stubbed_parse_indexes_pdf_through_full_service_stack(tmp_path: 
     assert result.indexed == 1
     assert repository.count_chunks() == 1
     assert index_service.search("docling")[0]["name"] == "paper.pdf"
+    assert (tmp_path / "parser" / "node-2" / "document.md").read_text(encoding="utf-8") == "Docling integration body"
 
 
 def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: Path):
@@ -128,6 +132,7 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
         model_service=model_service,
         vector_repository=repository,
         vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
     )
     queue = IndexQueue(status_store=index_store)
 

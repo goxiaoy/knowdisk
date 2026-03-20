@@ -44,6 +44,7 @@ def test_index_node_parses_embeds_and_updates_vector_count(tmp_path):
         )(),
         vector_repository=repository,
         vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
     )
 
     result = service.index_node(
@@ -92,6 +93,7 @@ def test_delete_node_removes_vectors_and_updates_count(tmp_path):
         )(),
         vector_repository=repository,
         vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
     )
 
     service.index_node(
@@ -140,6 +142,7 @@ def test_search_returns_repository_rows(tmp_path):
         )(),
         vector_repository=repository,
         vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
     )
 
     service.index_node(
@@ -200,6 +203,7 @@ def test_search_uses_query_embedding_for_vector_lookup(tmp_path):
         )(),
         vector_repository=repository,
         vector_status_store=vector_store,
+        parser_base_dir=tmp_path / "parser",
     )
 
     service.index_node(

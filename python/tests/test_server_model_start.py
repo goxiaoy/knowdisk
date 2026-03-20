@@ -13,10 +13,10 @@ def test_start_stores_model_runtime_config():
             "id": "req-1",
             "method": "start",
             "params": {
+                "basePath": "/tmp/knowdisk",
                 "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
                 "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                 "preferredDevice": "cpu",
-                "modelCacheDir": "/tmp/models",
                 "huggingfaceEndpoint": "https://huggingface.co",
             },
         }
@@ -24,10 +24,11 @@ def test_start_stores_model_runtime_config():
 
     assert response["result"]["ok"] is True
     assert server.model_runtime_config == ModelRuntimeConfig(
+        base_path=Path("/tmp/knowdisk"),
         embedding_model="Alibaba-NLP/gte-multilingual-base",
         reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
         preferred_device="cpu",
-        model_cache_dir=Path("/tmp/models"),
+        model_cache_dir=Path("/tmp/knowdisk/model"),
         huggingface_endpoint="https://huggingface.co",
     )
     assert emitted == [
@@ -51,7 +52,6 @@ def test_start_rejects_missing_model_config():
             "params": {
                 "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                 "preferredDevice": "cpu",
-                "modelCacheDir": "/tmp/models",
             },
         }
     )
@@ -79,7 +79,7 @@ def test_start_rejects_invalid_preferred_device():
                 "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
                 "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                 "preferredDevice": "beam",
-                "modelCacheDir": "/tmp/models",
+                "basePath": "/tmp/knowdisk",
             },
         }
     )
@@ -131,12 +131,19 @@ def test_start_configures_model_service_before_ensuring_models():
             calls.append(("ensure", None))
             return {"ok": True}
 
+    class IndexServiceStub:
+        def set_storage_base_path(self, base_path):
+            calls.append(("storage_base_path", base_path))
+
+        def vector_status_snapshot(self):
+            return {}
+
     server = create_server(
         event_sink=emitted.append,
         services={
             "model_service": ModelServiceStub(),
             "index_queue": type("IndexQueueStub", (), {"snapshot": lambda self: {}})(),
-            "index_service": type("IndexServiceStub", (), {"vector_status_snapshot": lambda self: {}})(),
+            "index_service": IndexServiceStub(),
         },
         model_fetch=lambda url, headers=None: None,
     )
@@ -146,10 +153,10 @@ def test_start_configures_model_service_before_ensuring_models():
             "id": "req-5",
             "method": "start",
             "params": {
+                "basePath": "/tmp/knowdisk",
                 "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
                 "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                 "preferredDevice": "cpu",
-                "modelCacheDir": "/tmp/models",
                 "huggingfaceEndpoint": "https://huggingface.co",
             },
         }
@@ -158,11 +165,13 @@ def test_start_configures_model_service_before_ensuring_models():
     assert response["result"]["ok"] is True
     assert calls[0][0] == "configure"
     assert calls[1][0] == "artifact_manager"
-    assert calls[2] == ("ensure", None)
+    assert calls[2] == ("storage_base_path", Path("/tmp/knowdisk"))
+    assert calls[3] == ("ensure", None)
     assert calls[0][1] == ModelRuntimeConfig(
         embedding_model="Alibaba-NLP/gte-multilingual-base",
         reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
         preferred_device="cpu",
-        model_cache_dir=Path("/tmp/models"),
+        base_path=Path("/tmp/knowdisk"),
+        model_cache_dir=Path("/tmp/knowdisk/model"),
         huggingface_endpoint="https://huggingface.co",
     )

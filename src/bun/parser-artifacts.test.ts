@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { buildParserDocumentPath, deriveMarkdownTitle } from "./parser-artifacts";
 
 describe("parser artifacts", () => {
-  test("builds document.md path from parser cache dir and node id", () => {
+  test("builds document.md path from base path and node id", () => {
     expect(
       buildParserDocumentPath({
-        parserCacheDir: "/tmp/parser-cache",
+        basePath: "/tmp/knowdisk",
         nodeId: "node-1",
       })
-    ).toBe(join("/tmp/parser-cache", "node-1", "document.md"));
+    ).toBe(join("/tmp/knowdisk", "parser", "node-1", "document.md"));
   });
 
   test("derives title from first markdown heading", () => {

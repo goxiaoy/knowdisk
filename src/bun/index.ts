@@ -34,6 +34,7 @@ import { createAppContainer } from "./app.container";
 import { buildParserDocumentPath, deriveMarkdownTitle } from "./parser-artifacts";
 import { createPythonWorkerAppRuntime } from "./python/app-runtime";
 import { resolvePythonWorkerCommandForRuntime } from "./python/command";
+import { sanitizePythonWorkerStderrLine } from "./python/logging";
 import { createPythonWorkerRuntime } from "./python/runtime";
 import { createPythonWorkerStatusStore } from "./python/status";
 import { createPythonWorkerTransport } from "./python/transport";
@@ -121,10 +122,10 @@ const pythonWorkerRuntime = createPythonWorkerRuntime({
   transport: pythonWorkerTransport,
   maxRestarts: 2,
   startupConfig: {
+    basePath: app.config.basePath,
     embeddingModel: "Alibaba-NLP/gte-multilingual-base",
     rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
     preferredDevice: process.platform === "darwin" ? "mps" : "cpu",
-    modelCacheDir: app.paths.modelCacheDir,
   },
 });
 const pythonWorkerStatus = createPythonWorkerStatusStore();
@@ -316,7 +317,7 @@ async function getFileMarkdown(input: GetFileMarkdownRequest): Promise<GetFileMa
     }
     const markdown = await readFile(
       buildParserDocumentPath({
-        parserCacheDir: app.paths.parserCacheDir,
+        basePath: app.config.basePath,
         nodeId: input.nodeId,
       }),
       "utf8"
@@ -504,7 +505,7 @@ const stopPythonWorkerExitSubscription = pythonWorkerTransport.subscribeExit(() 
 
 const stopPythonWorkerStderrSubscription = pythonWorkerTransport.subscribeStderr((chunk) => {
   for (const line of chunk.split("\n")) {
-    const trimmed = line.trim();
+    const trimmed = sanitizePythonWorkerStderrLine(line).trim();
     if (!trimmed) {
       continue;
     }

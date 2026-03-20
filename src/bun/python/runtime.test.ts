@@ -79,10 +79,10 @@ function createFakeTransport(): PythonWorkerRuntimeTransport & {
 
 function createStartupConfig(overrides: Partial<PythonWorkerRuntimeStartupConfig> = {}): PythonWorkerRuntimeStartupConfig {
   return {
+    basePath: "/tmp/knowdisk",
     embeddingModel: "Alibaba-NLP/gte-multilingual-base",
     rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
     preferredDevice: "cpu",
-    modelCacheDir: "/tmp/knowdisk-models",
     ...overrides,
   };
 }

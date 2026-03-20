@@ -11,6 +11,7 @@ ModelPreferredDevice: TypeAlias = Literal["cpu", "mps", "cuda"]
 
 @dataclass(frozen=True, slots=True)
 class ModelRuntimeConfig:
+    base_path: Path
     embedding_model: str
     reranker_model: str
     preferred_device: ModelPreferredDevice
@@ -24,15 +25,17 @@ class ModelRuntimeConfig:
             raise ValueError(f"invalid preferred device: {preferred_device}")
         huggingface_endpoint = value.get("huggingfaceEndpoint")
         return cls(
+            base_path=Path(str(value["basePath"])),
             embedding_model=str(value["embeddingModel"]),
             reranker_model=str(value["rerankerModel"]),
             preferred_device=preferred_device,
-            model_cache_dir=Path(str(value["modelCacheDir"])),
+            model_cache_dir=Path(str(value["basePath"])) / "model",
             huggingface_endpoint="" if huggingface_endpoint is None else str(huggingface_endpoint),
         )
 
     def to_legacy_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
+            "basePath": str(self.base_path),
             "embeddingModel": self.embedding_model,
             "rerankerModel": self.reranker_model,
             "preferredDevice": self.preferred_device,

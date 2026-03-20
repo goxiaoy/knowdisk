@@ -6,10 +6,10 @@ PythonWorkerPreferredDevice: TypeAlias = Literal["cpu", "mps", "cuda"]
 
 
 class PythonWorkerStartParams(TypedDict):
+    basePath: str
     embeddingModel: str
     rerankerModel: str
     preferredDevice: PythonWorkerPreferredDevice
-    modelCacheDir: str
     huggingfaceEndpoint: NotRequired[str]
 
 

@@ -15,19 +15,19 @@ export type PythonWorkerRuntime = {
 };
 
 export type PythonWorkerRuntimeStartupConfig = {
+  basePath: string;
   embeddingModel: string;
   rerankerModel: string;
   preferredDevice: "cpu" | "mps" | "cuda";
-  modelCacheDir: string;
   huggingfaceEndpoint?: string;
 };
 
 function createDefaultPythonWorkerRuntimeStartupConfig(): PythonWorkerRuntimeStartupConfig {
   return {
+    basePath: process.cwd(),
     embeddingModel: "Alibaba-NLP/gte-multilingual-base",
     rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
     preferredDevice: process.platform === "darwin" ? "mps" : "cpu",
-    modelCacheDir: `${process.cwd()}/models`,
   };
 }
 

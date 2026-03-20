@@ -12,10 +12,10 @@ def test_start_returns_handshake_and_emits_health_event():
             "id": "req-1",
             "method": "start",
             "params": {
+                "basePath": "/tmp/knowdisk",
                 "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
                 "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                 "preferredDevice": "cpu",
-                "modelCacheDir": "/tmp/models",
             },
         }
     )
@@ -31,7 +31,8 @@ def test_start_returns_handshake_and_emits_health_event():
     assert server.model_runtime_config.embedding_model == "Alibaba-NLP/gte-multilingual-base"
     assert server.model_runtime_config.reranker_model == "Alibaba-NLP/gte-multilingual-reranker-base"
     assert server.model_runtime_config.preferred_device == "cpu"
-    assert str(server.model_runtime_config.model_cache_dir) == "/tmp/models"
+    assert str(server.model_runtime_config.base_path) == "/tmp/knowdisk"
+    assert str(server.model_runtime_config.model_cache_dir) == "/tmp/knowdisk/model"
     assert emitted == [
         {
             "type": "worker_health_changed",

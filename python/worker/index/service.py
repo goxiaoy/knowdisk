@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from collections.abc import Callable, Mapping
+from pathlib import Path
 
 from worker.runtime.status import VectorStatusStore
 from worker.runtime.types import (
@@ -23,11 +24,13 @@ class IndexService:
         model_service: object,
         vector_repository: VectorRepository,
         vector_status_store: VectorStatusStore,
+        parser_base_dir: Path,
     ) -> None:
         self._parse_node = parse_node
         self._model_service = model_service
         self._vector_repository = vector_repository
         self._vector_status_store = vector_status_store
+        self._parser_base_dir = parser_base_dir
         self._search_rows: list[dict[str, object]] = []
 
     def index_node(
@@ -36,6 +39,7 @@ class IndexService:
     ) -> IndexNodeResult:
         parsed_request = coerce_index_node_request(request)
         chunks = self._parse_node(parsed_request.node, parsed_request.mount)
+        self._persist_markdown_artifact(parsed_request.node.node_id, chunks)
         embedding_runtime = self._model_service.get_local_embedding_runtime()
         rows: list[VectorChunkRow] = []
 
@@ -85,6 +89,24 @@ class IndexService:
 
     def vector_status_snapshot(self) -> dict[str, object]:
         return self._vector_status_store.snapshot()
+
+    def set_storage_base_path(self, base_path: Path) -> None:
+        self._parser_base_dir = base_path / "parser"
+        self._vector_repository = VectorRepository(collection_path=str(base_path / "vector"))
+
+    def _persist_markdown_artifact(self, node_id: str, chunks: list[dict[str, object]]) -> None:
+        markdown_parts: list[str] = []
+        for chunk in chunks:
+            if chunk.get("status") != "ok":
+                continue
+            text = str(chunk.get("text") or "")
+            if not text:
+                continue
+            markdown_parts.append(text)
+
+        artifact_dir = self._parser_base_dir / node_id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        (artifact_dir / "document.md").write_text("\n\n".join(markdown_parts), encoding="utf-8")
 
 
 def now_iso() -> str:
