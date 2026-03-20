@@ -6,6 +6,7 @@ from worker.runtime.types import (
     DeleteNodeRequest,
     IndexNodeRequest,
     SearchRequest,
+    SearchResultSnapshot,
     WorkerServices,
     WorkerServicesBundle,
     coerce_worker_services,
@@ -137,10 +138,10 @@ class PythonWorkerServer:
         services.index_service.delete_node(request.node_id)
         return {"ok": True}
 
-    def _handle_search(self, params: object) -> list[dict[str, object]]:
+    def _handle_search(self, params: object) -> list[SearchResultSnapshot]:
         services = self._require_services()
         request = SearchRequest.from_mapping(_as_mapping(params))
-        return services.index_service.search(request.query)
+        return services.index_service.search(request.query, title_only=request.title_only)
 
     def _parse_model_runtime_config(self, params: object) -> ModelRuntimeConfig:
         if not isinstance(params, Mapping):

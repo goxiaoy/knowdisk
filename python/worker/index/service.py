@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import cast
 
 from worker.runtime.status import VectorStatusStore
 from worker.runtime.types import (
     IndexNodeRequest,
     IndexNodeResult,
+    SearchResultSnapshot,
     coerce_index_node_request,
 )
 from worker.vector.repository import VectorRepository
@@ -79,13 +81,14 @@ class IndexService:
             error="",
         )
 
-    def search(self, query: str) -> list[dict[str, object]]:
+    def search(self, query: str, title_only: bool = False) -> list[SearchResultSnapshot]:
+        _ = title_only
         normalized = query.strip().lower()
         if not normalized:
             return []
         embedding_runtime = self._model_service.get_local_embedding_runtime()
         query_embedding = embedding_runtime(query)
-        return self._vector_repository.search(query_embedding, limit=10)
+        return cast(list[SearchResultSnapshot], self._vector_repository.search(query_embedding, limit=10))
 
     def vector_status_snapshot(self) -> dict[str, object]:
         return self._vector_status_store.snapshot()

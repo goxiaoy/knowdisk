@@ -159,14 +159,14 @@ def test_index_node_delegates_to_index_service():
 
 def test_delete_node_and_search_delegate_to_services():
     deleted: list[str] = []
-    searched: list[str] = []
+    searched: list[tuple[str, bool]] = []
 
     class IndexServiceStub:
         def delete_node(self, node_id):
             deleted.append(node_id)
 
-        def search(self, query):
-            searched.append(query)
+        def search(self, query, title_only=False):
+            searched.append((query, title_only))
             return [{"nodeId": "node-1"}]
 
         def vector_status_snapshot(self):
@@ -189,10 +189,10 @@ def test_delete_node_and_search_delegate_to_services():
         {"id": "req-6", "method": "delete_node", "params": {"nodeId": "node-1"}}
     )
     search_response = server.handle_request(
-        {"id": "req-7", "method": "search", "params": {"query": "hello"}}
+        {"id": "req-7", "method": "search", "params": {"query": "hello", "titleOnly": True}}
     )
 
     assert delete_response == {"id": "req-6", "result": {"ok": True}}
     assert search_response == {"id": "req-7", "result": [{"nodeId": "node-1"}]}
     assert deleted == ["node-1"]
-    assert searched == ["hello"]
+    assert searched == [("hello", True)]
