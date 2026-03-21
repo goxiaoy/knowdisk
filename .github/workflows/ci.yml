@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Sync Python worker environment
+        run: uv sync --project python --extra dev --locked
+
       - name: Run tests
         run: bun test
 
