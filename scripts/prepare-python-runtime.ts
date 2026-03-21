@@ -1,31 +1,67 @@
 import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  buildPythonSidecar,
+  normalizeSidecarPlatform,
+  type SidecarPlatform,
+} from "./build-python-sidecar";
 
 export async function preparePythonRuntime(input: {
   workerSourceDir: string;
-  runtimeSourceDir: string;
   vendorDir: string;
+  platform?: NodeJS.Platform | string;
+  buildSidecar?: (input: {
+    workerSourceDir: string;
+    outputDir: string;
+    platform?: NodeJS.Platform | string;
+  }) => Promise<{
+    platformDir: string;
+    executableName: string;
+  }>;
 }): Promise<{
-  workerDir: string;
-  runtimeDir: string;
+  sidecarDir: string;
+  executablePath: string;
 }> {
-  const workerDir = join(input.vendorDir, "python-worker");
-  const runtimeDir = join(input.vendorDir, "python-runtime");
+  const platform = input.platform ?? process.platform;
+  const sidecarPlatform = normalizeSidecarPlatform(platform);
+  const stageRootDir = join(input.vendorDir, ".python-sidecar-build");
+  const sidecarRootDir = join(input.vendorDir, "python-sidecar");
+  const sidecarDir = join(sidecarRootDir, sidecarPlatform);
+  const buildSidecar = input.buildSidecar ?? buildPythonSidecar;
 
-  await rm(workerDir, { recursive: true, force: true });
-  await rm(runtimeDir, { recursive: true, force: true });
+  await rm(join(input.vendorDir, "python-worker"), { recursive: true, force: true });
+  await rm(join(input.vendorDir, "python-runtime"), { recursive: true, force: true });
+  await rm(sidecarRootDir, { recursive: true, force: true });
+  await rm(stageRootDir, { recursive: true, force: true });
   await mkdir(input.vendorDir, { recursive: true });
 
-  await cp(join(input.workerSourceDir, "worker"), join(workerDir, "worker"), { recursive: true });
-  await cp(input.runtimeSourceDir, runtimeDir, { recursive: true });
+  const builtSidecar = await buildSidecar({
+    workerSourceDir: input.workerSourceDir,
+    outputDir: stageRootDir,
+    platform,
+  });
 
-  await assertExists(join(workerDir, "worker", "__main__.py"), "python worker entrypoint not found");
-  await assertExists(
-    join(runtimeDir, "bin", "python"),
-    "bundled python interpreter not found"
+  await cp(builtSidecar.platformDir, sidecarDir, { recursive: true });
+  await rm(stageRootDir, { recursive: true, force: true });
+
+  const executablePath = join(
+    sidecarDir,
+    "knowdisk-python-worker",
+    executableNameForPlatform(sidecarPlatform, builtSidecar.executableName)
   );
+  await assertExists(executablePath, "bundled python sidecar executable not found");
 
-  return { workerDir, runtimeDir };
+  return { sidecarDir, executablePath };
+}
+
+function executableNameForPlatform(
+  sidecarPlatform: SidecarPlatform,
+  executableName: string
+): string {
+  if (sidecarPlatform === "win" && !executableName.endsWith(".exe")) {
+    return `${executableName}.exe`;
+  }
+  return executableName;
 }
 
 async function assertExists(path: string, message: string): Promise<void> {
@@ -37,14 +73,8 @@ async function assertExists(path: string, message: string): Promise<void> {
 }
 
 if (import.meta.main) {
-  const runtimeSourceDir = process.env.KNOWDISK_PYTHON_RUNTIME_DIR?.trim();
-  if (!runtimeSourceDir) {
-    throw new Error("KNOWDISK_PYTHON_RUNTIME_DIR is required");
-  }
-
   await preparePythonRuntime({
     workerSourceDir: join(process.cwd(), "python"),
-    runtimeSourceDir,
     vendorDir: join(process.cwd(), "vendor"),
   });
 }

@@ -20,7 +20,7 @@ describe("resolvePythonWorkerCommand", () => {
     ).toEqual(["uv", "run", "--project", "/repo/python", "python", "-m", "worker"]);
   });
 
-  test("returns bundled interpreter and worker entrypoint in packaged macos mode", () => {
+  test("returns bundled sidecar executable in packaged macos mode", () => {
     expect(
       resolvePythonWorkerCommand({
         mode: "packaged-macos",
@@ -28,8 +28,14 @@ describe("resolvePythonWorkerCommand", () => {
         resourcesDir: "/App/Contents/Resources",
       })
     ).toEqual([
-      join("/App/Contents/Resources", "python-runtime", "bin", "python"),
-      join("/App/Contents/Resources", "python-worker", "worker", "__main__.py"),
+      join(
+        "/App/Contents/Resources",
+        "app",
+        "python-sidecar",
+        "mac",
+        "knowdisk-python-worker",
+        "knowdisk-python-worker"
+      ),
     ]);
   });
 
@@ -37,12 +43,11 @@ describe("resolvePythonWorkerCommand", () => {
     expect(
       resolvePythonWorkerCommandForRuntime({
         platform: "darwin",
-        isPackaged: true,
+        channel: "stable",
         execPath: "/Applications/Know Disk.app/Contents/MacOS/Know Disk",
       })
     ).toEqual([
-      "/Applications/Know Disk.app/Contents/Resources/python-runtime/bin/python",
-      "/Applications/Know Disk.app/Contents/Resources/python-worker/worker/__main__.py",
+      "/Applications/Know Disk.app/Contents/Resources/app/python-sidecar/mac/knowdisk-python-worker/knowdisk-python-worker",
     ]);
   });
 
@@ -107,16 +112,15 @@ describe("resolvePythonWorkerCommand", () => {
     ]);
   });
 
-  test("uses bundled python runtime outside the dev channel on macos", () => {
+  test("uses bundled python sidecar outside the dev channel on macos", () => {
     expect(
       resolvePythonWorkerCommandForRuntime({
         platform: "darwin",
-        channel: "prod",
+        channel: "stable",
         execPath: "/Applications/Know Disk.app/Contents/MacOS/Know Disk",
       })
     ).toEqual([
-      "/Applications/Know Disk.app/Contents/Resources/python-runtime/bin/python",
-      "/Applications/Know Disk.app/Contents/Resources/python-worker/worker/__main__.py",
+      "/Applications/Know Disk.app/Contents/Resources/app/python-sidecar/mac/knowdisk-python-worker/knowdisk-python-worker",
     ]);
   });
 });

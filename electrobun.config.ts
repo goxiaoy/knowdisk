@@ -14,11 +14,8 @@ export function createBuildCopyConfig(input?: {
     "vendor/node_modules/@img": "node_modules/@img",
   };
 
-  if (existsSync("vendor/python-runtime")) {
-    copy["vendor/python-runtime"] = "python-runtime";
-  }
-  if (existsSync("vendor/python-worker")) {
-    copy["vendor/python-worker"] = "python-worker";
+  if (existsSync("vendor/python-sidecar")) {
+    copy["vendor/python-sidecar"] = "python-sidecar";
   }
 
   return copy;

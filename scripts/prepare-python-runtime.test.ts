@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { preparePythonRuntime } from "./prepare-python-runtime";
@@ -13,68 +13,70 @@ afterEach(() => {
 });
 
 describe("preparePythonRuntime", () => {
-  test("stages worker files and bundled runtime under vendor", async () => {
+  test("stages packaged python sidecar assets under vendor", async () => {
     const root = makeTempDir();
     const workerSourceDir = join(root, "python");
-    const runtimeSourceDir = join(root, "runtime-src");
     const vendorDir = join(root, "vendor");
+    const builtSidecarDir = join(root, "built-sidecar");
 
-    mkdirSync(join(workerSourceDir, "worker"), { recursive: true });
-    mkdirSync(join(runtimeSourceDir, "bin"), { recursive: true });
-    writeFileSync(join(workerSourceDir, "worker", "__main__.py"), "print('worker')\n");
-    writeFileSync(join(workerSourceDir, "worker", "server.py"), "SERVER = True\n");
-    writeFileSync(join(runtimeSourceDir, "bin", "python"), "#!/usr/bin/env python3\n");
+    mkdirSync(workerSourceDir, { recursive: true });
+    mkdirSync(join(builtSidecarDir, "knowdisk-python-worker"), { recursive: true });
+    writeFileSync(
+      join(builtSidecarDir, "knowdisk-python-worker", "knowdisk-python-worker"),
+      "#!/bin/sh\nexit 0\n"
+    );
+    writeFileSync(
+      join(builtSidecarDir, "knowdisk-python-worker", "manifest.json"),
+      '{"kind":"sidecar"}\n'
+    );
 
     const result = await preparePythonRuntime({
       workerSourceDir,
-      runtimeSourceDir,
       vendorDir,
+      platform: "darwin",
+      buildSidecar: async () => ({
+        platformDir: builtSidecarDir,
+        executableName: "knowdisk-python-worker",
+      }),
     });
 
     expect(result).toEqual({
-      workerDir: join(vendorDir, "python-worker"),
-      runtimeDir: join(vendorDir, "python-runtime"),
+      sidecarDir: join(vendorDir, "python-sidecar", "mac"),
+      executablePath: join(
+        vendorDir,
+        "python-sidecar",
+        "mac",
+        "knowdisk-python-worker",
+        "knowdisk-python-worker"
+      ),
     });
-    expect(existsSync(join(vendorDir, "python-worker", "worker", "__main__.py"))).toBe(true);
-    expect(existsSync(join(vendorDir, "python-runtime", "bin", "python"))).toBe(true);
+    expect(existsSync(result.executablePath)).toBe(true);
+    expect(readFileSync(join(result.sidecarDir, "knowdisk-python-worker", "manifest.json"), "utf8")).toContain(
+      "sidecar"
+    );
+    expect(existsSync(join(vendorDir, "python-runtime"))).toBe(false);
   });
 
-  test("fails when staged runtime is missing interpreter", async () => {
+  test("fails when staged sidecar executable is missing", async () => {
     const root = makeTempDir();
     const workerSourceDir = join(root, "python");
-    const runtimeSourceDir = join(root, "runtime-src");
     const vendorDir = join(root, "vendor");
+    const builtSidecarDir = join(root, "built-sidecar");
 
-    mkdirSync(join(workerSourceDir, "worker"), { recursive: true });
-    mkdirSync(runtimeSourceDir, { recursive: true });
-    writeFileSync(join(workerSourceDir, "worker", "__main__.py"), "print('worker')\n");
+    mkdirSync(workerSourceDir, { recursive: true });
+    mkdirSync(join(builtSidecarDir, "knowdisk-python-worker"), { recursive: true });
 
     await expect(
       preparePythonRuntime({
         workerSourceDir,
-        runtimeSourceDir,
         vendorDir,
+        platform: "darwin",
+        buildSidecar: async () => ({
+          platformDir: builtSidecarDir,
+          executableName: "knowdisk-python-worker",
+        }),
       })
-    ).rejects.toThrow("bundled python interpreter not found");
-  });
-
-  test("fails when staged worker is missing entrypoint", async () => {
-    const root = makeTempDir();
-    const workerSourceDir = join(root, "python");
-    const runtimeSourceDir = join(root, "runtime-src");
-    const vendorDir = join(root, "vendor");
-
-    mkdirSync(join(workerSourceDir, "worker"), { recursive: true });
-    mkdirSync(join(runtimeSourceDir, "bin"), { recursive: true });
-    writeFileSync(join(runtimeSourceDir, "bin", "python"), "#!/usr/bin/env python3\n");
-
-    await expect(
-      preparePythonRuntime({
-        workerSourceDir,
-        runtimeSourceDir,
-        vendorDir,
-      })
-    ).rejects.toThrow("python worker entrypoint not found");
+    ).rejects.toThrow("bundled python sidecar executable not found");
   });
 });
 

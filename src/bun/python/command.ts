@@ -25,8 +25,14 @@ export function resolvePythonWorkerCommand(input: {
 }): [string, ...string[]] {
   if (input.mode === "packaged-macos") {
     return [
-      join(input.resourcesDir, "python-runtime", "bin", "python"),
-      join(input.resourcesDir, "python-worker", "worker", "__main__.py"),
+      join(
+        input.resourcesDir,
+        "app",
+        "python-sidecar",
+        "mac",
+        "knowdisk-python-worker",
+        "knowdisk-python-worker"
+      ),
     ];
   }
 
