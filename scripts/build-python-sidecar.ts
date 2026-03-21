@@ -4,6 +4,11 @@ import { join } from "node:path";
 
 export type SidecarPlatform = "mac" | "linux" | "win";
 
+const PYINSTALLER_HIDDEN_IMPORTS = [
+  // SentenceTransformer may load this module lazily from cached model configs.
+  "transformers.models.metaclip_2",
+];
+
 export function normalizeSidecarPlatform(platform: NodeJS.Platform | string): SidecarPlatform {
   if (platform === "darwin") {
     return "mac";
@@ -63,6 +68,7 @@ export async function buildPythonSidecar(input: {
       workDir,
       "--paths",
       input.workerSourceDir,
+      ...PYINSTALLER_HIDDEN_IMPORTS.flatMap((moduleName) => ["--hidden-import", moduleName]),
       join(input.workerSourceDir, "worker", "__main__.py"),
     ],
     { cwd: process.cwd() }
