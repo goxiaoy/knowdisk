@@ -4,7 +4,6 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import pino from "pino";
-import { createHuggingFaceVfsProvider } from "./provider/huggingface";
 import { createLocalVfsProvider } from "./provider/local";
 import {
   createVfsContentNodeEventsProcessor,
@@ -53,92 +52,6 @@ async function walkLocalFs(
 }
 
 describe("vfs syncer integration", () => {
-  test(
-    "huggingface provider fullSync keeps db metadata aligned with remote listing",
-    async () => {
-      const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-hf-int-"));
-      const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
-      try {
-        const mount: VfsMount = {
-          mountId: "hf-int",
-          providerType: "huggingface",
-          providerExtra: { model: "hf-internal-testing/tiny-random-bert" },
-          syncMetadata: true,
-          syncContent: false,
-          metadataTtlSec: 60,
-          reconcileIntervalMs: 1000,
-        };
-        const provider = createHuggingFaceVfsProvider(mount);
-        const logger = pino({ name: "vfs.syncer.integration.hf", level: "info" });
-        const syncer = createVfsSyncer({
-          mount,
-          provider,
-          repository: repo,
-          contentRootParent: join(dir, "content"),
-          logger,
-        });
-        const metadataProcessor = createVfsMetadataNodeEventsProcessor({
-          repository: repo,
-          contentRootParent: join(dir, "content"),
-          resolveMount(mountId) {
-            return mountId === mount.mountId ? mount : null;
-          },
-          resolveProvider() {
-            return provider;
-          },
-          logger,
-        });
-        const contentProcessor = createVfsContentNodeEventsProcessor({
-          repository: repo,
-          contentRootParent: join(dir, "content"),
-          resolveMount(mountId) {
-            return mountId === mount.mountId ? mount : null;
-          },
-          resolveProvider() {
-            return provider;
-          },
-          logger,
-        });
-        syncer.subscribe((event) => {
-          if (event.type === "status") {
-            logger.info({ event: event.payload }, "syncer status event");
-          }
-        });
-
-        await syncer.fullSync();
-        await metadataProcessor.drain();
-        await contentProcessor.drain({ allowContentSync: false });
-
-        const remote = new Map(
-          (
-            await walk({
-              provider,
-              mount,
-            })
-          ).map((entry) => [entry.sourceRef, entry])
-        );
-        const dbNodes = repo
-          .listNodesByMountId(mount.mountId)
-          .filter((node) => node.deletedAtMs === null);
-        expect(dbNodes.length).toBe(remote.size);
-
-        for (const node of dbNodes) {
-          const r = remote.get(node.sourceRef);
-          expect(r).toBeDefined();
-          expect(node.kind).toBe(r!.kind);
-          expect(node.name).toBe(r!.name);
-          if (r!.kind === "file") {
-            expect(node.size).toBe(r!.size ?? null);
-          }
-        }
-      } finally {
-        repo.close();
-        rmSync(dir, { recursive: true, force: true });
-      }
-    },
-    5 * 60 * 1000
-  );
-
   test("local provider fullSync and watch stay aligned with filesystem changes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-syncer-local-int-"));
     const sourceRoot = join(dir, "source");

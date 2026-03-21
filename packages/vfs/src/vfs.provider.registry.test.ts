@@ -26,7 +26,7 @@ describe("vfs provider registry", () => {
 
     registry.register("mock", () => adapter);
     expect(registry.get(mount)).toBe(adapter);
-    expect(registry.listTypes()).toEqual(["huggingface", "local", "mock"]);
+    expect(registry.listTypes()).toEqual(["local", "mock"]);
   });
 
   test("exposes capability flags from code registry", () => {
@@ -97,18 +97,17 @@ describe("vfs provider registry", () => {
 
   test("registers built-in providers from provider directory", async () => {
     const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
-    expect(registry.listTypes()).toContain("huggingface");
     expect(registry.listTypes()).toContain("local");
 
     const mount: VfsMount = {
-      mountId: "m-hf",
-      providerType: "huggingface",
-      providerExtra: { model: "org/repo" },
+      mountId: "m-local",
+      providerType: "local",
+      providerExtra: { directory: "/tmp" },
       syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     };
     const adapter = registry.get(mount);
-    expect(adapter.type).toBe("huggingface");
+    expect(adapter.type).toBe("local");
   });
 });

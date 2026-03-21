@@ -3,26 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { VfsProviderAdapter } from "../src/vfs.provider.types";
 import { createVfsExampleApp } from "./app";
-
-function mockHfProvider(): VfsProviderAdapter {
-  return {
-    type: "huggingface",
-    capabilities: { watch: false },
-    async listChildren() {
-      return { items: [] };
-    },
-    async createReadStream() {
-      return new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode("hf"));
-          controller.close();
-        },
-      });
-    },
-  };
-}
 
 async function readUntil(
   reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -56,19 +37,13 @@ async function readUntil(
 }
 
 describe("vfs example app", () => {
-  test("initializes two mounts and serves state/list/events endpoints", async () => {
+  test("initializes the local mount and serves state/list/events endpoints", async () => {
     const root = mkdtempSync(join(tmpdir(), "knowdisk-vfs-example-test-"));
     const testdataDir = join(root, "testdata");
     await mkdir(testdataDir, { recursive: true });
     await writeFile(join(testdataDir, "hello.txt"), "hello");
 
-    const app = await createVfsExampleApp({
-      rootDir: root,
-      port: 0,
-      providerOverrides: {
-        huggingface: () => mockHfProvider(),
-      },
-    });
+    const app = await createVfsExampleApp({ rootDir: root, port: 0 });
 
     try {
       const baseUrl = app.baseUrl;
@@ -90,29 +65,14 @@ describe("vfs example app", () => {
       expect(pageHtml).toContain("<th>Actions</th>");
       expect(pageHtml).toContain('id="createKind"');
       expect(Array.isArray(state.mounts)).toBe(true);
-      expect(state.mounts.length).toBe(2);
-      expect(
-        state.mounts.some((mount: { mountId: string }) => mount.mountId === "hf-tiny-random-bert")
-      ).toBe(true);
-      expect(
-        state.mounts.some((mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert")
-      ).toBe(true);
-      const localMount = state.mounts.find(
-        (mount: { mountId: string }) => mount.mountId !== "hf-tiny-random-bert"
-      );
+      expect(state.mounts.length).toBe(1);
+      const localMount = state.mounts[0];
       expect(localMount?.mountNodeId).toEqual(expect.any(String));
+      expect(localMount?.providerType).toBe("local");
       expect(localMount?.operations).toEqual({
         create: true,
         rename: true,
         delete: true,
-      });
-      const hfMount = state.mounts.find(
-        (mount: { mountId: string }) => mount.mountId === "hf-tiny-random-bert"
-      );
-      expect(hfMount?.operations).toEqual({
-        create: false,
-        rename: false,
-        delete: false,
       });
 
       let listed: { items: Array<{ name: string; kind: string; nodeId: string }> } = { items: [] };

@@ -83,14 +83,6 @@ export async function createVfsExampleApp(input?: {
     logger,
   });
 
-  const hfMount = await vfs.mountInternal("hf-tiny-random-bert", {
-    providerType: "huggingface",
-    providerExtra: { model: "hf-internal-testing/tiny-random-bert" },
-    syncMetadata: false,
-    syncContent: true,
-    metadataTtlSec: 60,
-    reconcileIntervalMs: 600_000,
-  });
   const localMount = await vfs.mountInternal("local-testdata", {
     providerType: "local",
     providerExtra: { directory: testdataDir },
@@ -99,7 +91,6 @@ export async function createVfsExampleApp(input?: {
     metadataTtlSec: 30,
     reconcileIntervalMs: 600_000,
   });
-  void hfMount;
   void localMount;
 
   const listMountedNodes = (): Array<
