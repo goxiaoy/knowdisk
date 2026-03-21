@@ -95,6 +95,8 @@ describe("resolvePythonWorkerCommand", () => {
   });
 
   test("uses repo-local python project in development runtime mode", () => {
+    const repoPythonProjectDir = join(process.cwd(), "python");
+
     expect(
       resolvePythonWorkerCommandForRuntime({
         platform: "darwin",
@@ -105,7 +107,7 @@ describe("resolvePythonWorkerCommand", () => {
       "uv",
       "run",
       "--project",
-      "/Users/goxy/projects/knowdisk/python",
+      repoPythonProjectDir,
       "python",
       "-m",
       "worker",

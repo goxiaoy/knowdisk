@@ -112,6 +112,20 @@ describe("createPythonWorkerTransport", () => {
     await expect(pending).rejects.toThrow("python worker exited");
   });
 
+  test("rejects pending requests when the worker process fails to spawn", async () => {
+    const child = new FakeChildProcess();
+    const transport = createPythonWorkerTransport({
+      command: ["python3", "-m", "worker"],
+      spawn: () => child,
+    });
+
+    transport.start();
+    const pending = transport.request("start", {});
+    child.emit("error", new Error("spawn uv ENOENT"));
+
+    await expect(pending).rejects.toThrow("spawn uv ENOENT");
+  });
+
   test("notifies exit subscribers when the worker exits", () => {
     const child = new FakeChildProcess();
     const transport = createPythonWorkerTransport({

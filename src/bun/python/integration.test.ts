@@ -22,6 +22,7 @@ describe("python worker integration", () => {
     const basePath = mkdtempSync(join(tmpdir(), "knowdisk-python-worker-base-"));
     writeFileSync(join(sourceDir, "note.md"), "# Hello\n\nPython worker integration");
 
+    const stderrChunks: string[] = [];
     const transport = createPythonWorkerTransport({
       command: resolvePythonWorkerCommand({
         mode: "development",
@@ -35,6 +36,9 @@ describe("python worker integration", () => {
             KNOWDISK_PYTHON_FAKE_MODEL_RUNTIME: "1",
           },
         }),
+    });
+    transport.subscribeStderr((chunk) => {
+      stderrChunks.push(chunk);
     });
     const runtime = createPythonWorkerRuntime({
       transport,
@@ -54,7 +58,10 @@ describe("python worker integration", () => {
     });
 
     await runtime.start();
-    await waitFor(() => statusStore.getModelStatus().available);
+    await waitFor(() => statusStore.getModelStatus().available, {
+      label: "model available",
+      stderr: stderrChunks,
+    });
 
     await transport.request("index_node", {
       node: {
@@ -72,12 +79,20 @@ describe("python worker integration", () => {
       },
     });
 
-    await waitFor(() => statusStore.getVectorDbStatus().chunkCount === 1);
+    await waitFor(() => statusStore.getVectorDbStatus().chunkCount === 1, {
+      label: "vector chunk count reaches 1",
+      stderr: stderrChunks,
+      timeoutMs: 10_000,
+    });
 
     const searchResult = await transport.request("search", {
       query: "integration",
     });
-    await waitFor(() => statusStore.getIndexStatus().phase === "idle");
+    await waitFor(() => statusStore.getIndexStatus().phase === "idle", {
+      label: "index status returns to idle",
+      stderr: stderrChunks,
+      timeoutMs: 10_000,
+    });
 
     expect(statusStore.getIndexStatus().available).toBe(true);
     expect(statusStore.getIndexStatus().phase).toBe("idle");
@@ -98,17 +113,30 @@ describe("python worker integration", () => {
     );
 
     await transport.request("delete_node", { nodeId: "node-1" });
-    await waitFor(() => statusStore.getVectorDbStatus().chunkCount === 0);
+    await waitFor(() => statusStore.getVectorDbStatus().chunkCount === 0, {
+      label: "vector chunk count returns to 0",
+      stderr: stderrChunks,
+      timeoutMs: 10_000,
+    });
 
     expect(statusStore.getVectorDbStatus().chunkCount).toBe(0);
-  }, 20_000);
+  }, 30_000);
 });
 
-async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
+async function waitFor(
+  predicate: () => boolean,
+  input?: { timeoutMs?: number; label?: string; stderr?: string[] }
+): Promise<void> {
+  const timeoutMs = input?.timeoutMs ?? 5_000;
   const startedAt = Date.now();
   while (!predicate()) {
     if (Date.now() - startedAt > timeoutMs) {
-      throw new Error("waitFor timeout");
+      const stderrTail = input?.stderr?.join("").trim();
+      throw new Error(
+        stderrTail
+          ? `waitFor timeout: ${input?.label ?? "condition"}\nLast stderr:\n${stderrTail}`
+          : `waitFor timeout: ${input?.label ?? "condition"}`
+      );
     }
     await new Promise((resolve) => setTimeout(resolve, 20));
   }

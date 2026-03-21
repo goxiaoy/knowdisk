@@ -49,6 +49,11 @@ export function createPythonWorkerTransport(input: {
       child.stderr.on("data", (chunk: string | Buffer) => {
         emitter.emit("stderr", typeof chunk === "string" ? chunk : chunk.toString("utf8"));
       });
+      child.on("error", (error) => {
+        rejectAllPending(error instanceof Error ? error : new Error(String(error)));
+        emitter.emit("exit", { code: null, signal: null });
+        child = null;
+      });
       child.on("exit", (code, signal) => {
         const reason = `python worker exited (code=${code ?? "null"}, signal=${signal ?? "null"})`;
         rejectAllPending(new Error(reason));
