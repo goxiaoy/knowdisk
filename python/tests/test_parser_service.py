@@ -105,11 +105,34 @@ def test_selects_docling_for_pdf_local_node(tmp_path: Path):
     assert chunks[0]["source"]["path"] == str(source_file)
 
 
-def test_selects_docling_for_png_local_node(tmp_path: Path):
+def test_routes_png_local_node_to_image_pipeline(tmp_path: Path):
     source_dir = tmp_path / "mount"
     source_dir.mkdir()
     source_file = source_dir / "photo.png"
     source_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_image(node: ParserNode, source_path: str, *, logger=None) -> list[dict[str, object]]:
+        _ = logger
+        calls.append((node.name, source_path))
+        return [
+            {
+                "status": "ok",
+                "chunkIndex": 0,
+                "text": "image pipeline result",
+                "title": "photo",
+                "source": {
+                    "nodeId": node.node_id,
+                    "name": node.name,
+                    "path": source_path,
+                },
+            }
+        ]
+
+    def fake_docling(*args, **kwargs):  # pragma: no cover - defensive test helper
+        _ = args, kwargs
+        raise AssertionError("docling must not handle image files")
 
     chunks = parse_node(
         node={
@@ -122,22 +145,12 @@ def test_selects_docling_for_png_local_node(tmp_path: Path):
             "syncedContentPath": "",
             "localFilePath": str(source_file),
         },
-        parse_docling=lambda node, source_path: [
-            {
-                "status": "ok",
-                "chunkIndex": 0,
-                "text": "image docling result",
-                "title": "photo",
-                "source": {
-                    "nodeId": node.node_id,
-                    "name": node.name,
-                    "path": source_path,
-                },
-            }
-        ],
+        parse_image=fake_image,
+        parse_docling=fake_docling,
     )
 
-    assert chunks[0]["text"] == "image docling result"
+    assert calls == [("photo.png", str(source_file))]
+    assert chunks[0]["text"] == "image pipeline result"
     assert chunks[0]["source"]["path"] == str(source_file)
 
 

@@ -5,6 +5,7 @@ from collections.abc import Callable, Mapping
 from inspect import Parameter, signature
 
 from docling.datamodel.base_models import FormatToExtensions, InputFormat
+from worker.parser.image_pipeline import parse_image_document
 from worker.parser.docling_adapter import parse_docling_document
 from worker.parser.types import (
     ParsedChunk,
@@ -22,6 +23,7 @@ from worker.runtime.logging import WorkerLogger
 
 SimpleParser = Callable[[ParserNode, bytes], list[dict[str, object]]]
 DoclingParser = Callable[[ParserNode, str], list[dict[str, object]]]
+ImageParser = Callable[[ParserNode, str], list[dict[str, object]]]
 
 DOCLING_FORMATS = (
     InputFormat.PDF,
@@ -29,7 +31,6 @@ DOCLING_FORMATS = (
     InputFormat.PPTX,
     InputFormat.XLSX,
     InputFormat.HTML,
-    InputFormat.IMAGE,
     InputFormat.ASCIIDOC,
     InputFormat.CSV,
     InputFormat.VTT,
@@ -39,6 +40,20 @@ DOCLING_SUFFIXES = {
     f".{extension.lower()}"
     for format_name in DOCLING_FORMATS
     for extension in FormatToExtensions[format_name]
+}
+IMAGE_SUFFIXES = {
+    ".apng",
+    ".bmp",
+    ".gif",
+    ".heic",
+    ".heif",
+    ".ico",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".tif",
+    ".tiff",
+    ".webp",
 }
 SIMPLE_SUFFIXES = {
     ".c",
@@ -82,6 +97,7 @@ def parse_node(
     mount: ParserMount | Mapping[str, object],
     parse_simple: SimpleParser = parse_simple_document,
     parse_docling: DoclingParser = parse_docling_document,
+    parse_image: ImageParser = parse_image_document,
     *,
     logger: WorkerLogger | None = None,
 ) -> list[dict[str, object]]:
@@ -111,6 +127,16 @@ def parse_node(
         local_file_path=parsed_mount.local_file_path,
     )
     suffix = Path(parsed_node.name).suffix.lower()
+
+    if is_image_suffix(suffix):
+        parameters = signature(parse_image).parameters.values()
+        supports_logger = any(
+            parameter.kind == Parameter.VAR_KEYWORD or parameter.name == "logger"
+            for parameter in parameters
+        )
+        if supports_logger:
+            return parse_image(parsed_node, str(source_path), logger=logger)
+        return parse_image(parsed_node, str(source_path))
 
     if is_docling_suffix(suffix):
         parameters = signature(parse_docling).parameters.values()
@@ -148,6 +174,10 @@ def parse_node(
 
 def is_docling_suffix(suffix: str) -> bool:
     return suffix.lower() in DOCLING_SUFFIXES
+
+
+def is_image_suffix(suffix: str) -> bool:
+    return suffix.lower() in IMAGE_SUFFIXES
 
 
 def is_simple_suffix(suffix: str) -> bool:
