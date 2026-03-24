@@ -115,6 +115,104 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(
         runtime.stop_index_worker()
 
 
+def test_png_file_indexes_through_parser_queue_and_vector_store(
+    tmp_path: Path,
+    monkeypatch,
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    monkeypatch.setenv("KNOWDISK_PYTHON_FAKE_MODEL_RUNTIME", "1")
+    runtime = create_worker_runtime(
+        stdin=io.BytesIO(),
+        stdout=io.BytesIO(),
+        stderr=io.StringIO(),
+    )
+    try:
+        start_response = runtime.server.handle_request(
+            {
+                "id": "req-start",
+                "method": "start",
+                "params": {
+                    "basePath": str(tmp_path),
+                    "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                    "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                    "preferredDevice": "cpu",
+                    "coreConfig": {
+                        "embedding": {
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-base"},
+                        },
+                        "reranker": {
+                            "enabled": True,
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
+                        },
+                        "ocr": {
+                            "provider": "local",
+                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
+                        },
+                        "caption": {
+                            "provider": "local",
+                            "local": {"model": "vikhyatk/moondream2"},
+                        },
+                        "providers": {
+                            "huggingface": {"endpoint": "https://huggingface.co"},
+                        },
+                    },
+                },
+            }
+        )
+        runtime.start_index_worker()
+        assert start_response["result"]["ok"] is True
+
+        response = runtime.server.handle_request(
+            {
+                "id": "req-index-image",
+                "method": "index_node",
+                "params": {
+                    "node": {
+                        "nodeId": "node-image-1",
+                        "mountId": "mount-1",
+                        "name": "photo.png",
+                        "sourceRef": "photo.png",
+                        "providerType": "local",
+                    },
+                    "mount": {
+                        "providerType": "local",
+                        "syncedContentPath": "",
+                        "localFilePath": str(source_dir / "photo.png"),
+                    },
+                },
+            }
+        )
+
+        assert response == {"id": "req-index-image", "result": {"queued": True}}
+        _wait_for(
+            lambda: runtime.server.services.index_service.vector_status_snapshot()["chunkCount"]
+            == 1
+            and runtime.server.services.index_queue.snapshot()["phase"] == "idle",
+            timeout_seconds=15.0,
+        )
+
+        artifact = (tmp_path / "parser" / "node-image-1" / "document.md").read_text(
+            encoding="utf-8"
+        )
+        assert "Image caption:" in artifact
+        assert "Image described caption" in artifact
+        assert "Image OCR:" in artifact
+        assert "Image described OCR text" in artifact
+
+        search_payload = runtime.server.services.index_service.search("image described")
+        assert any(
+            result["nodeId"] == "node-image-1"
+            for result in search_payload["debug"]["finalResults"]
+        )
+    finally:
+        runtime.stop_index_worker()
+
+
 def test_markdown_file_indexes_into_multiple_rows_through_parser_stack(
     tmp_path: Path,
     monkeypatch,
@@ -451,7 +549,7 @@ def test_index_worker_logs_traceback_when_job_fails(tmp_path: Path, monkeypatch)
     monkeypatch.setenv("KNOWDISK_PYTHON_FAKE_MODEL_RUNTIME", "1")
     monkeypatch.setattr(
         "worker.runtime.bootstrap.parse_node",
-        lambda node, mount: (_ for _ in ()).throw(RuntimeError("parse boom")),
+        lambda node, mount, **kwargs: (_ for _ in ()).throw(RuntimeError("parse boom")),
     )
     stderr = io.StringIO()
     runtime = create_worker_runtime(

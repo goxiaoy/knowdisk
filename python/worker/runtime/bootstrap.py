@@ -9,6 +9,7 @@ import traceback
 from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from collections.abc import Iterable
+from inspect import Parameter, signature
 from pathlib import Path
 from tempfile import gettempdir
 from typing import BinaryIO, Callable, TextIO
@@ -17,6 +18,7 @@ from worker.index.queue import IndexQueue
 from worker.index.service import IndexService
 from worker.model.service import ModelService
 from worker.model.types import LoadedCaptionRuntime, LoadedOcrRuntime
+from worker.parser.image_pipeline import parse_image_document
 from worker.parser.service import parse_node
 from worker.protocol import decode_frame, encode_frame, is_request_frame
 from worker.protocol.server import PythonWorkerServer, create_server
@@ -104,12 +106,16 @@ def create_worker_runtime(
         caption_runtime_loader=_fake_caption_runtime_loader if use_fake_model_runtime else None,
         logger=logger,
     )
+    parse_node_with_image = _create_parse_node_with_image(
+        model_service=model_service,
+        use_fake_model_runtime=use_fake_model_runtime,
+    )
     index_queue = IndexQueue(
         status_store=index_status_store,
         notify_work_available=work_available.set,
     )
     index_service = IndexService(
-        parse_node=parse_node,
+        parse_node=parse_node_with_image,
         model_service=model_service,
         vector_repository=VectorRepository(collection_path=str(default_base_path / "index" / "index.zvec")),
         vector_status_store=vector_status_store,
@@ -270,8 +276,7 @@ def fake_model_fetch(url: str, headers: dict[str, str] | None = None) -> FetchRe
     if "/resolve/main/" not in url:
         return FetchResponse(status=404, headers={"content-length": "0"}, body=[])
 
-    model_and_path = url.rsplit("/", 1)[0]
-    model = model_and_path.split("/")[-3] + "/" + model_and_path.split("/")[-2]
+    model = url.split("://", 1)[-1].split("/", 1)[-1].split("/resolve/main/", 1)[0]
     artifact_path = url.rsplit("/resolve/main/", 1)[1]
     contents = _fake_model_siblings(model).get(artifact_path)
     if contents is None:
@@ -348,3 +353,84 @@ def _fake_ocr_runtime_loader(model_path, *, preferred_device: str) -> object:
 
 def _fake_caption_runtime_loader(model_path, *, preferred_device: str) -> object:
     return LoadedCaptionRuntime(model_root=Path(model_path), preferred_device=preferred_device)
+
+
+def _create_parse_node_with_image(
+    *,
+    model_service: ModelService,
+    use_fake_model_runtime: bool,
+):
+    def parse_node_with_image(node, mount, *, logger=None):
+        parse_node_kwargs = {}
+        parameters = signature(parse_node).parameters.values()
+        supports_parse_image = any(
+            parameter.kind == Parameter.VAR_KEYWORD or parameter.name == "parse_image"
+            for parameter in parameters
+        )
+        if supports_parse_image:
+            parse_node_kwargs["parse_image"] = _create_image_parser(
+                model_service=model_service,
+                use_fake_model_runtime=use_fake_model_runtime,
+            )
+        if logger is not None:
+            parse_node_kwargs["logger"] = logger
+        return parse_node(node, mount, **parse_node_kwargs)
+
+    return parse_node_with_image
+
+
+def _create_image_parser(
+    *,
+    model_service: ModelService,
+    use_fake_model_runtime: bool,
+):
+    def parse_image(node, source_path: str, *, logger=None):
+        if use_fake_model_runtime:
+            ocr_analyze = _fake_image_ocr_analyzer
+            caption_analyze = _fake_image_caption_analyzer
+        else:
+            ocr_analyze = _missing_image_ocr_analyzer
+            caption_analyze = _missing_image_caption_analyzer
+        return parse_image_document(
+            node,
+            source_path,
+            ocr_runtime=model_service.get_local_ocr_runtime(),
+            caption_runtime=model_service.get_local_caption_runtime(),
+            ocr_analyze=ocr_analyze,
+            caption_analyze=caption_analyze,
+            logger=logger,
+        )
+
+    return parse_image
+
+
+def _fake_image_ocr_analyzer(runtime, source_path: str) -> dict[str, object]:
+    _ = runtime, source_path
+    return {
+        "text": "Image described OCR text",
+        "page": 1,
+        "regions": [
+            {
+                "id": "region-1",
+                "bbox": [0, 0, 100, 100],
+                "text": "Image described OCR text",
+            }
+        ],
+    }
+
+
+def _fake_image_caption_analyzer(runtime, source_path: str) -> dict[str, object]:
+    _ = runtime, source_path
+    return {
+        "caption": "Image described caption",
+    }
+
+
+def _missing_image_ocr_analyzer(runtime, source_path: str) -> object:
+    _ = runtime, source_path
+    raise RuntimeError("ocr image runtime is not configured")
+
+
+def _missing_image_caption_analyzer(runtime, source_path: str) -> object:
+    _ = runtime, source_path
+    raise RuntimeError("caption image runtime is not configured")

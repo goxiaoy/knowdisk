@@ -4,6 +4,7 @@ from pathlib import Path
 from worker.index.service import IndexService
 from worker.model.service import ModelService
 from worker.model.types import ModelRuntimeConfig
+from worker.parser.image_pipeline import parse_image_document
 from worker.parser.service import parse_node as parse_node_from_mount
 from worker.parser.types import ParserMount, ParserNode
 from worker.runtime.status import ModelStatusStore, VectorStatusStore
@@ -14,10 +15,11 @@ from worker.vector.repository import VectorRepository
 def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
     data_dir = Path(__file__).parent / "data"
     parser_dir = tmp_path / "parser"
+    model_service = create_model_service()
     repository = VectorRepository(collection_path=str(tmp_path / "index" / "index.zvec"))
     index_service = IndexService(
-        parse_node=create_dataset_parser(),
-        model_service=create_model_service(),
+        parse_node=create_dataset_parser(model_service=model_service),
+        model_service=model_service,
         vector_repository=repository,
         vector_status_store=VectorStatusStore(event_sink=lambda event: None),
         parser_base_dir=parser_dir,
@@ -59,9 +61,18 @@ def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
     assert "Paper extracted markdown" in (
         parser_dir / "node-pdf" / "document.md"
     ).read_text(encoding="utf-8")
-    assert "Image described markdown" in (
+    assert "Image caption:" in (
         parser_dir / "node-image" / "document.md"
     ).read_text(encoding="utf-8")
+    assert "Dataset image caption" in (parser_dir / "node-image" / "document.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Image OCR:" in (parser_dir / "node-image" / "document.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Dataset image OCR text" in (parser_dir / "node-image" / "document.md").read_text(
+        encoding="utf-8"
+    )
     with sqlite3.connect(tmp_path / "index" / "index.sqlite3") as connection:
         count = connection.execute("SELECT COUNT(*) FROM index_chunks").fetchone()[0]
     assert count == 9
@@ -84,7 +95,7 @@ def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
     assert any(result["nodeId"] == "node-image" for result in image_search["debug"]["finalResults"])
 
 
-def create_dataset_parser():
+def create_dataset_parser(*, model_service: ModelService):
     def parse_dataset_node(node, mount):
         if node.name == "paper.pdf":
             return [
@@ -101,19 +112,26 @@ def create_dataset_parser():
                 }
             ]
         if node.name == "image.png":
-            return [
-                {
-                    "status": "ok",
-                    "chunkIndex": 0,
-                    "text": "Image described markdown",
-                    "title": "Image",
-                    "source": {
-                        "nodeId": node.node_id,
-                        "name": node.name,
-                        "path": mount.local_file_path,
-                    },
-                }
-            ]
+            return parse_image_document(
+                node,
+                mount.local_file_path,
+                ocr_runtime=model_service.get_local_ocr_runtime(),
+                caption_runtime=model_service.get_local_caption_runtime(),
+                ocr_analyze=lambda runtime, source_path: {
+                    "text": "Dataset image OCR text",
+                    "page": 3,
+                    "regions": [
+                        {
+                            "id": "region-1",
+                            "bbox": [10, 20, 30, 40],
+                            "text": "Dataset image OCR text",
+                        }
+                    ],
+                },
+                caption_analyze=lambda runtime, source_path: {
+                    "caption": "Dataset image caption",
+                },
+            )
         return parse_node_from_mount(node, mount)
 
     return parse_dataset_node
