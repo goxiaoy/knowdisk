@@ -3,7 +3,9 @@ from pathlib import Path
 from worker.model.artifacts import (
     has_resumable_partial_downloads,
     has_complete_local_model_artifacts,
+    select_caption_repo_files,
     select_embedding_repo_files,
+    select_ocr_repo_files,
     select_reranker_repo_files,
 )
 
@@ -62,6 +64,50 @@ def test_select_reranker_repo_files_keeps_transformer_assets():
     ]
 
 
+def test_select_ocr_repo_files_keeps_image_recognition_assets():
+    selected = select_ocr_repo_files(
+        [
+            {"rfilename": "README.md", "size": 1},
+            {"rfilename": "config.json", "size": 2},
+            {"rfilename": "preprocessor_config.json", "size": 3},
+            {"rfilename": "processor_config.json", "size": 4},
+            {"rfilename": "model.safetensors", "size": 5},
+            {"rfilename": "tokenizer.json", "size": 6},
+        ]
+    )
+
+    assert [item.path for item in selected] == [
+        "config.json",
+        "preprocessor_config.json",
+        "processor_config.json",
+        "model.safetensors",
+    ]
+
+
+def test_select_caption_repo_files_keeps_multimodal_assets():
+    selected = select_caption_repo_files(
+        [
+            {"rfilename": "docs/README.md", "size": 1},
+            {"rfilename": "config.json", "size": 2},
+            {"rfilename": "processor_config.json", "size": 3},
+            {"rfilename": "tokenizer.json", "size": 4},
+            {"rfilename": "tokenizer_config.json", "size": 5},
+            {"rfilename": "special_tokens_map.json", "size": 6},
+            {"rfilename": "model.safetensors", "size": 7},
+            {"rfilename": "onnx/model.onnx", "size": 8},
+        ]
+    )
+
+    assert [item.path for item in selected] == [
+        "config.json",
+        "processor_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "model.safetensors",
+    ]
+
+
 def test_selectors_ignore_unrelated_files_and_nested_onnx_assets():
     selected_embedding = select_embedding_repo_files(
         [
@@ -112,6 +158,36 @@ def test_reranker_local_artifacts_require_config_and_weights(tmp_path: Path):
     (model_root / "pytorch_model.bin").write_bytes(b"weights")
 
     assert has_complete_local_model_artifacts("reranker", model_root) is True
+
+
+def test_ocr_local_artifacts_require_processor_metadata_and_weights(tmp_path: Path):
+    model_root = tmp_path / "ocr"
+    model_root.mkdir(parents=True, exist_ok=True)
+
+    assert has_complete_local_model_artifacts("ocr", model_root) is False
+
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    (model_root / "preprocessor_config.json").write_text("{}", encoding="utf-8")
+    (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
+    (model_root / "model.safetensors").write_bytes(b"weights")
+
+    assert has_complete_local_model_artifacts("ocr", model_root) is True
+
+
+def test_caption_local_artifacts_require_tokenizer_metadata_and_weights(tmp_path: Path):
+    model_root = tmp_path / "caption"
+    model_root.mkdir(parents=True, exist_ok=True)
+
+    assert has_complete_local_model_artifacts("caption", model_root) is False
+
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
+    (model_root / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (model_root / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+    (model_root / "special_tokens_map.json").write_text("{}", encoding="utf-8")
+    (model_root / "model.safetensors").write_bytes(b"weights")
+
+    assert has_complete_local_model_artifacts("caption", model_root) is True
 
 
 def test_detects_resumable_partial_downloads(tmp_path: Path):

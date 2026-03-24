@@ -11,12 +11,24 @@ def test_model_runtime_config_normalizes_mapping_inputs():
             "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
             "preferredDevice": "cpu",
             "huggingfaceEndpoint": "https://huggingface.co",
+            "coreConfig": {
+                "ocr": {
+                    "provider": "local",
+                    "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
+                },
+                "caption": {
+                    "provider": "local",
+                    "local": {"model": "vikhyatk/moondream2"},
+                },
+            },
         }
     )
 
     assert config.base_path == Path("/tmp/knowdisk")
     assert config.embedding_model == "Alibaba-NLP/gte-multilingual-base"
     assert config.reranker_model == "Alibaba-NLP/gte-multilingual-reranker-base"
+    assert config.ocr_model == "PaddlePaddle/PaddleOCR-VL"
+    assert config.caption_model == "vikhyatk/moondream2"
     assert config.preferred_device == "cpu"
     assert config.model_cache_dir == Path("/tmp/knowdisk/model")
     assert config.huggingface_endpoint == "https://huggingface.co"

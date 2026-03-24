@@ -48,8 +48,8 @@ def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
             )
         )
 
-    assert repository.count_chunks() == 4
-    assert index_service.vector_status_snapshot()["chunkCount"] == 4
+    assert repository.count_chunks() == 9
+    assert index_service.vector_status_snapshot()["chunkCount"] == 9
     assert (parser_dir / "node-md" / "document.md").read_text(encoding="utf-8").startswith(
         "# GitHub Markup"
     )
@@ -64,7 +64,7 @@ def test_indexes_dataset_files_into_markdown_artifacts_and_zvec(tmp_path: Path):
     ).read_text(encoding="utf-8")
     with sqlite3.connect(tmp_path / "index" / "index.sqlite3") as connection:
         count = connection.execute("SELECT COUNT(*) FROM index_chunks").fetchone()[0]
-    assert count == 4
+    assert count == 9
 
     markdown_search = index_service.search("github markup")
     assert markdown_search["debug"]["ftsResults"]
@@ -138,6 +138,8 @@ def create_model_service() -> ModelService:
             base_path=Path("/tmp"),
             embedding_model="Alibaba-NLP/gte-multilingual-base",
             reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+            ocr_model="PaddlePaddle/PaddleOCR-VL",
+            caption_model="vikhyatk/moondream2",
             preferred_device="cpu",
             model_cache_dir=Path("/tmp/model"),
             huggingface_endpoint="https://hf.example",

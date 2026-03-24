@@ -1,4 +1,5 @@
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 
 from worker.model.artifact_manager import FetchCallable, ModelArtifactManager
 from worker.model.types import ModelRuntimeConfig
@@ -71,6 +72,7 @@ class PythonWorkerServer:
 
     def _handle_start(self, params: object) -> dict[str, object]:
         self.model_runtime_config = self._parse_model_runtime_config(params)
+        ensure_result: dict[str, bool] = {"ok": True}
         if self.services is not None:
             if self._model_fetch is None:
                 raise RuntimeError("model fetch is not configured")
@@ -91,17 +93,18 @@ class PythonWorkerServer:
                 self.services.index_service.set_storage_base_path(
                     self.model_runtime_config.base_path
                 )
-            self.services.model_service.ensure_required_models()
+            ensure_result = self.services.model_service.ensure_required_models()
+        ready = bool(ensure_result.get("ok"))
         self._event_sink(
             {
                 "type": "worker_health_changed",
                 "payload": {
-                    "ready": True,
+                    "ready": ready,
                 },
             }
         )
         return {
-            "ok": True,
+            "ok": ready,
             "worker": "knowdisk-python-worker",
             "version": "0.1.0",
         }
@@ -154,14 +157,7 @@ class PythonWorkerServer:
         if huggingface_endpoint is not None:
             if not isinstance(huggingface_endpoint, str) or not huggingface_endpoint.strip():
                 raise ValueError("invalid huggingface endpoint")
-            config = ModelRuntimeConfig(
-                base_path=config.base_path,
-                embedding_model=config.embedding_model,
-                reranker_model=config.reranker_model,
-                preferred_device=config.preferred_device,
-                model_cache_dir=config.model_cache_dir,
-                huggingface_endpoint=huggingface_endpoint,
-            )
+            config = replace(config, huggingface_endpoint=huggingface_endpoint)
 
         return config
 

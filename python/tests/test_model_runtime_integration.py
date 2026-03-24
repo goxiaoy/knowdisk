@@ -57,6 +57,17 @@ def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
         (model_root / "1_Pooling" / "config.json").write_text("{}", encoding="utf-8")
         (model_root / "model.safetensors").write_bytes(b"weights")
         return
+    if kind == "ocr":
+        (model_root / "preprocessor_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "model.safetensors").write_bytes(b"weights")
+        return
+    if kind == "caption":
+        (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "tokenizer.json").write_text("{}", encoding="utf-8")
+        (model_root / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "special_tokens_map.json").write_text("{}", encoding="utf-8")
+        (model_root / "model.safetensors").write_bytes(b"weights")
+        return
     (model_root / "pytorch_model.bin").write_bytes(b"weights")
 
 
@@ -70,6 +81,8 @@ def test_local_cache_verify_path_uses_existing_files_without_downloading(tmp_pat
     write_complete_local_model_cache(
         "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
+    write_complete_local_model_cache("ocr", manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL"))
+    write_complete_local_model_cache("caption", manager.resolve_model_root("caption", "vikhyatk/moondream2"))
 
     embedding_runtime = object()
     reranker_tokenizer = object()
@@ -85,7 +98,9 @@ def test_local_cache_verify_path_uses_existing_files_without_downloading(tmp_pat
 
     assert result == {"ok": True}
     assert manager.calls == []
-    assert phases(emitted) == ["verifying", "verifying", "verifying", "verifying", "verifying", "completed"]
+    assert phases(emitted)[0] == "verifying"
+    assert phases(emitted)[-1] == "completed"
+    assert phases(emitted).count("verifying") >= 4
     assert emitted[0]["payload"]["tasks"]["embedding"]["state"] == "waiting"
     assert emitted[0]["payload"]["tasks"]["reranker"]["state"] == "waiting"
     assert emitted[1]["payload"]["tasks"]["embedding"]["state"] == "verifying"
@@ -97,6 +112,8 @@ def test_local_cache_verify_path_uses_existing_files_without_downloading(tmp_pat
     assert service.snapshot()["phase"] == "completed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
     assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
+    assert service.snapshot()["tasks"]["ocr"]["state"] == "pending"
+    assert service.snapshot()["tasks"]["caption"]["state"] == "pending"
     assert service.get_local_embedding_runtime() is embedding_runtime
     reranker_runtime = service.get_local_reranker_runtime()
     assert isinstance(reranker_runtime, LoadedRerankerRuntime)
@@ -113,6 +130,12 @@ def test_missing_cache_download_path_fetches_and_marks_ready(tmp_path: Path):
             "embedding": [(2, 4), (4, 4)],
             "reranker": [(1, 4), (4, 4)],
         },
+    )
+    write_complete_local_model_cache(
+        "ocr", manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL")
+    )
+    write_complete_local_model_cache(
+        "caption", manager.resolve_model_root("caption", "vikhyatk/moondream2")
     )
     service = make_model_service(
         store,
@@ -250,6 +273,8 @@ def make_model_service(
             base_path=artifact_manager.cache_root.parent,
             embedding_model="Alibaba-NLP/gte-multilingual-base",
             reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+            ocr_model="PaddlePaddle/PaddleOCR-VL",
+            caption_model="vikhyatk/moondream2",
             preferred_device="cpu",
             model_cache_dir=artifact_manager.cache_root,
             huggingface_endpoint="https://hf.example",

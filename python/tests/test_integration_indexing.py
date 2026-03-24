@@ -40,6 +40,28 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(
                     "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
                     "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                     "preferredDevice": "cpu",
+                    "coreConfig": {
+                        "embedding": {
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-base"},
+                        },
+                        "reranker": {
+                            "enabled": True,
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
+                        },
+                        "ocr": {
+                            "provider": "local",
+                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
+                        },
+                        "caption": {
+                            "provider": "local",
+                            "local": {"model": "vikhyatk/moondream2"},
+                        },
+                        "providers": {
+                            "huggingface": {"endpoint": "https://huggingface.co"},
+                        },
+                    },
                 },
             }
         )
@@ -123,6 +145,28 @@ def test_markdown_file_indexes_into_multiple_rows_through_parser_stack(
                     "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
                     "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                     "preferredDevice": "cpu",
+                    "coreConfig": {
+                        "embedding": {
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-base"},
+                        },
+                        "reranker": {
+                            "enabled": True,
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
+                        },
+                        "ocr": {
+                            "provider": "local",
+                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
+                        },
+                        "caption": {
+                            "provider": "local",
+                            "local": {"model": "vikhyatk/moondream2"},
+                        },
+                        "providers": {
+                            "huggingface": {"endpoint": "https://huggingface.co"},
+                        },
+                    },
                 },
             }
         )
@@ -315,6 +359,28 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
                     "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
                     "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
                     "preferredDevice": "cpu",
+                    "coreConfig": {
+                        "embedding": {
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-base"},
+                        },
+                        "reranker": {
+                            "enabled": True,
+                            "provider": "local",
+                            "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
+                        },
+                        "ocr": {
+                            "provider": "local",
+                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
+                        },
+                        "caption": {
+                            "provider": "local",
+                            "local": {"model": "vikhyatk/moondream2"},
+                        },
+                        "providers": {
+                            "huggingface": {"endpoint": "https://huggingface.co"},
+                        },
+                    },
                 },
             }
         )
@@ -453,6 +519,8 @@ def create_model_service(status_store: ModelStatusStore) -> ModelService:
             base_path=Path("/tmp"),
             embedding_model="Alibaba-NLP/gte-multilingual-base",
             reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+            ocr_model="PaddlePaddle/PaddleOCR-VL",
+            caption_model="vikhyatk/moondream2",
             preferred_device="cpu",
             model_cache_dir=Path("/tmp/model"),
             huggingface_endpoint="https://hf.example",

@@ -61,6 +61,18 @@ def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
         (model_root / "1_Pooling" / "config.json").write_text("{}", encoding="utf-8")
         (model_root / "model.safetensors").write_bytes(b"weights")
         return
+    if kind == "ocr":
+        (model_root / "preprocessor_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "model.safetensors").write_bytes(b"weights")
+        return
+    if kind == "caption":
+        (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "tokenizer.json").write_text("{}", encoding="utf-8")
+        (model_root / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "special_tokens_map.json").write_text("{}", encoding="utf-8")
+        (model_root / "model.safetensors").write_bytes(b"weights")
+        return
     (model_root / "pytorch_model.bin").write_bytes(b"weights")
 
 
@@ -77,16 +89,24 @@ def test_real_ensure_models_verifies_existing_local_model_by_successful_load(tmp
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
     embedding_root = manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
     reranker_root = manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
+    ocr_root = manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL")
+    caption_root = manager.resolve_model_root("caption", "vikhyatk/moondream2")
     write_complete_local_model_cache("embedding", embedding_root)
     write_complete_local_model_cache("reranker", reranker_root)
+    write_complete_local_model_cache("ocr", ocr_root)
+    write_complete_local_model_cache("caption", caption_root)
     embedding_runtime = object()
     reranker_tokenizer = object()
     reranker_model = object()
+    ocr_runtime = object()
+    caption_runtime = object()
     service = make_real_model_service(
         store,
         manager,
         embedding_loader=lambda model_path, *, preferred_device: embedding_runtime,
         reranker_loader=lambda model_path, *, preferred_device: (reranker_tokenizer, reranker_model),
+        ocr_loader=lambda model_path, *, preferred_device: ocr_runtime,
+        caption_loader=lambda model_path, *, preferred_device: caption_runtime,
     )
 
     result = service.ensure_required_models()
@@ -96,11 +116,15 @@ def test_real_ensure_models_verifies_existing_local_model_by_successful_load(tmp
     assert service.snapshot()["phase"] == "completed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
     assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
+    assert service.snapshot()["tasks"]["ocr"]["state"] == "pending"
+    assert service.snapshot()["tasks"]["caption"]["state"] == "pending"
     assert service.get_local_embedding_runtime() is embedding_runtime
     reranker_runtime = service.get_local_reranker_runtime()
     assert isinstance(reranker_runtime, LoadedRerankerRuntime)
     assert reranker_runtime.tokenizer is reranker_tokenizer
     assert reranker_runtime.model is reranker_model
+    assert service.get_local_ocr_runtime() is ocr_runtime
+    assert service.get_local_caption_runtime() is caption_runtime
 
 
 def test_real_ensure_models_downloads_missing_models_and_updates_progress(tmp_path: Path):
@@ -117,6 +141,8 @@ def test_real_ensure_models_downloads_missing_models_and_updates_progress(tmp_pa
         manager,
         embedding_loader=lambda model_path, *, preferred_device: object(),
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     result = service.ensure_required_models()
@@ -142,11 +168,15 @@ def test_real_ensure_models_marks_failed_when_verify_by_load_fails(tmp_path: Pat
     write_complete_local_model_cache(
         "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
+    write_complete_local_model_cache("ocr", manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL"))
+    write_complete_local_model_cache("caption", manager.resolve_model_root("caption", "vikhyatk/moondream2"))
     service = make_real_model_service(
         store,
         manager,
         embedding_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("boom")),
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     result = service.ensure_required_models()
@@ -169,6 +199,8 @@ def test_real_ensure_models_logs_cached_runtime_load_failures_before_redownload(
         manager,
         embedding_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("boom")),
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
         logger=create_worker_logger(logger_stream),
     )
 
@@ -196,6 +228,8 @@ def test_real_ensure_models_redownloads_partial_embedding_cache_before_loading(t
             embedding_loader_calls.append(model_path) or object()
         ),
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     result = service.ensure_required_models()
@@ -215,11 +249,15 @@ def test_real_ensure_models_marks_only_reranker_failed_when_reranker_load_fails(
     write_complete_local_model_cache(
         "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
+    write_complete_local_model_cache("ocr", manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL"))
+    write_complete_local_model_cache("caption", manager.resolve_model_root("caption", "vikhyatk/moondream2"))
     service = make_real_model_service(
         store,
         manager,
         embedding_loader=lambda model_path, *, preferred_device: object(),
         reranker_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("reranker boom")),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     result = service.ensure_required_models()
@@ -240,6 +278,8 @@ def test_embedding_runtime_is_cached(tmp_path: Path):
         manager,
         embedding_loader=lambda model_path, *, preferred_device: embedding_runtime,
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     assert service.ensure_required_models() == {"ok": True}
@@ -263,6 +303,8 @@ def test_reranker_runtime_is_cached_as_named_runtime(tmp_path: Path):
         manager,
         embedding_loader=lambda model_path, *, preferred_device: object(),
         reranker_loader=lambda model_path, *, preferred_device: (tokenizer, model),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     assert service.ensure_required_models() == {"ok": True}
@@ -277,6 +319,30 @@ def test_reranker_runtime_is_cached_as_named_runtime(tmp_path: Path):
         ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
         ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
     ]
+
+
+def test_ocr_and_caption_runtimes_are_verified_and_cached(tmp_path: Path):
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    ocr_runtime = object()
+    caption_runtime = object()
+    write_complete_local_model_cache(
+        "ocr", manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL")
+    )
+    write_complete_local_model_cache(
+        "caption", manager.resolve_model_root("caption", "vikhyatk/moondream2")
+    )
+    service = make_real_model_service(
+        ModelStatusStore(event_sink=lambda event: None),
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: object(),
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: ocr_runtime,
+        caption_loader=lambda model_path, *, preferred_device: caption_runtime,
+    )
+
+    assert service.get_local_ocr_runtime() is ocr_runtime
+    assert service.get_local_caption_runtime() is caption_runtime
+    assert manager.calls == []
 
 
 def test_get_local_embedding_runtime_waits_for_inflight_verify(tmp_path: Path):
@@ -294,6 +360,8 @@ def test_get_local_embedding_runtime_waits_for_inflight_verify(tmp_path: Path):
             embedding_runtime,
         )[-1],
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     ensure_thread = threading.Thread(target=service.ensure_required_models)
@@ -327,6 +395,8 @@ def test_get_local_embedding_runtime_raises_when_runtime_failed(tmp_path: Path):
         manager,
         embedding_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("boom")),
         reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
     assert service.ensure_required_models() == {"ok": False}
@@ -338,12 +408,34 @@ def test_get_local_embedding_runtime_raises_when_runtime_failed(tmp_path: Path):
         raise AssertionError("expected get_local_embedding_runtime to raise after failed verify")
 
 
+def test_get_local_ocr_runtime_raises_when_runtime_failed(tmp_path: Path):
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    service = make_real_model_service(
+        ModelStatusStore(event_sink=lambda event: None),
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: object(),
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("ocr boom")),
+        caption_loader=lambda model_path, *, preferred_device: object(),
+    )
+
+    assert service.ensure_required_models() == {"ok": True}
+    try:
+        service.get_local_ocr_runtime()
+    except RuntimeError as error:
+        assert str(error) == "ocr boom"
+    else:
+        raise AssertionError("expected get_local_ocr_runtime to raise after failed verify")
+
+
 def make_real_model_service(
     status_store: ModelStatusStore,
     artifact_manager: FakeArtifactManager,
     *,
     embedding_loader,
     reranker_loader,
+    ocr_loader,
+    caption_loader,
     logger=None,
 ) -> ModelService:
     return ModelService(
@@ -352,6 +444,8 @@ def make_real_model_service(
             base_path=artifact_manager.cache_root.parent,
             embedding_model="Alibaba-NLP/gte-multilingual-base",
             reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
+            ocr_model="PaddlePaddle/PaddleOCR-VL",
+            caption_model="vikhyatk/moondream2",
             preferred_device="cpu",
             model_cache_dir=artifact_manager.cache_root,
             huggingface_endpoint="https://hf.example",
@@ -359,5 +453,7 @@ def make_real_model_service(
         artifact_manager=artifact_manager,
         embedding_runtime_loader=embedding_loader,
         reranker_runtime_loader=reranker_loader,
+        ocr_runtime_loader=ocr_loader,
+        caption_runtime_loader=caption_loader,
         logger=logger,
     )

@@ -16,6 +16,7 @@ from typing import BinaryIO, Callable, TextIO
 from worker.index.queue import IndexQueue
 from worker.index.service import IndexService
 from worker.model.service import ModelService
+from worker.model.types import LoadedCaptionRuntime, LoadedOcrRuntime
 from worker.parser.service import parse_node
 from worker.protocol import decode_frame, encode_frame, is_request_frame
 from worker.protocol.server import PythonWorkerServer, create_server
@@ -99,6 +100,8 @@ def create_worker_runtime(
         status_store=model_status_store,
         embedding_runtime_loader=_fake_embedding_runtime_loader if use_fake_model_runtime else None,
         reranker_runtime_loader=_fake_reranker_runtime_loader if use_fake_model_runtime else None,
+        ocr_runtime_loader=_fake_ocr_runtime_loader if use_fake_model_runtime else None,
+        caption_runtime_loader=_fake_caption_runtime_loader if use_fake_model_runtime else None,
         logger=logger,
     )
     index_queue = IndexQueue(
@@ -289,6 +292,22 @@ def _fake_model_siblings(model: str) -> dict[str, bytes]:
             "special_tokens_map.json": b"{}",
             "model.safetensors": b"fake-reranker-weights",
         }
+    if model.endswith("PaddleOCR-VL"):
+        return {
+            "config.json": b"{}",
+            "preprocessor_config.json": b"{}",
+            "processor_config.json": b"{}",
+            "model.safetensors": b"fake-ocr-weights",
+        }
+    if model.endswith("moondream2"):
+        return {
+            "config.json": b"{}",
+            "processor_config.json": b"{}",
+            "tokenizer.json": b"{}",
+            "tokenizer_config.json": b"{}",
+            "special_tokens_map.json": b"{}",
+            "model.safetensors": b"fake-caption-weights",
+        }
     return {
         "config.json": b"{}",
         "config_sentence_transformers.json": b"{}",
@@ -321,3 +340,11 @@ def _fake_reranker_runtime_loader(model_path, *, preferred_device: str) -> objec
         return 100.0 if query.lower() in haystack else 0.0
 
     return rerank
+
+
+def _fake_ocr_runtime_loader(model_path, *, preferred_device: str) -> object:
+    return LoadedOcrRuntime(model_root=Path(model_path), preferred_device=preferred_device)
+
+
+def _fake_caption_runtime_loader(model_path, *, preferred_device: str) -> object:
+    return LoadedCaptionRuntime(model_root=Path(model_path), preferred_device=preferred_device)

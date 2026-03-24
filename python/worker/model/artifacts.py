@@ -27,6 +27,24 @@ _RERANKER_REQUIRED_FILES = {
     "pytorch_model.bin",
 }
 
+_OCR_REQUIRED_FILES = {
+    "config.json",
+    "preprocessor_config.json",
+    "processor_config.json",
+    "model.safetensors",
+    "pytorch_model.bin",
+}
+
+_CAPTION_REQUIRED_FILES = {
+    "config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "model.safetensors",
+    "pytorch_model.bin",
+}
+
 _EMBEDDING_REQUIRED_LOCAL_FILES = {
     "config.json",
     "modules.json",
@@ -35,6 +53,20 @@ _EMBEDDING_REQUIRED_LOCAL_FILES = {
 
 _RERANKER_REQUIRED_LOCAL_FILES = {
     "config.json",
+}
+
+_OCR_REQUIRED_LOCAL_FILES = {
+    "config.json",
+    "preprocessor_config.json",
+    "processor_config.json",
+}
+
+_CAPTION_REQUIRED_LOCAL_FILES = {
+    "config.json",
+    "processor_config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
 }
 
 _MODEL_WEIGHT_FILES = {
@@ -51,6 +83,14 @@ def select_reranker_repo_files(siblings: Iterable[Mapping[str, object] | ModelRe
     return _select_required_files(siblings, required_files=_RERANKER_REQUIRED_FILES)
 
 
+def select_ocr_repo_files(siblings: Iterable[Mapping[str, object] | ModelRepoFile]) -> list[ModelRepoFile]:
+    return _select_required_files(siblings, required_files=_OCR_REQUIRED_FILES)
+
+
+def select_caption_repo_files(siblings: Iterable[Mapping[str, object] | ModelRepoFile]) -> list[ModelRepoFile]:
+    return _select_required_files(siblings, required_files=_CAPTION_REQUIRED_FILES)
+
+
 def has_complete_local_model_artifacts(kind: str, model_root: str | Path) -> bool:
     root = Path(model_root)
     if not root.exists():
@@ -60,8 +100,14 @@ def has_complete_local_model_artifacts(kind: str, model_root: str | Path) -> boo
 
     if kind == "embedding":
         required_files = _EMBEDDING_REQUIRED_LOCAL_FILES
-    else:
+    elif kind == "reranker":
         required_files = _RERANKER_REQUIRED_LOCAL_FILES
+    elif kind == "ocr":
+        required_files = _OCR_REQUIRED_LOCAL_FILES
+    elif kind == "caption":
+        required_files = _CAPTION_REQUIRED_LOCAL_FILES
+    else:
+        raise ValueError(f"unknown model artifact kind: {kind}")
 
     if not all((root / relative_path).is_file() for relative_path in required_files):
         return False

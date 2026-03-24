@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Mapping
 
-from worker.model.artifacts import select_embedding_repo_files, select_reranker_repo_files
+from worker.model.artifacts import (
+    select_caption_repo_files,
+    select_embedding_repo_files,
+    select_ocr_repo_files,
+    select_reranker_repo_files,
+)
 from worker.model.types import ModelArtifactKind, ModelRepoFile
 from worker.model.download import download_file
 ProgressCallback = Callable[[int, int], None]
@@ -103,7 +108,13 @@ class ModelArtifactManager:
     ) -> list[ModelRepoFile]:
         if kind == "embedding":
             return select_embedding_repo_files(siblings)
-        return select_reranker_repo_files(siblings)
+        if kind == "reranker":
+            return select_reranker_repo_files(siblings)
+        if kind == "ocr":
+            return select_ocr_repo_files(siblings)
+        if kind == "caption":
+            return select_caption_repo_files(siblings)
+        raise ValueError(f"unknown model artifact kind: {kind}")
 
     def _model_list_url(self, model: str) -> str:
         return f"{self._huggingface_endpoint}/api/models/{model}"
