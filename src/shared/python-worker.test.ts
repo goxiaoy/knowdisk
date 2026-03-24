@@ -20,11 +20,33 @@ test("accepts valid python worker request frames", () => {
       id: "req-start",
       method: "start",
       params: {
+        basePath: "/tmp/knowdisk",
         embeddingModel: "Alibaba-NLP/gte-multilingual-base",
         rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
         preferredDevice: "cpu",
-        modelCacheDir: "/tmp/models",
         huggingfaceEndpoint: "https://huggingface.co",
+        coreConfig: {
+          embedding: {
+            provider: "local",
+            local: {
+              model: "Alibaba-NLP/gte-multilingual-base",
+              dimension: 768,
+            },
+          },
+          reranker: {
+            enabled: true,
+            provider: "local",
+            local: {
+              model: "Alibaba-NLP/gte-multilingual-reranker-base",
+              topN: 5,
+            },
+          },
+          providers: {
+            huggingface: {
+              endpoint: "https://huggingface.co",
+            },
+          },
+        },
       },
     })
   ).toBe(true);
@@ -72,8 +94,8 @@ test("rejects malformed python worker frames", () => {
       method: "start",
       params: {
         rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+        basePath: "/tmp/knowdisk",
         preferredDevice: "cpu",
-        modelCacheDir: "/tmp/models",
       },
     })
   ).toBe(false);
@@ -82,10 +104,10 @@ test("rejects malformed python worker frames", () => {
       id: "req-start",
       method: "start",
       params: {
+        basePath: "/tmp/knowdisk",
         embeddingModel: "Alibaba-NLP/gte-multilingual-base",
         rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
         preferredDevice: "beam",
-        modelCacheDir: "/tmp/models",
       },
     })
   ).toBe(false);

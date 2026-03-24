@@ -11,6 +11,7 @@ class PythonWorkerStartParams(TypedDict):
     rerankerModel: str
     preferredDevice: PythonWorkerPreferredDevice
     huggingfaceEndpoint: NotRequired[str]
+    coreConfig: NotRequired[object]
 
 
 class PythonWorkerRequestFrame(TypedDict):

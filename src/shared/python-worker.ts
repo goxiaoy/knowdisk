@@ -7,11 +7,35 @@ export type PythonWorkerRequest = {
 export type PythonWorkerPreferredDevice = "cpu" | "mps" | "cuda";
 
 export type PythonWorkerStartParams = {
+  basePath: string;
   embeddingModel: string;
   rerankerModel: string;
   preferredDevice: PythonWorkerPreferredDevice;
-  modelCacheDir: string;
   huggingfaceEndpoint?: string;
+  coreConfig?: PythonWorkerCoreConfig;
+};
+
+export type PythonWorkerCoreConfig = {
+  embedding: {
+    provider: "local" | "openai" | "qwen";
+    local?: {
+      model: string;
+      dimension: number;
+    };
+  };
+  reranker: {
+    enabled: boolean;
+    provider: "local" | "openai" | "qwen";
+    local?: {
+      model: string;
+      topN: number;
+    };
+  };
+  providers: {
+    huggingface?: {
+      endpoint: string;
+    };
+  };
 };
 
 export type PythonWorkerStartRequest = {
@@ -116,15 +140,50 @@ function isPythonWorkerStartParams(value: unknown): value is PythonWorkerStartPa
     preferredDevice === "cpu" || preferredDevice === "mps" || preferredDevice === "cuda";
 
   return (
+    typeof value.basePath === "string" &&
+    value.basePath.length > 0 &&
     typeof value.embeddingModel === "string" &&
     value.embeddingModel.length > 0 &&
     typeof value.rerankerModel === "string" &&
     value.rerankerModel.length > 0 &&
     hasPreferredDevice &&
-    typeof value.modelCacheDir === "string" &&
-    value.modelCacheDir.length > 0 &&
+    (value.coreConfig === undefined || isPythonWorkerCoreConfig(value.coreConfig)) &&
     (value.huggingfaceEndpoint === undefined ||
       (typeof value.huggingfaceEndpoint === "string" && value.huggingfaceEndpoint.length > 0))
+  );
+}
+
+function isPythonWorkerCoreConfig(value: unknown): value is PythonWorkerCoreConfig {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const embedding = value.embedding;
+  const reranker = value.reranker;
+  const providers = value.providers;
+  if (!isRecord(embedding) || !isRecord(reranker) || !isRecord(providers)) {
+    return false;
+  }
+
+  const embeddingProvider = embedding.provider;
+  const rerankerProvider = reranker.provider;
+  if (
+    (embeddingProvider !== "local" && embeddingProvider !== "openai" && embeddingProvider !== "qwen") ||
+    (rerankerProvider !== "local" && rerankerProvider !== "openai" && rerankerProvider !== "qwen")
+  ) {
+    return false;
+  }
+
+  if (typeof reranker.enabled !== "boolean") {
+    return false;
+  }
+
+  const huggingface = providers.huggingface;
+  return (
+    huggingface === undefined ||
+    (isRecord(huggingface) &&
+      typeof huggingface.endpoint === "string" &&
+      huggingface.endpoint.length > 0)
   );
 }
 

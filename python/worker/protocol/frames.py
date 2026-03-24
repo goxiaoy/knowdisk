@@ -88,7 +88,7 @@ def is_error_frame(value: object) -> bool:
 
 
 def _has_start_params(params: Mapping[str, object]) -> bool:
-    required_fields = ("embeddingModel", "rerankerModel", "preferredDevice", "modelCacheDir")
+    required_fields = ("basePath", "embeddingModel", "rerankerModel", "preferredDevice")
     if not all(isinstance(params.get(field), str) and params[field].strip() for field in required_fields):
         return False
     preferred_device = params["preferredDevice"]

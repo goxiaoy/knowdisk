@@ -25,7 +25,7 @@ export function createDefaultCoreConfig(): CoreConfig {
     embedding: {
       provider: "local",
       local: {
-        model: "onnx-community/gte-multilingual-base",
+        model: "Alibaba-NLP/gte-multilingual-base",
         dimension: 768,
       },
     },
@@ -33,7 +33,7 @@ export function createDefaultCoreConfig(): CoreConfig {
       enabled: true,
       provider: "local",
       local: {
-        model: "Xenova/bge-reranker-base",
+        model: "Alibaba-NLP/gte-multilingual-reranker-base",
         topN: 5,
       },
     },

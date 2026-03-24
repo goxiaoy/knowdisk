@@ -28,7 +28,7 @@ def test_decode_frame_parses_valid_request_response_and_event_frames():
 
 def test_decode_frame_preserves_start_payload_model_runtime_config():
     frame = decode_frame(
-        b'{"id":"req-start","method":"start","params":{"embeddingModel":"Alibaba-NLP/gte-multilingual-base","rerankerModel":"Alibaba-NLP/gte-multilingual-reranker-base","preferredDevice":"cpu","modelCacheDir":"/tmp/models","huggingfaceEndpoint":"https://huggingface.co"}}\n'
+        b'{"id":"req-start","method":"start","params":{"basePath":"/tmp/knowdisk","embeddingModel":"Alibaba-NLP/gte-multilingual-base","rerankerModel":"Alibaba-NLP/gte-multilingual-reranker-base","preferredDevice":"cpu","huggingfaceEndpoint":"https://huggingface.co","coreConfig":{"embedding":{"provider":"local","local":{"model":"Alibaba-NLP/gte-multilingual-base","dimension":768}},"reranker":{"enabled":true,"provider":"local","local":{"model":"Alibaba-NLP/gte-multilingual-reranker-base","topN":5}},"providers":{"huggingface":{"endpoint":"https://huggingface.co"}}}}}\n'
     )
 
     assert frame["method"] == "start"
@@ -38,14 +38,14 @@ def test_decode_frame_preserves_start_payload_model_runtime_config():
 
 def test_decode_frame_returns_typed_start_payload_shape():
     frame = decode_frame(
-        b'{"id":"req-start","method":"start","params":{"embeddingModel":"Alibaba-NLP/gte-multilingual-base","rerankerModel":"Alibaba-NLP/gte-multilingual-reranker-base","preferredDevice":"cpu","modelCacheDir":"/tmp/models"}}\n'
+        b'{"id":"req-start","method":"start","params":{"basePath":"/tmp/knowdisk","embeddingModel":"Alibaba-NLP/gte-multilingual-base","rerankerModel":"Alibaba-NLP/gte-multilingual-reranker-base","preferredDevice":"cpu"}}\n'
     )
 
     assert is_start_request_frame(frame)
     typed_frame: PythonWorkerStartRequest = frame
 
     assert typed_frame["method"] == "start"
-    assert typed_frame["params"]["modelCacheDir"] == "/tmp/models"
+    assert typed_frame["params"]["basePath"] == "/tmp/knowdisk"
 
 
 @pytest.mark.parametrize(

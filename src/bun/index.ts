@@ -40,6 +40,7 @@ import { resolvePythonWorkerCommandForRuntime } from "./python/command";
 import { sanitizePythonWorkerStderrLine } from "./python/logging";
 import { isDevelopmentChannel } from "./runtime-mode";
 import { createPythonWorkerRuntime } from "./python/runtime";
+import { createPythonWorkerStartupConfig } from "./python/startup-config";
 import { createPythonWorkerStatusStore } from "./python/status";
 import { createPythonWorkerTransport } from "./python/transport";
 import { isMissingRpcSendTransportError } from "./rpc-transport";
@@ -131,12 +132,10 @@ const pythonWorkerTransport = createPythonWorkerTransport({
 const pythonWorkerRuntime = createPythonWorkerRuntime({
   transport: pythonWorkerTransport,
   maxRestarts: 2,
-  startupConfig: {
-    basePath: app.config.basePath,
-    embeddingModel: "Alibaba-NLP/gte-multilingual-base",
-    rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+  startupConfig: createPythonWorkerStartupConfig({
+    config: app.config,
     preferredDevice: process.platform === "darwin" ? "mps" : "cpu",
-  },
+  }),
 });
 const pythonWorkerStatus = createPythonWorkerStatusStore();
 const pythonWorkerAppRuntime = createPythonWorkerAppRuntime({

@@ -1,6 +1,10 @@
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PythonWorkerEvent } from "../../shared/python-worker";
+import type {
+  PythonWorkerCoreConfig,
+  PythonWorkerEvent,
+  PythonWorkerPreferredDevice,
+} from "../../shared/python-worker";
 import type { PythonWorkerTransport } from "./transport";
 
 export type PythonWorkerRuntimeTransport = Pick<
@@ -20,8 +24,9 @@ export type PythonWorkerRuntimeStartupConfig = {
   basePath: string;
   embeddingModel: string;
   rerankerModel: string;
-  preferredDevice: "cpu" | "mps" | "cuda";
+  preferredDevice: PythonWorkerPreferredDevice;
   huggingfaceEndpoint?: string;
+  coreConfig?: PythonWorkerCoreConfig;
 };
 
 function createDefaultPythonWorkerRuntimeStartupConfig(): PythonWorkerRuntimeStartupConfig {

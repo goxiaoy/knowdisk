@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { tmpdir } from "node:os";
+import type { PythonWorkerCoreConfig } from "../../shared/python-worker";
 import {
   createPythonWorkerRuntime,
   type PythonWorkerRuntimeStartupConfig,
@@ -88,6 +89,31 @@ function createStartupConfig(overrides: Partial<PythonWorkerRuntimeStartupConfig
   };
 }
 
+function createCoreConfigSubset(): PythonWorkerCoreConfig {
+  return {
+    embedding: {
+      provider: "local",
+      local: {
+        model: "Alibaba-NLP/gte-multilingual-base",
+        dimension: 768,
+      },
+    },
+    reranker: {
+      enabled: true,
+      provider: "local",
+      local: {
+        model: "Alibaba-NLP/gte-multilingual-reranker-base",
+        topN: 5,
+      },
+    },
+    providers: {
+      huggingface: {
+        endpoint: "https://hf-mirror.com",
+      },
+    },
+  };
+}
+
 describe("createPythonWorkerRuntime", () => {
   test("starts transport and hydrates status snapshot", async () => {
     const transport = createFakeTransport();
@@ -167,5 +193,27 @@ describe("createPythonWorkerRuntime", () => {
     expect((transport.requests[0]?.params as { basePath: string }).basePath).toStartWith(
       tmpdir()
     );
+  });
+
+  test("passes optional coreConfig subset through the start request", async () => {
+    const transport = createFakeTransport();
+    const runtime = createPythonWorkerRuntime({
+      transport,
+      maxRestarts: 0,
+      startupConfig: createStartupConfig({
+        coreConfig: createCoreConfigSubset(),
+        huggingfaceEndpoint: "https://hf-mirror.com",
+      }),
+    });
+
+    await runtime.start();
+
+    expect(transport.requests[0]).toEqual({
+      method: "start",
+      params: createStartupConfig({
+        coreConfig: createCoreConfigSubset(),
+        huggingfaceEndpoint: "https://hf-mirror.com",
+      }),
+    });
   });
 });
