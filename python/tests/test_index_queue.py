@@ -48,6 +48,55 @@ def test_enqueue_persists_job_and_notifies_worker_without_running_it(tmp_path: P
     assert wakeups == ["wake"]
 
 
+def test_enqueue_incremental_defaults_to_text_and_delete_uses_delete_queue_kind(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "index-queue.sqlite3"
+    queue = IndexQueue(
+        status_store=IndexStatusStore(event_sink=lambda event: None),
+        queue_store=SQLiteIndexQueueStore(db_path),
+    )
+
+    queue.enqueue_incremental(_index_request("node-a", "a.md", "/tmp/a.md"))
+    queue.enqueue_delete(DeleteNodeRequest(node_id="node-b"))
+
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT node_id, job_type, queue_kind, status
+            FROM index_jobs
+            ORDER BY job_id
+            """
+        ).fetchall()
+
+    assert rows == [
+        ("node-a", "index", "text", "queued"),
+        ("node-b", "delete", "delete", "queued"),
+    ]
+
+
+def test_queue_store_persists_explicit_text_and_image_queue_kinds(tmp_path: Path):
+    db_path = tmp_path / "index-queue.sqlite3"
+    queue_store = SQLiteIndexQueueStore(db_path)
+
+    queue_store.enqueue_job("node-a", "index", queue_kind="text")
+    queue_store.enqueue_job("node-b", "index", queue_kind="image")
+
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT node_id, job_type, queue_kind, status
+            FROM index_jobs
+            ORDER BY job_id
+            """
+        ).fetchall()
+
+    assert rows == [
+        ("node-a", "index", "text", "queued"),
+        ("node-b", "index", "image", "queued"),
+    ]
+
+
 def test_repeated_index_requests_for_same_node_coalesce_while_queued(tmp_path: Path):
     db_path = tmp_path / "index-queue.sqlite3"
     queue = IndexQueue(
@@ -122,11 +171,12 @@ def test_second_store_cannot_promote_a_new_job_while_another_job_is_running(
     db_path = tmp_path / "index-queue.sqlite3"
     first_store = SQLiteIndexQueueStore(db_path)
     second_store = SQLiteIndexQueueStore(db_path)
-    first_store.enqueue_job("node-a.md", "index")
-    first_store.enqueue_job("node-b.md", "index")
+    first_store.enqueue_job("node-a.md", "index", queue_kind="text")
+    first_store.enqueue_job("node-b.md", "index", queue_kind="image")
 
     first_claim = first_store.claim_next_job()
     assert first_claim.job is not None
+    assert first_claim.job.queue_kind == "text"
 
     second_claim = second_store.claim_next_job()
 
@@ -136,11 +186,12 @@ def test_second_store_cannot_promote_a_new_job_while_another_job_is_running(
 def test_orphaned_running_jobs_are_requeued_on_startup(tmp_path: Path):
     db_path = tmp_path / "index-queue.sqlite3"
     queue_store = SQLiteIndexQueueStore(db_path)
-    enqueue_result = queue_store.enqueue_job("node-a.md", "index")
+    enqueue_result = queue_store.enqueue_job("node-a.md", "index", queue_kind="text")
     claimed = queue_store.claim_next_job()
 
     assert claimed.job is not None
     assert claimed.job.job_id == enqueue_result.job.job_id
+    assert claimed.job.queue_kind == "text"
 
     queue_store.requeue_orphaned_running_jobs()
 

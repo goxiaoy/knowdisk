@@ -10,6 +10,7 @@ ModelStatusPhase: TypeAlias = Literal["idle", "verifying", "running", "completed
 ModelTaskState: TypeAlias = Literal["verifying", "pending", "downloading", "ready", "failed"]
 IndexStatusPhase: TypeAlias = Literal["idle", "indexing"]
 IndexStatusScope: TypeAlias = Literal["incremental"] | None
+IndexQueueKind: TypeAlias = Literal["text", "image", "delete"]
 
 
 class ModelTaskSnapshot(TypedDict, total=False):

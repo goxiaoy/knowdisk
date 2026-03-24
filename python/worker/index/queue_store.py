@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 
 from worker.runtime.types import IndexStatusSnapshot, create_default_index_status_snapshot
+from worker.runtime.types import IndexQueueKind
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +15,7 @@ class QueueJob:
     job_id: int
     node_id: str
     job_type: str
+    queue_kind: IndexQueueKind
     payload_json: str
 
 
@@ -47,10 +49,19 @@ class SQLiteIndexQueueStore:
         self,
         node_id: str,
         job_type: str,
+        queue_kind: IndexQueueKind | None = None,
         payload_json: str = "{}",
     ) -> QueueEnqueueResult:
         if job_type not in {"index", "delete"}:
             raise ValueError(f"unsupported job type: {job_type}")
+        if queue_kind is None:
+            queue_kind = "delete" if job_type == "delete" else "text"
+        if queue_kind not in {"text", "image", "delete"}:
+            raise ValueError(f"unsupported queue kind: {queue_kind}")
+        if job_type == "delete" and queue_kind != "delete":
+            raise ValueError("delete jobs must use delete queue kind")
+        if job_type == "index" and queue_kind == "delete":
+            raise ValueError("index jobs must use text or image queue kind")
 
         now = _now_iso()
         with self._connect() as connection:
@@ -71,11 +82,12 @@ class SQLiteIndexQueueStore:
                         """
                         UPDATE index_node_state
                         SET payload_json = ?,
+                            queue_kind = ?,
                             version = version + 1,
                             updated_at = ?
                         WHERE node_id = ?
                         """,
-                        (payload_json, now, node_id),
+                        (payload_json, queue_kind, now, node_id),
                     )
                     return QueueEnqueueResult(
                         job=self._read_job(connection, latest_job_id),
@@ -85,33 +97,35 @@ class SQLiteIndexQueueStore:
             cursor = connection.execute(
                 """
                 INSERT INTO index_jobs (
-                    node_id, job_type, payload_json, status,
+                    node_id, job_type, queue_kind, payload_json, status,
                     created_at, updated_at, started_at, finished_at, error
-                ) VALUES (?, ?, ?, 'queued', ?, ?, NULL, NULL, '')
+                ) VALUES (?, ?, ?, ?, 'queued', ?, ?, NULL, NULL, '')
                 """,
-                (node_id, job_type, payload_json, now, now),
+                (node_id, job_type, queue_kind, payload_json, now, now),
             )
             job_id = int(cursor.lastrowid)
             connection.execute(
                 """
                 INSERT INTO index_node_state (
-                    node_id, latest_job_id, desired_type, payload_json,
+                    node_id, latest_job_id, desired_type, payload_json, queue_kind,
                     version, updated_at
-                ) VALUES (?, ?, ?, ?, 1, ?)
+                ) VALUES (?, ?, ?, ?, ?, 1, ?)
                 ON CONFLICT(node_id) DO UPDATE SET
                     latest_job_id = excluded.latest_job_id,
                     desired_type = excluded.desired_type,
                     payload_json = excluded.payload_json,
+                    queue_kind = excluded.queue_kind,
                     version = index_node_state.version + 1,
                     updated_at = excluded.updated_at
                 """,
-                (node_id, job_id, job_type, payload_json, now),
+                (node_id, job_id, job_type, payload_json, queue_kind, now),
             )
             return QueueEnqueueResult(
                 job=QueueJob(
                     job_id=job_id,
                     node_id=node_id,
                     job_type=job_type,
+                    queue_kind=queue_kind,
                     payload_json=payload_json,
                 ),
                 status="queued",
@@ -131,7 +145,7 @@ class SQLiteIndexQueueStore:
             while True:
                 row = connection.execute(
                     """
-                    SELECT job_id, node_id, job_type, payload_json
+                    SELECT job_id, node_id, job_type, queue_kind, payload_json
                     FROM index_jobs
                     WHERE status = 'queued'
                     ORDER BY job_id
@@ -145,7 +159,8 @@ class SQLiteIndexQueueStore:
                     job_id=int(row[0]),
                     node_id=str(row[1]),
                     job_type=str(row[2]),
-                    payload_json=str(row[3]),
+                    queue_kind=str(row[3]),
+                    payload_json=str(row[4]),
                 )
                 state_row = self._read_node_state_row(connection, job.node_id)
                 if state_row is None or int(state_row[0]) != job.job_id or str(state_row[1]) != job.job_type:
@@ -216,6 +231,7 @@ class SQLiteIndexQueueStore:
                     job_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     node_id TEXT NOT NULL,
                     job_type TEXT NOT NULL CHECK (job_type IN ('index', 'delete')),
+                    queue_kind TEXT NOT NULL CHECK (queue_kind IN ('text', 'image', 'delete')),
                     payload_json TEXT NOT NULL,
                     status TEXT NOT NULL CHECK (
                         status IN ('queued', 'running', 'done', 'failed', 'cancelled')
@@ -235,11 +251,14 @@ class SQLiteIndexQueueStore:
                     latest_job_id INTEGER NOT NULL,
                     desired_type TEXT NOT NULL CHECK (desired_type IN ('index', 'delete')),
                     payload_json TEXT NOT NULL,
+                    queue_kind TEXT NOT NULL CHECK (queue_kind IN ('text', 'image', 'delete')),
                     version INTEGER NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
+            self._ensure_queue_kind_column(connection)
+            self._ensure_node_state_queue_kind_column(connection)
 
     def _snapshot_from_connection(self, connection: sqlite3.Connection) -> IndexStatusSnapshot:
         has_state = connection.execute(
@@ -351,7 +370,7 @@ class SQLiteIndexQueueStore:
     def _read_job(self, connection: sqlite3.Connection, job_id: int) -> QueueJob:
         row = connection.execute(
             """
-            SELECT job_id, node_id, job_type, payload_json
+            SELECT job_id, node_id, job_type, queue_kind, payload_json
             FROM index_jobs
             WHERE job_id = ?
             """,
@@ -363,7 +382,56 @@ class SQLiteIndexQueueStore:
             job_id=int(row[0]),
             node_id=str(row[1]),
             job_type=str(row[2]),
-            payload_json=str(row[3]),
+            queue_kind=str(row[3]),
+            payload_json=str(row[4]),
+        )
+
+    def _ensure_queue_kind_column(self, connection: sqlite3.Connection) -> None:
+        columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(index_jobs)").fetchall()
+        }
+        if "queue_kind" in columns:
+            return
+        connection.execute(
+            """
+            ALTER TABLE index_jobs
+            ADD COLUMN queue_kind TEXT NOT NULL DEFAULT 'text'
+            """
+        )
+        connection.execute(
+            """
+            UPDATE index_jobs
+            SET queue_kind = CASE
+                WHEN job_type = 'delete' THEN 'delete'
+                ELSE 'text'
+            END
+            WHERE queue_kind = 'text'
+            """
+        )
+
+    def _ensure_node_state_queue_kind_column(self, connection: sqlite3.Connection) -> None:
+        columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(index_node_state)").fetchall()
+        }
+        if "queue_kind" in columns:
+            return
+        connection.execute(
+            """
+            ALTER TABLE index_node_state
+            ADD COLUMN queue_kind TEXT NOT NULL DEFAULT 'text'
+            """
+        )
+        connection.execute(
+            """
+            UPDATE index_node_state
+            SET queue_kind = CASE
+                WHEN desired_type = 'delete' THEN 'delete'
+                ELSE 'text'
+            END
+            WHERE queue_kind = 'text'
+            """
         )
 
     def _mark_job_cancelled(

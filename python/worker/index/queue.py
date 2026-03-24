@@ -35,6 +35,7 @@ class IndexQueue:
         self._queue_store.enqueue_job(
             request.node.node_id,
             "index",
+            queue_kind="text",
             payload_json=json.dumps(request.to_mapping(), ensure_ascii=True),
         )
         self._publish_status_snapshot(self._queue_store.snapshot())
@@ -44,6 +45,7 @@ class IndexQueue:
         self._queue_store.enqueue_job(
             request.node_id,
             "delete",
+            queue_kind="delete",
             payload_json=json.dumps(request.to_mapping(), ensure_ascii=True),
         )
         self._publish_status_snapshot(self._queue_store.snapshot())
