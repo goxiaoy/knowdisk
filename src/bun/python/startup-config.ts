@@ -5,6 +5,8 @@ import type { PythonWorkerRuntimeStartupConfig } from "./runtime";
 export type PythonWorkerCoreConfigSubset = {
   embedding: CoreConfig["embedding"];
   reranker: CoreConfig["reranker"];
+  ocr: CoreConfig["ocr"];
+  caption: CoreConfig["caption"];
   providers: Pick<CoreConfig["providers"], "huggingface">;
 };
 
@@ -35,6 +37,8 @@ export function createPythonWorkerCoreConfigSubset(
   return {
     embedding: config.embedding,
     reranker: config.reranker,
+    ocr: config.ocr,
+    caption: config.caption,
     providers: {
       huggingface: config.providers.huggingface,
     },

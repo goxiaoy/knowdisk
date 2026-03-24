@@ -19,6 +19,8 @@ export type QwenProviderConfig = {
 
 export type EmbeddingProviderId = "local" | "openai" | "qwen";
 export type RerankerProviderId = "local" | "openai" | "qwen";
+export type OcrProviderId = "local";
+export type CaptionProviderId = "local";
 export type ChatProviderId = "openai";
 
 export type CoreConfig = {
@@ -45,6 +47,18 @@ export type CoreConfig = {
     local?: {
       model: string;
       topN: number;
+    };
+  };
+  ocr: {
+    provider: OcrProviderId;
+    local?: {
+      model: string;
+    };
+  };
+  caption: {
+    provider: CaptionProviderId;
+    local?: {
+      model: string;
     };
   };
   chat?: {

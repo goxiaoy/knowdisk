@@ -37,6 +37,18 @@ export function createDefaultCoreConfig(): CoreConfig {
         topN: 5,
       },
     },
+    ocr: {
+      provider: "local",
+      local: {
+        model: "PaddlePaddle/PaddleOCR-VL",
+      },
+    },
+    caption: {
+      provider: "local",
+      local: {
+        model: "vikhyatk/moondream2",
+      },
+    },
     chat: {
       provider: "openai",
     },

@@ -46,6 +46,18 @@ export function validateCoreConfig(config: CoreConfig): { ok: boolean; errors: s
     validateQwenProvider(errors, config.providers.qwen, "reranker.provider=qwen");
   }
 
+  if (!config.ocr.local) {
+    errors.push("ocr.local is required for ocr.provider=local");
+  } else if (config.ocr.local.model.trim().length === 0) {
+    errors.push("ocr.local.model is required for ocr.provider=local");
+  }
+
+  if (!config.caption.local) {
+    errors.push("caption.local is required for caption.provider=local");
+  } else if (config.caption.local.model.trim().length === 0) {
+    errors.push("caption.local.model is required for caption.provider=local");
+  }
+
   if (config.chat?.provider === "openai") {
     if (!config.providers.openai || config.providers.openai.endpoint.trim().length === 0) {
       errors.push("providers.openai.endpoint is required for chat.provider=openai");

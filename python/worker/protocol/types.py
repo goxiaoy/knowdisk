@@ -5,13 +5,49 @@ from typing import Literal, NotRequired, TypedDict, TypeAlias
 PythonWorkerPreferredDevice: TypeAlias = Literal["cpu", "mps", "cuda"]
 
 
+class PythonWorkerLocalModelConfig(TypedDict):
+    model: str
+
+
+class PythonWorkerEmbeddingLocalModelConfig(PythonWorkerLocalModelConfig):
+    dimension: int
+
+
+class PythonWorkerRerankerLocalModelConfig(PythonWorkerLocalModelConfig):
+    topN: int
+
+
+class PythonWorkerEmbeddingConfig(TypedDict):
+    provider: Literal["local", "openai", "qwen"]
+    local: NotRequired[PythonWorkerEmbeddingLocalModelConfig]
+
+
+class PythonWorkerRerankerConfig(TypedDict):
+    enabled: bool
+    provider: Literal["local", "openai", "qwen"]
+    local: NotRequired[PythonWorkerRerankerLocalModelConfig]
+
+
+class PythonWorkerImageModelConfig(TypedDict):
+    provider: Literal["local"]
+    local: NotRequired[PythonWorkerLocalModelConfig]
+
+
+class PythonWorkerCoreConfig(TypedDict):
+    embedding: PythonWorkerEmbeddingConfig
+    reranker: PythonWorkerRerankerConfig
+    ocr: PythonWorkerImageModelConfig
+    caption: PythonWorkerImageModelConfig
+    providers: dict[str, object]
+
+
 class PythonWorkerStartParams(TypedDict):
     basePath: str
     embeddingModel: str
     rerankerModel: str
     preferredDevice: PythonWorkerPreferredDevice
     huggingfaceEndpoint: NotRequired[str]
-    coreConfig: NotRequired[object]
+    coreConfig: NotRequired[PythonWorkerCoreConfig]
 
 
 class PythonWorkerRequestFrame(TypedDict):

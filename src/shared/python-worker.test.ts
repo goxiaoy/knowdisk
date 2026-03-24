@@ -41,6 +41,18 @@ test("accepts valid python worker request frames", () => {
               topN: 5,
             },
           },
+          ocr: {
+            provider: "local",
+            local: {
+              model: "PaddlePaddle/PaddleOCR-VL",
+            },
+          },
+          caption: {
+            provider: "local",
+            local: {
+              model: "vikhyatk/moondream2",
+            },
+          },
           providers: {
             huggingface: {
               endpoint: "https://huggingface.co",
@@ -108,6 +120,88 @@ test("rejects malformed python worker frames", () => {
         embeddingModel: "Alibaba-NLP/gte-multilingual-base",
         rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
         preferredDevice: "beam",
+      },
+    })
+  ).toBe(false);
+  expect(
+    isPythonWorkerStartRequestFrame({
+      id: "req-start",
+      method: "start",
+      params: {
+        basePath: "/tmp/knowdisk",
+        embeddingModel: "Alibaba-NLP/gte-multilingual-base",
+        rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+        preferredDevice: "cpu",
+        coreConfig: {
+          embedding: {
+            provider: "local",
+            local: {
+              model: "Alibaba-NLP/gte-multilingual-base",
+            } as never,
+          },
+          reranker: {
+            enabled: true,
+            provider: "local",
+            local: {
+              model: "Alibaba-NLP/gte-multilingual-reranker-base",
+              topN: 5,
+            },
+          },
+          ocr: {
+            provider: "local",
+            local: {
+              model: "PaddlePaddle/PaddleOCR-VL",
+            },
+          },
+          caption: {
+            provider: "local",
+            local: {
+              model: "vikhyatk/moondream2",
+            },
+          },
+          providers: {},
+        },
+      },
+    })
+  ).toBe(false);
+  expect(
+    isPythonWorkerStartRequestFrame({
+      id: "req-start",
+      method: "start",
+      params: {
+        basePath: "/tmp/knowdisk",
+        embeddingModel: "Alibaba-NLP/gte-multilingual-base",
+        rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
+        preferredDevice: "cpu",
+        coreConfig: {
+          embedding: {
+            provider: "local",
+            local: {
+              model: "Alibaba-NLP/gte-multilingual-base",
+              dimension: 768,
+            },
+          },
+          reranker: {
+            enabled: true,
+            provider: "local",
+            local: {
+              model: "Alibaba-NLP/gte-multilingual-reranker-base",
+            } as never,
+          },
+          ocr: {
+            provider: "local",
+            local: {
+              model: "PaddlePaddle/PaddleOCR-VL",
+            },
+          },
+          caption: {
+            provider: "local",
+            local: {
+              model: "vikhyatk/moondream2",
+            },
+          },
+          providers: {},
+        },
       },
     })
   ).toBe(false);

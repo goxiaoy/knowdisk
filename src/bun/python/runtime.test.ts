@@ -106,6 +106,18 @@ function createCoreConfigSubset(): PythonWorkerCoreConfig {
         topN: 5,
       },
     },
+    ocr: {
+      provider: "local",
+      local: {
+        model: "PaddlePaddle/PaddleOCR-VL",
+      },
+    },
+    caption: {
+      provider: "local",
+      local: {
+        model: "vikhyatk/moondream2",
+      },
+    },
     providers: {
       huggingface: {
         endpoint: "https://hf-mirror.com",

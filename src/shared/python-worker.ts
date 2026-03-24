@@ -31,6 +31,18 @@ export type PythonWorkerCoreConfig = {
       topN: number;
     };
   };
+  ocr: {
+    provider: "local";
+    local?: {
+      model: string;
+    };
+  };
+  caption: {
+    provider: "local";
+    local?: {
+      model: string;
+    };
+  };
   providers: {
     huggingface?: {
       endpoint: string;
@@ -160,8 +172,10 @@ function isPythonWorkerCoreConfig(value: unknown): value is PythonWorkerCoreConf
 
   const embedding = value.embedding;
   const reranker = value.reranker;
+  const ocr = value.ocr;
+  const caption = value.caption;
   const providers = value.providers;
-  if (!isRecord(embedding) || !isRecord(reranker) || !isRecord(providers)) {
+  if (!isRecord(embedding) || !isRecord(reranker) || !isRecord(ocr) || !isRecord(caption) || !isRecord(providers)) {
     return false;
   }
 
@@ -174,7 +188,46 @@ function isPythonWorkerCoreConfig(value: unknown): value is PythonWorkerCoreConf
     return false;
   }
 
+  if (embeddingProvider === "local") {
+    if (
+      !isRecord(embedding.local) ||
+      typeof embedding.local.model !== "string" ||
+      embedding.local.model.length === 0 ||
+      typeof embedding.local.dimension !== "number" ||
+      !Number.isFinite(embedding.local.dimension) ||
+      embedding.local.dimension <= 0
+    ) {
+      return false;
+    }
+  }
+
   if (typeof reranker.enabled !== "boolean") {
+    return false;
+  }
+
+  if (rerankerProvider === "local") {
+    if (
+      !isRecord(reranker.local) ||
+      typeof reranker.local.model !== "string" ||
+      reranker.local.model.length === 0 ||
+      typeof reranker.local.topN !== "number" ||
+      !Number.isFinite(reranker.local.topN) ||
+      reranker.local.topN <= 0
+    ) {
+      return false;
+    }
+  }
+
+  if (ocr.provider !== "local" || !isRecord(ocr.local) || typeof ocr.local.model !== "string" || ocr.local.model.length === 0) {
+    return false;
+  }
+
+  if (
+    caption.provider !== "local" ||
+    !isRecord(caption.local) ||
+    typeof caption.local.model !== "string" ||
+    caption.local.model.length === 0
+  ) {
     return false;
   }
 

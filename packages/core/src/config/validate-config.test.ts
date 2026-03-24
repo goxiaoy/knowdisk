@@ -50,6 +50,26 @@ describe("validateCoreConfig", () => {
     });
   });
 
+  it("requires local ocr settings for local provider", () => {
+    const config = createDefaultCoreConfig();
+    config.ocr.local = undefined;
+
+    expect(validateCoreConfig(config)).toEqual({
+      ok: false,
+      errors: ["ocr.local is required for ocr.provider=local"],
+    });
+  });
+
+  it("requires local caption settings for local provider", () => {
+    const config = createDefaultCoreConfig();
+    config.caption.local = undefined;
+
+    expect(validateCoreConfig(config)).toEqual({
+      ok: false,
+      errors: ["caption.local is required for caption.provider=local"],
+    });
+  });
+
   it("requires basePath", () => {
     const config = createDefaultCoreConfig();
     config.basePath = "   ";
