@@ -10,10 +10,7 @@ describe("createPythonWorkerStatusStore", () => {
       progressPct: 0,
       error: "",
       available: false,
-      tasks: {
-        embedding: null,
-        reranker: null,
-      },
+      tasks: {},
     });
     expect(store.getIndexStatus()).toEqual({
       available: false,
@@ -53,6 +50,13 @@ describe("createPythonWorkerStatusStore", () => {
               error: "",
             },
             reranker: null,
+            ocr: {
+              id: "ocr-local",
+              model: "PaddlePaddle/PaddleOCR-VL",
+              state: "pending",
+              progressPct: 0,
+              error: "",
+            },
           },
         },
         index_status: {
@@ -76,6 +80,7 @@ describe("createPythonWorkerStatusStore", () => {
 
     expect(store.getModelStatus().phase).toBe("completed");
     expect(store.getModelStatus().tasks.embedding?.model).toBe("embed");
+    expect(store.getModelStatus().tasks.ocr?.model).toBe("PaddlePaddle/PaddleOCR-VL");
     expect(store.getIndexStatus()).toEqual({
       available: true,
       phase: "indexing",
@@ -107,6 +112,13 @@ describe("createPythonWorkerStatusStore", () => {
         tasks: {
           embedding: null,
           reranker: null,
+          caption: {
+            id: "caption-local",
+            model: "vikhyatk/moondream2",
+            state: "downloading",
+            progressPct: 12,
+            error: "",
+          },
         },
       },
     });
@@ -125,6 +137,7 @@ describe("createPythonWorkerStatusStore", () => {
     });
 
     expect(store.getModelStatus().phase).toBe("verifying");
+    expect(store.getModelStatus().tasks.caption?.model).toBe("vikhyatk/moondream2");
     expect(store.getIndexStatus().activeNodeName).toBe("report.pdf");
     expect(store.getVectorDbStatus().available).toBe(false);
   });
@@ -141,6 +154,7 @@ describe("createPythonWorkerStatusStore", () => {
         tasks: {
           embedding: null,
           reranker: null,
+          ocr: null,
         },
       },
     });

@@ -45,6 +45,7 @@ import { createPythonWorkerStatusStore } from "./python/status";
 import { createPythonWorkerTransport } from "./python/transport";
 import { isMissingRpcSendTransportError } from "./rpc-transport";
 import { buildRecentFileSearchResults } from "./search";
+import { startBackgroundServices } from "./startup";
 import {
   applyMountNodeChange,
   applyVfsSyncerEvent,
@@ -643,17 +644,12 @@ const stopVfsNodeChangesSubscription = app.vfs.subscribeNodeChanges((node) => {
   }
 });
 
-void pythonWorkerRuntime.start()
-  .then(() => pythonWorkerAppRuntime.start())
-  .then(() => app.vfs.start())
-  .catch((error) => {
-    app.logger.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "failed to start python worker services"
-    );
-  });
+void startBackgroundServices({
+  pythonWorkerRuntime,
+  pythonWorkerAppRuntime,
+  vfs: app.vfs,
+  logger: app.logger,
+});
 
 let shutdownPromise: Promise<void> | null = null;
 

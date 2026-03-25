@@ -59,6 +59,7 @@ def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
         return
     if kind == "ocr":
         (model_root / "preprocessor_config.json").write_text("{}", encoding="utf-8")
+        (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
         (model_root / "model.safetensors").write_bytes(b"weights")
         return
     if kind == "caption":
@@ -112,8 +113,8 @@ def test_local_cache_verify_path_uses_existing_files_without_downloading(tmp_pat
     assert service.snapshot()["phase"] == "completed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
     assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
-    assert service.snapshot()["tasks"]["ocr"]["state"] == "pending"
-    assert service.snapshot()["tasks"]["caption"]["state"] == "pending"
+    assert service.snapshot()["tasks"]["ocr"]["state"] == "ready"
+    assert service.snapshot()["tasks"]["caption"]["state"] == "ready"
     assert service.get_local_embedding_runtime() is embedding_runtime
     reranker_runtime = service.get_local_reranker_runtime()
     assert isinstance(reranker_runtime, LoadedRerankerRuntime)
@@ -129,13 +130,9 @@ def test_missing_cache_download_path_fetches_and_marks_ready(tmp_path: Path):
         progress_steps={
             "embedding": [(2, 4), (4, 4)],
             "reranker": [(1, 4), (4, 4)],
+            "ocr": [(1, 4), (4, 4)],
+            "caption": [(2, 4), (4, 4)],
         },
-    )
-    write_complete_local_model_cache(
-        "ocr", manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL")
-    )
-    write_complete_local_model_cache(
-        "caption", manager.resolve_model_root("caption", "vikhyatk/moondream2")
     )
     service = make_model_service(
         store,
@@ -150,6 +147,8 @@ def test_missing_cache_download_path_fetches_and_marks_ready(tmp_path: Path):
     assert manager.calls == [
         ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
         ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
+        ("ocr", "PaddlePaddle/PaddleOCR-VL", False),
+        ("caption", "vikhyatk/moondream2", False),
     ]
     assert phases(emitted)[0] == "verifying"
     assert emitted[0]["payload"]["tasks"]["embedding"]["state"] == "waiting"
@@ -169,6 +168,8 @@ def test_missing_cache_download_path_fetches_and_marks_ready(tmp_path: Path):
     assert service.snapshot()["phase"] == "completed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
     assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
+    assert service.snapshot()["tasks"]["ocr"]["state"] == "ready"
+    assert service.snapshot()["tasks"]["caption"]["state"] == "ready"
     assert service.snapshot()["progressPct"] == 100
     assert service.snapshot()["available"] is True
 

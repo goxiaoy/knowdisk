@@ -32,3 +32,20 @@ def test_fetch_model_http_returns_streaming_body_without_eager_iteration(monkeyp
     assert b"".join(fetch_response.body) == b"abcdef"
     assert response.iteration_count == 3
     assert response.closed is True
+
+
+def test_fetch_model_http_sets_non_default_user_agent(monkeypatch):
+    captured_headers: dict[str, str] = {}
+    response = FakeUrlopenResponse([b"ok"])
+
+    def fake_urlopen(request):
+        captured_headers.update(dict(request.header_items()))
+        return response
+
+    monkeypatch.setattr(bootstrap, "urlopen", fake_urlopen)
+
+    bootstrap.fetch_model_http("https://example.com/model.bin")
+
+    user_agent = captured_headers.get("User-agent") or captured_headers.get("User-Agent")
+    assert isinstance(user_agent, str)
+    assert "Python-urllib" not in user_agent

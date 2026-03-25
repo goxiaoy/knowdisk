@@ -84,12 +84,17 @@ class LoadedRerankerRuntime:
 class LoadedOcrRuntime:
     model_root: Path
     preferred_device: ModelPreferredDevice
+    model: object | None = None
+    processor: object | None = None
+    device: str = "cpu"
 
 
 @dataclass(frozen=True, slots=True)
 class LoadedCaptionRuntime:
     model_root: Path
     preferred_device: ModelPreferredDevice
+    model: object | None = None
+    device: str = "cpu"
 
 
 def _normalize_size(value: object) -> int:

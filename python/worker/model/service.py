@@ -7,13 +7,9 @@ from typing import Any, Protocol
 
 from worker.model.artifact_manager import ModelArtifactManager
 from worker.model.artifacts import has_complete_local_model_artifacts, has_resumable_partial_downloads
+from worker.model.image_runtime import load_local_caption_runtime, load_local_ocr_runtime
 from worker.model.runtime_loader import load_local_embedding_runtime, load_local_reranker_runtime
-from worker.model.types import (
-    LoadedCaptionRuntime,
-    LoadedOcrRuntime,
-    LoadedRerankerRuntime,
-    ModelRuntimeConfig,
-)
+from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
 from worker.runtime.logging import WorkerLogger
 from worker.runtime.status import ModelStatusStore
 
@@ -67,6 +63,7 @@ class ModelService:
         self._task_condition = threading.Condition()
         self._task_inflight: dict[str, bool] = {kind: False for kind in _TASK_KINDS}
         self._task_errors: dict[str, str] = {kind: "" for kind in _TASK_KINDS}
+        self._preparation_thread: threading.Thread | None = None
 
     def configure_runtime(
         self,
@@ -87,6 +84,18 @@ class ModelService:
     def snapshot(self) -> dict[str, Any]:
         return self._status_store.snapshot()
 
+    def start_required_models(self) -> None:
+        with self._task_condition:
+            thread = self._preparation_thread
+            if thread is not None and thread.is_alive():
+                return
+            self._preparation_thread = threading.Thread(
+                target=self.ensure_required_models,
+                name="knowdisk-model-prepare",
+                daemon=True,
+            )
+            self._preparation_thread.start()
+
     def ensure_required_models(self) -> dict[str, bool]:
         if self._runtime_config is None or self._artifact_manager is None:
             self._status_store.update(
@@ -106,13 +115,13 @@ class ModelService:
                 reranker_state="waiting",
                 embedding_progress=0,
                 reranker_progress=0,
-                ocr_state="pending",
-                caption_state="pending",
+                ocr_state="waiting",
+                caption_state="waiting",
                 ocr_progress=0,
                 caption_progress=0,
             )
 
-            for kind in ("embedding", "reranker"):
+            for kind in _TASK_KINDS:
                 try:
                     self._begin_task_wait(kind)
                     self._set_task_state(kind, "verifying", 0)
@@ -132,10 +141,10 @@ class ModelService:
                 reranker_state="ready",
                 embedding_progress=100,
                 reranker_progress=100,
-                ocr_state="pending",
-                caption_state="pending",
-                ocr_progress=0,
-                caption_progress=0,
+                ocr_state="ready",
+                caption_state="ready",
+                ocr_progress=100,
+                caption_progress=100,
             )
             return {"ok": True}
 
@@ -241,6 +250,7 @@ class ModelService:
                 "error",
                 "model task failed",
                 kind=kind,
+                model=self._model_name_for_kind(kind),
                 error=error,
                 progressPct=failed_task.get("progressPct", 0) if isinstance(failed_task, dict) else 0,
             )
@@ -475,13 +485,32 @@ class ModelService:
                     model_root=model_root,
                     error=error,
                 )
+                self._update_task_state(kind, "downloading", 0, model_name)
+                artifact = self._artifact_manager.ensure_artifacts(
+                    kind=kind,
+                    model=model_name,
+                    force_redownload=True,
+                    on_progress=lambda downloaded, total: self._update_progress(
+                        kind,
+                        downloaded,
+                        total,
+                        model=model_name,
+                    ),
+                )
+                loaded = loader(
+                    artifact.model_root,
+                    preferred_device=self._runtime_config.preferred_device,
+                )
+                runtime = self._coerce_runtime(kind, loaded)
+                self._set_runtime_for_kind(kind, runtime)
+                self._update_task_state(kind, "ready", 100, model_name)
+                return runtime
 
         self._update_task_state(kind, "downloading", 0, model_name)
-        force_redownload = model_root.exists() and not has_resumable_partial_downloads(model_root)
         artifact = self._artifact_manager.ensure_artifacts(
             kind=kind,
             model=model_name,
-            force_redownload=force_redownload,
+            force_redownload=False,
             on_progress=lambda downloaded, total: self._update_progress(
                 kind,
                 downloaded,
@@ -505,8 +534,8 @@ class ModelService:
 
 
 def _load_local_ocr_runtime(model_path: Path, *, preferred_device: str) -> object:
-    return LoadedOcrRuntime(model_root=Path(model_path), preferred_device=preferred_device)
+    return load_local_ocr_runtime(Path(model_path), preferred_device=preferred_device)
 
 
 def _load_local_caption_runtime(model_path: Path, *, preferred_device: str) -> object:
-    return LoadedCaptionRuntime(model_root=Path(model_path), preferred_device=preferred_device)
+    return load_local_caption_runtime(Path(model_path), preferred_device=preferred_device)

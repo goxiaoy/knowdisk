@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.error import HTTPError
 
 from worker.model.artifact_manager import ModelArtifactManager
 from worker.model.types import ModelRepoFile
@@ -380,3 +381,75 @@ def test_resolves_missing_repo_file_sizes_from_range_probe(tmp_path: Path):
         ("https://hf.example/api/models/Alibaba-NLP/gte-multilingual-base", None),
         ("https://hf.example/Alibaba-NLP/gte-multilingual-base/resolve/main/config.json", {"Range": "bytes=0-0"}),
     ]
+
+
+def test_download_errors_include_endpoint_details(tmp_path: Path):
+    def fetch(url: str, headers: dict[str, str] | None = None):
+        _ = headers
+        if url.endswith("/api/models/PaddlePaddle/PaddleOCR-VL"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={
+                    "siblings": [
+                        {"rfilename": "config.json", "size": 4},
+                        {"rfilename": "preprocessor_config.json", "size": 4},
+                        {"rfilename": "processor_config.json", "size": 4},
+                        {"rfilename": "model.safetensors", "size": 4},
+                    ]
+                },
+            )
+        raise HTTPError(
+            url=url,
+            code=403,
+            msg="Forbidden",
+            hdrs=None,
+            fp=None,
+        )
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+
+    try:
+        manager.ensure_artifacts(kind="ocr", model="PaddlePaddle/PaddleOCR-VL")
+    except ValueError as error:
+        message = str(error)
+        assert "failed to download" in message
+        assert "https://hf.example/PaddlePaddle/PaddleOCR-VL/resolve/main/config.json" in message
+        assert "endpoint=https://hf.example" in message
+        assert "host=hf.example" in message
+        assert "HTTP Error 403: Forbidden" in message
+    else:
+        raise AssertionError("expected ensure_artifacts to report endpoint details on download error")
+
+
+def test_list_model_file_errors_include_endpoint_details(tmp_path: Path):
+    def fetch(url: str, headers: dict[str, str] | None = None):
+        _ = headers
+        raise HTTPError(
+            url=url,
+            code=403,
+            msg="Forbidden",
+            hdrs=None,
+            fp=None,
+        )
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+
+    try:
+        manager.list_model_files("ocr", "PaddlePaddle/PaddleOCR-VL")
+    except ValueError as error:
+        message = str(error)
+        assert "failed to fetch https://hf.example/api/models/PaddlePaddle/PaddleOCR-VL" in message
+        assert "endpoint=https://hf.example" in message
+        assert "host=hf.example" in message
+        assert "HTTP Error 403: Forbidden" in message
+    else:
+        raise AssertionError("expected list_model_files to report endpoint details on fetch error")

@@ -4,6 +4,20 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { StatusTooltip } from "./status-tooltip";
 
+const TASK_LABELS: Record<string, string> = {
+  embedding: "Embedding",
+  reranker: "Reranker",
+  ocr: "OCR",
+  caption: "Caption",
+};
+
+const TASK_PRIORITY: Record<string, number> = {
+  embedding: 0,
+  reranker: 1,
+  ocr: 2,
+  caption: 3,
+};
+
 function phaseStyle(phase: RendererModelStatus["phase"], available: boolean) {
   if (!available) {
     return {
@@ -46,7 +60,37 @@ function formatTaskState(state: string): string {
   return state.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function TaskRow({ label, state, progressPct }: { label: string; state: string; progressPct: number }) {
+function formatTaskLabel(taskKey: string): string {
+  return (
+    TASK_LABELS[taskKey] ??
+    taskKey.replaceAll(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+  );
+}
+
+function getOrderedTasks(tasks: RendererModelStatus["tasks"]) {
+  return Object.entries(tasks)
+    .filter(([, task]) => task !== null)
+    .sort(([leftKey], [rightKey]) => {
+      const leftPriority = TASK_PRIORITY[leftKey] ?? Number.MAX_SAFE_INTEGER;
+      const rightPriority = TASK_PRIORITY[rightKey] ?? Number.MAX_SAFE_INTEGER;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+      return leftKey.localeCompare(rightKey);
+    }) as Array<[string, NonNullable<RendererModelStatus["tasks"][string]>]>;
+}
+
+function TaskRow({
+  label,
+  model,
+  state,
+  progressPct,
+}: {
+  label: string;
+  model: string;
+  state: string;
+  progressPct: number;
+}) {
   const visualPct = Math.max(0, Math.min(100, progressPct));
 
   return (
@@ -56,6 +100,7 @@ function TaskRow({ label, state, progressPct }: { label: string; state: string; 
         <span className="text-sm font-medium text-slate-700">{label}</span>
         <span className="text-xs text-slate-500">{formatTaskState(state)}</span>
       </div>
+      <div className="mb-1 truncate text-xs text-slate-500">{model}</div>
       <div className="h-1.5 w-full rounded-full bg-slate-200">
         <div className="h-full transition-all duration-300 rounded-full bg-slate-500" style={{ width: `${visualPct}%` }} />
       </div>
@@ -71,6 +116,7 @@ export function StatusIndicator({ status }: { status: RendererModelStatus }) {
   const radius = 17;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - progress / 100);
+  const orderedTasks = getOrderedTasks(status.tasks);
 
   return (
     <div className="relative group">
@@ -116,18 +162,19 @@ export function StatusIndicator({ status }: { status: RendererModelStatus }) {
 
         {!status.available ? (
           <p className="text-sm text-slate-500">Unavailable</p>
+        ) : orderedTasks.length === 0 ? (
+          <p className="text-sm text-slate-500">No model tasks yet</p>
         ) : (
           <div className="space-y-2">
-            <TaskRow
-              label="Embedding"
-              progressPct={status.tasks.embedding?.progressPct ?? 0}
-              state={status.tasks.embedding?.state ?? "not started"}
-            />
-            <TaskRow
-              label="Reranker"
-              progressPct={status.tasks.reranker?.progressPct ?? 0}
-              state={status.tasks.reranker?.state ?? "not started"}
-            />
+            {orderedTasks.map(([taskKey, task]) => (
+              <TaskRow
+                key={taskKey}
+                label={formatTaskLabel(taskKey)}
+                model={task.model}
+                progressPct={task.progressPct}
+                state={task.state}
+              />
+            ))}
           </div>
         )}
       </StatusTooltip>

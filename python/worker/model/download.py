@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 ProgressCallback = Callable[[int, int], None]
 DownloadFetch = Callable[[str, dict[str, str] | None], Any]
@@ -24,7 +25,7 @@ def download_file(
         except Exception as error:
             attempt += 1
             if attempt >= max_attempts or not _is_retryable_download_error(error):
-                raise
+                raise _annotate_download_error(url, error) from error
 
 
 def _download_file_once(
@@ -85,6 +86,18 @@ def _is_retryable_download_error(error: Exception) -> bool:
     if isinstance(error, ValueError):
         return "incomplete download" in str(error)
     return False
+
+
+def _annotate_download_error(url: str, error: Exception) -> ValueError:
+    parsed = urlsplit(url)
+    endpoint = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+    details = [f"failed to download {url}"]
+    if endpoint:
+        details.append(f"endpoint={endpoint}")
+    if parsed.netloc:
+        details.append(f"host={parsed.netloc}")
+    details.append(str(error))
+    return ValueError(": ".join(details))
 
 
 def _existing_part_size(part_path: Path) -> int:

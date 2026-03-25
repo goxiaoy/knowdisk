@@ -10,7 +10,7 @@ export type ModelTaskState =
 export type ModelPhase = "idle" | "verifying" | "running" | "completed" | "failed";
 
 export type ModelTaskStatus = {
-  id: "embedding-local" | "reranker-local";
+  id: string;
   model: string;
   state: ModelTaskState;
   progressPct: number;
@@ -22,10 +22,7 @@ export type RendererModelStatus = {
   progressPct: number;
   error: string;
   available: boolean;
-  tasks: {
-    embedding: ModelTaskStatus | null;
-    reranker: ModelTaskStatus | null;
-  };
+  tasks: Record<string, ModelTaskStatus | null>;
 };
 
 export const FALLBACK_MODEL_STATUS: RendererModelStatus = {
@@ -33,10 +30,7 @@ export const FALLBACK_MODEL_STATUS: RendererModelStatus = {
   progressPct: 0,
   error: "",
   available: false,
-  tasks: {
-    embedding: null,
-    reranker: null,
-  },
+  tasks: {},
 };
 
 export function clampPct(value: number): number {

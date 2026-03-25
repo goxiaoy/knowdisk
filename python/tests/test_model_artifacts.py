@@ -69,6 +69,7 @@ def test_select_ocr_repo_files_keeps_image_recognition_assets():
         [
             {"rfilename": "README.md", "size": 1},
             {"rfilename": "config.json", "size": 2},
+            {"rfilename": "configuration_paddleocr_vl.py", "size": 2},
             {"rfilename": "preprocessor_config.json", "size": 3},
             {"rfilename": "processor_config.json", "size": 4},
             {"rfilename": "model.safetensors", "size": 5},
@@ -78,6 +79,7 @@ def test_select_ocr_repo_files_keeps_image_recognition_assets():
 
     assert [item.path for item in selected] == [
         "config.json",
+        "configuration_paddleocr_vl.py",
         "preprocessor_config.json",
         "processor_config.json",
         "model.safetensors",
@@ -89,6 +91,8 @@ def test_select_caption_repo_files_keeps_multimodal_assets():
         [
             {"rfilename": "docs/README.md", "size": 1},
             {"rfilename": "config.json", "size": 2},
+            {"rfilename": "hf_moondream.py", "size": 2},
+            {"rfilename": "vision.py", "size": 2},
             {"rfilename": "processor_config.json", "size": 3},
             {"rfilename": "tokenizer.json", "size": 4},
             {"rfilename": "tokenizer_config.json", "size": 5},
@@ -100,6 +104,8 @@ def test_select_caption_repo_files_keeps_multimodal_assets():
 
     assert [item.path for item in selected] == [
         "config.json",
+        "hf_moondream.py",
+        "vision.py",
         "processor_config.json",
         "tokenizer.json",
         "tokenizer_config.json",

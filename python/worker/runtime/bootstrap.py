@@ -16,6 +16,7 @@ from typing import BinaryIO, Callable, TextIO
 
 from worker.index.queue import IndexQueue
 from worker.index.service import IndexService
+from worker.model.image_runtime import analyze_moondream_caption_image, analyze_paddleocr_vl_image
 from worker.model.service import ModelService
 from worker.model.types import LoadedCaptionRuntime, LoadedOcrRuntime
 from worker.parser.image_pipeline import parse_image_document
@@ -28,6 +29,9 @@ from worker.runtime.types import DeleteNodeRequest, IndexNodeRequest
 from worker.vector.repository import VectorRepository
 
 _FAKE_MODEL_RUNTIME_ENV = "KNOWDISK_PYTHON_FAKE_MODEL_RUNTIME"
+_MODEL_FETCH_USER_AGENT = (
+    "Mozilla/5.0 (compatible; KnowDiskPythonWorker/0.1; +https://github.com/knowdisk)"
+)
 
 
 @dataclass(slots=True)
@@ -245,7 +249,11 @@ class StreamingResponseBody:
 
 
 def fetch_model_http(url: str, headers: dict[str, str] | None = None) -> FetchResponse:
-    request = Request(url, headers=headers or {})
+    request_headers = {
+        "User-Agent": _MODEL_FETCH_USER_AGENT,
+        **(headers or {}),
+    }
+    request = Request(url, headers=request_headers)
     response = urlopen(request)
     return FetchResponse(
         status=getattr(response, "status", response.getcode()),
@@ -389,8 +397,8 @@ def _create_image_parser(
             ocr_analyze = _fake_image_ocr_analyzer
             caption_analyze = _fake_image_caption_analyzer
         else:
-            ocr_analyze = _missing_image_ocr_analyzer
-            caption_analyze = _missing_image_caption_analyzer
+            ocr_analyze = analyze_paddleocr_vl_image
+            caption_analyze = analyze_moondream_caption_image
         return parse_image_document(
             node,
             source_path,
@@ -424,13 +432,3 @@ def _fake_image_caption_analyzer(runtime, source_path: str) -> dict[str, object]
     return {
         "caption": "Image described caption",
     }
-
-
-def _missing_image_ocr_analyzer(runtime, source_path: str) -> object:
-    _ = runtime, source_path
-    raise RuntimeError("ocr image runtime is not configured")
-
-
-def _missing_image_caption_analyzer(runtime, source_path: str) -> object:
-    _ = runtime, source_path
-    raise RuntimeError("caption image runtime is not configured")

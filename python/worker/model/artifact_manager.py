@@ -5,6 +5,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Mapping
+from urllib.parse import urlsplit
 
 from worker.model.artifacts import (
     select_caption_repo_files,
@@ -40,7 +41,8 @@ class ModelArtifactManager:
         self._fetch = fetch
 
     def list_model_files(self, kind: ModelArtifactKind, model: str) -> list[ModelRepoFile]:
-        response = self._fetch(self._model_list_url(model), None)
+        url = self._model_list_url(model)
+        response = self._fetch_with_context(url, None)
         self._require_status(response, 200, f"Failed to list model files for {model}")
         payload = self._read_json(response)
         siblings = payload.get("siblings", []) if isinstance(payload, Mapping) else []
@@ -167,8 +169,9 @@ class ModelArtifactManager:
         return resolved
 
     def _probe_file_size(self, model: str, path: str) -> int:
-        response = self._fetch(
-            self._model_file_url(model, path),
+        url = self._model_file_url(model, path)
+        response = self._fetch_with_context(
+            url,
             {"Range": "bytes=0-0"},
         )
         status = getattr(response, "status", None)
@@ -200,3 +203,17 @@ class ModelArtifactManager:
                     if total > 0:
                         return total
         return 0
+
+    def _fetch_with_context(self, url: str, headers: dict[str, str] | None) -> object:
+        try:
+            return self._fetch(url, headers)
+        except Exception as error:
+            parsed = urlsplit(url)
+            endpoint = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+            details = [f"failed to fetch {url}"]
+            if endpoint:
+                details.append(f"endpoint={endpoint}")
+            if parsed.netloc:
+                details.append(f"host={parsed.netloc}")
+            details.append(str(error))
+            raise ValueError(": ".join(details)) from error

@@ -59,10 +59,7 @@ function normalizeModelStatus(status?: RendererModelStatus): RendererModelStatus
   return {
     ...FALLBACK_MODEL_STATUS,
     ...status,
-    tasks: {
-      embedding: status?.tasks.embedding ?? null,
-      reranker: status?.tasks.reranker ?? null,
-    },
+    tasks: { ...(status?.tasks ?? {}) },
   };
 }
 

@@ -116,8 +116,8 @@ def test_real_ensure_models_verifies_existing_local_model_by_successful_load(tmp
     assert service.snapshot()["phase"] == "completed"
     assert service.snapshot()["tasks"]["embedding"]["state"] == "ready"
     assert service.snapshot()["tasks"]["reranker"]["state"] == "ready"
-    assert service.snapshot()["tasks"]["ocr"]["state"] == "pending"
-    assert service.snapshot()["tasks"]["caption"]["state"] == "pending"
+    assert service.snapshot()["tasks"]["ocr"]["state"] == "ready"
+    assert service.snapshot()["tasks"]["caption"]["state"] == "ready"
     assert service.get_local_embedding_runtime() is embedding_runtime
     reranker_runtime = service.get_local_reranker_runtime()
     assert isinstance(reranker_runtime, LoadedRerankerRuntime)
@@ -134,6 +134,7 @@ def test_real_ensure_models_downloads_missing_models_and_updates_progress(tmp_pa
         cache_root=tmp_path / "cache",
         progress_steps={
             "embedding": [(2, 4), (4, 4)],
+            "ocr": [(1, 4), (4, 4)],
         },
     )
     service = make_real_model_service(
@@ -148,11 +149,24 @@ def test_real_ensure_models_downloads_missing_models_and_updates_progress(tmp_pa
     result = service.ensure_required_models()
 
     assert result == {"ok": True}
+    assert manager.calls == [
+        ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
+        ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
+        ("ocr", "PaddlePaddle/PaddleOCR-VL", False),
+        ("caption", "vikhyatk/moondream2", False),
+    ]
     assert any(
         event["payload"]["phase"] == "running"
         and event["payload"]["tasks"]["embedding"]["state"] == "downloading"
         and event["payload"]["tasks"]["embedding"]["model"] == "Alibaba-NLP/gte-multilingual-base"
         and event["payload"]["tasks"]["embedding"]["progressPct"] > 0
+        for event in emitted
+    )
+    assert any(
+        event["payload"]["phase"] == "running"
+        and event["payload"]["tasks"]["ocr"]["state"] == "downloading"
+        and event["payload"]["tasks"]["ocr"]["model"] == "PaddlePaddle/PaddleOCR-VL"
+        and event["payload"]["tasks"]["ocr"]["progressPct"] > 0
         for event in emitted
     )
     assert service.snapshot()["phase"] == "completed"
@@ -212,6 +226,26 @@ def test_real_ensure_models_logs_cached_runtime_load_failures_before_redownload(
     assert '"error":"boom"' in logger_stream.getvalue()
 
 
+def test_real_ensure_models_logs_model_name_when_task_fails(tmp_path: Path):
+    store = ModelStatusStore(event_sink=lambda event: None)
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    logger_stream = StringIO()
+    service = make_real_model_service(
+        store,
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: (_ for _ in ()).throw(RuntimeError("boom")),
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
+        logger=create_worker_logger(logger_stream),
+    )
+
+    assert service.ensure_required_models() == {"ok": False}
+    assert '"msg":"model task failed"' in logger_stream.getvalue()
+    assert '"kind":"embedding"' in logger_stream.getvalue()
+    assert '"model":"Alibaba-NLP/gte-multilingual-base"' in logger_stream.getvalue()
+
+
 def test_real_ensure_models_redownloads_partial_embedding_cache_before_loading(tmp_path: Path):
     store = ModelStatusStore(event_sink=lambda event: None)
     manager = FakeArtifactManager(cache_root=tmp_path / "cache")
@@ -237,6 +271,28 @@ def test_real_ensure_models_redownloads_partial_embedding_cache_before_loading(t
     assert result == {"ok": True}
     assert manager.calls[0] == ("embedding", "Alibaba-NLP/gte-multilingual-base", False)
     assert embedding_loader_calls == [embedding_root]
+
+
+def test_real_ensure_models_completes_missing_files_without_forcing_redownload(tmp_path: Path):
+    store = ModelStatusStore(event_sink=lambda event: None)
+    manager = FakeArtifactManager(cache_root=tmp_path / "cache")
+    embedding_root = manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")
+    embedding_root.mkdir(parents=True, exist_ok=True)
+    (embedding_root / "config.json").write_text("{}", encoding="utf-8")
+
+    service = make_real_model_service(
+        store,
+        manager,
+        embedding_loader=lambda model_path, *, preferred_device: object(),
+        reranker_loader=lambda model_path, *, preferred_device: ("tok", "model"),
+        ocr_loader=lambda model_path, *, preferred_device: object(),
+        caption_loader=lambda model_path, *, preferred_device: object(),
+    )
+
+    result = service.ensure_required_models()
+
+    assert result == {"ok": True}
+    assert manager.calls[0] == ("embedding", "Alibaba-NLP/gte-multilingual-base", False)
 
 
 def test_real_ensure_models_marks_only_reranker_failed_when_reranker_load_fails(tmp_path: Path):
@@ -291,6 +347,8 @@ def test_embedding_runtime_is_cached(tmp_path: Path):
     assert manager.calls == [
         ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
         ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
+        ("ocr", "PaddlePaddle/PaddleOCR-VL", False),
+        ("caption", "vikhyatk/moondream2", False),
     ]
 
 
@@ -318,6 +376,8 @@ def test_reranker_runtime_is_cached_as_named_runtime(tmp_path: Path):
     assert manager.calls == [
         ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
         ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
+        ("ocr", "PaddlePaddle/PaddleOCR-VL", False),
+        ("caption", "vikhyatk/moondream2", False),
     ]
 
 
@@ -419,7 +479,8 @@ def test_get_local_ocr_runtime_raises_when_runtime_failed(tmp_path: Path):
         caption_loader=lambda model_path, *, preferred_device: object(),
     )
 
-    assert service.ensure_required_models() == {"ok": True}
+    assert service.ensure_required_models() == {"ok": False}
+    assert service.snapshot()["tasks"]["ocr"]["state"] == "failed"
     try:
         service.get_local_ocr_runtime()
     except RuntimeError as error:

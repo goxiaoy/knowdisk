@@ -72,7 +72,6 @@ class PythonWorkerServer:
 
     def _handle_start(self, params: object) -> dict[str, object]:
         self.model_runtime_config = self._parse_model_runtime_config(params)
-        ensure_result: dict[str, bool] = {"ok": True}
         if self.services is not None:
             if self._model_fetch is None:
                 raise RuntimeError("model fetch is not configured")
@@ -93,18 +92,17 @@ class PythonWorkerServer:
                 self.services.index_service.set_storage_base_path(
                     self.model_runtime_config.base_path
                 )
-            ensure_result = self.services.model_service.ensure_required_models()
-        ready = bool(ensure_result.get("ok"))
+            self.services.model_service.start_required_models()
         self._event_sink(
             {
                 "type": "worker_health_changed",
                 "payload": {
-                    "ready": ready,
+                    "ready": True,
                 },
             }
         )
         return {
-            "ok": ready,
+            "ok": True,
             "worker": "knowdisk-python-worker",
             "version": "0.1.0",
         }

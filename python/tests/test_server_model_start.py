@@ -151,9 +151,8 @@ def test_start_configures_model_service_before_ensuring_models():
             calls.append(("configure", config))
             calls.append(("artifact_manager", artifact_manager))
 
-        def ensure_required_models(self):
-            calls.append(("ensure", None))
-            return {"ok": True}
+        def start_required_models(self):
+            calls.append(("start_required_models", None))
 
     class IndexServiceStub:
         def set_storage_base_path(self, base_path):
@@ -212,7 +211,7 @@ def test_start_configures_model_service_before_ensuring_models():
     assert calls[0][0] == "configure"
     assert calls[1][0] == "artifact_manager"
     assert calls[2] == ("storage_base_path", Path("/tmp/knowdisk"))
-    assert calls[3] == ("ensure", None)
+    assert calls[3] == ("start_required_models", None)
     assert calls[0][1] == ModelRuntimeConfig(
         embedding_model="Alibaba-NLP/gte-multilingual-base",
         reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
@@ -223,9 +222,7 @@ def test_start_configures_model_service_before_ensuring_models():
         model_cache_dir=Path("/tmp/knowdisk/model"),
         huggingface_endpoint="https://huggingface.co",
     )
-
-
-def test_start_reports_failure_when_required_model_verification_fails():
+def test_start_reports_worker_ready_after_starting_model_preparation():
     emitted: list[dict] = []
     calls: list[tuple[str, object]] = []
 
@@ -234,9 +231,8 @@ def test_start_reports_failure_when_required_model_verification_fails():
             calls.append(("configure", config))
             calls.append(("artifact_manager", artifact_manager))
 
-        def ensure_required_models(self):
-            calls.append(("ensure", None))
-            return {"ok": False}
+        def start_required_models(self):
+            calls.append(("start_required_models", None))
 
     class IndexServiceStub:
         def set_storage_base_path(self, base_path):
@@ -291,16 +287,16 @@ def test_start_reports_failure_when_required_model_verification_fails():
         }
     )
 
-    assert response["result"]["ok"] is False
+    assert response["result"]["ok"] is True
     assert calls[0][0] == "configure"
     assert calls[1][0] == "artifact_manager"
     assert calls[2] == ("storage_base_path", Path("/tmp/knowdisk"))
-    assert calls[3] == ("ensure", None)
+    assert calls[3] == ("start_required_models", None)
     assert emitted == [
         {
             "type": "worker_health_changed",
             "payload": {
-                "ready": False,
+                "ready": True,
             },
         }
     ]

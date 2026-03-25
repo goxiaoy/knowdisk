@@ -129,7 +129,13 @@ def _select_required_files(
     selected: list[ModelRepoFile] = []
     for item in siblings:
         repo_file = item if isinstance(item, ModelRepoFile) else ModelRepoFile.from_mapping(item)
-        if repo_file.path not in required_files:
+        if repo_file.path not in required_files and not _is_required_remote_code_file(repo_file.path):
             continue
         selected.append(repo_file)
     return selected
+
+
+def _is_required_remote_code_file(path: str) -> bool:
+    if "/" in path:
+        return False
+    return path.endswith(".py")
