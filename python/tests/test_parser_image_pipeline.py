@@ -1,7 +1,9 @@
+from io import StringIO
 from pathlib import Path
 
 from worker.parser.image_pipeline import parse_image_document
 from worker.parser.types import ParserNode
+from worker.runtime.logging import create_worker_logger
 
 
 def test_parse_image_document_builds_single_multimodal_chunk(tmp_path: Path):
@@ -48,9 +50,9 @@ def test_parse_image_document_builds_single_multimodal_chunk(tmp_path: Path):
     assert "Image caption:" in chunks[0]["text"]
     assert "A cat on a chair" in chunks[0]["text"]
     assert "Image OCR:" in chunks[0]["text"]
-    assert "Detected text" in chunks[0]["text"]
+    assert "```text\nDetected text\n```" in chunks[0]["text"]
     assert "Image metadata:" in chunks[0]["text"]
-    assert "path=" in chunks[0]["text"]
+    assert "```text\npath=" in chunks[0]["text"]
     assert "page=7" in chunks[0]["text"]
     assert "regions=1" in chunks[0]["text"]
 
@@ -153,3 +155,46 @@ def test_parse_image_document_returns_error_chunk_when_caption_fails(tmp_path: P
             },
         }
     ]
+
+
+def test_parse_image_document_logs_ocr_debug_summary(tmp_path: Path):
+    source_file = tmp_path / "photo.png"
+    source_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+    logger_stream = StringIO()
+
+    def fake_ocr(runtime: object, source_path: str) -> dict[str, object]:
+        _ = runtime, source_path
+        return {
+            "text": "Detected text",
+            "regions": [{"id": "r1", "text": "税"}],
+            "debug": {
+                "ocrPayloadKeys": ["rec_boxes", "rec_texts", "textline_orientation_angles"],
+                "layoutPayloadKeys": ["layout"],
+                "ocrPreviewTexts": ["税", "销售方信息"],
+                "layoutPreviewTexts": ["电子发票"],
+            },
+        }
+
+    def fake_caption(runtime: object, source_path: str) -> dict[str, object]:
+        _ = runtime, source_path
+        return {"caption": ""}
+
+    parse_image_document(
+        ParserNode(
+            node_id="node-image-4",
+            name="photo.png",
+            source_ref="photo.png",
+            provider_type="local",
+        ),
+        str(source_file),
+        ocr_runtime={"runtime": "ocr"},
+        caption_runtime={"runtime": "caption"},
+        ocr_analyze=fake_ocr,
+        caption_analyze=fake_caption,
+        logger=create_worker_logger(logger_stream),
+    )
+
+    output = logger_stream.getvalue()
+    assert '"msg":"image ocr debug"' in output
+    assert '"ocrPayloadKeys":["rec_boxes","rec_texts","textline_orientation_angles"]' in output
+    assert '"ocrPreviewTexts":["\\u7a0e","\\u9500\\u552e\\u65b9\\u4fe1\\u606f"]' in output

@@ -54,6 +54,16 @@ def parse_image_document(
             started_at=started_at,
             size_bytes=size_bytes,
         )
+    if logger is not None:
+        ocr_debug = _extract_ocr_debug_summary(ocr_result)
+        if ocr_debug is not None:
+            logger.log(
+                "debug",
+                "image ocr debug",
+                name=parsed_node.name,
+                sourcePath=source_path,
+                **ocr_debug,
+            )
 
     try:
         caption_result = _run_caption(
@@ -161,6 +171,20 @@ def _normalize_ocr_result(value: object) -> tuple[str, str, list[dict[str, objec
     return str(value), "", []
 
 
+def _extract_ocr_debug_summary(value: object) -> dict[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+    debug_value = value.get("debug")
+    if not isinstance(debug_value, Mapping):
+        return None
+    summary: dict[str, object] = {}
+    for key in ("ocrPayloadKeys", "layoutPayloadKeys", "ocrPreviewTexts", "layoutPreviewTexts"):
+        item = debug_value.get(key)
+        if isinstance(item, list):
+            summary[key] = [str(entry) for entry in item[:12]]
+    return summary or None
+
+
 def _normalize_caption_result(value: object) -> str:
     if isinstance(value, Mapping):
         return str(value.get("caption") or value.get("text") or "")
@@ -193,11 +217,15 @@ def _compose_multimodal_text(
             region_parts.append(f"text={region_text}")
         metadata_lines.append(" ".join(region_parts))
 
+    caption_section = "Image caption:\n```text\n" + caption_text.strip() + "\n```"
+    ocr_section = "Image OCR:\n```text\n" + ocr_text.strip() + "\n```"
+    metadata_section = "Image metadata:\n```text\n" + "\n".join(metadata_lines) + "\n```"
+
     return "\n\n".join(
         [
-            "Image caption:\n" + caption_text,
-            "Image OCR:\n" + ocr_text,
-            "Image metadata:\n" + "\n".join(metadata_lines),
+            caption_section,
+            ocr_section,
+            metadata_section,
         ]
     ).strip()
 

@@ -136,6 +136,7 @@ def analyze_local_ocr_image(runtime: LoadedOcrRuntime, source_path: str) -> dict
         "text": "\n".join(text_lines).strip(),
         "page": "",
         "regions": layout_regions or ocr_regions,
+        "debug": _summarize_ocr_debug(ocr_output, layout_output),
     }
 
 
@@ -262,21 +263,35 @@ def _collect_layout_regions(value: object) -> list[dict[str, object]]:
         if not isinstance(payload, Mapping):
             continue
         layout_items = payload.get("layout")
-        if not isinstance(layout_items, list):
-            continue
-        for layout_item in layout_items:
-            if not isinstance(layout_item, Mapping):
-                continue
-            text = str(layout_item.get("text") or "").strip()
-            if not text:
-                continue
-            regions.append(
-                {
-                    "id": f"layout-{len(regions)}",
-                    "bbox": layout_item.get("bbox"),
-                    "text": text,
-                }
-            )
+        parsing_items = payload.get("parsing_res_list")
+        if isinstance(layout_items, list):
+            for layout_item in layout_items:
+                if not isinstance(layout_item, Mapping):
+                    continue
+                text = str(layout_item.get("text") or "").strip()
+                if not text:
+                    continue
+                regions.append(
+                    {
+                        "id": f"layout-{len(regions)}",
+                        "bbox": layout_item.get("bbox"),
+                        "text": text,
+                    }
+                )
+        if isinstance(parsing_items, list):
+            for parsing_item in parsing_items:
+                if not isinstance(parsing_item, Mapping):
+                    continue
+                text = str(parsing_item.get("block_text") or parsing_item.get("block_content") or "").strip()
+                if not text:
+                    continue
+                regions.append(
+                    {
+                        "id": f"layout-{len(regions)}",
+                        "bbox": parsing_item.get("block_bbox"),
+                        "text": text,
+                    }
+                )
 
     return regions
 
@@ -287,3 +302,61 @@ def _iterate_prediction_items(value: object) -> Iterable[object]:
     if isinstance(value, (list, tuple)):
         return value
     return (value,)
+
+
+def _summarize_ocr_debug(ocr_output: object, layout_output: object) -> dict[str, object]:
+    ocr_payload = _first_mapping_payload(ocr_output)
+    layout_payload = _first_mapping_payload(layout_output)
+    return {
+        "ocrPayloadKeys": sorted(str(key) for key in ocr_payload.keys())[:20],
+        "layoutPayloadKeys": sorted(str(key) for key in layout_payload.keys())[:20],
+        "ocrPreviewTexts": _extract_preview_texts(ocr_payload.get("rec_texts")),
+        "layoutPreviewTexts": _extract_layout_preview_texts(
+            layout_payload.get("layout"),
+            layout_payload.get("parsing_res_list"),
+        ),
+    }
+
+
+def _first_mapping_payload(value: object) -> Mapping[str, object]:
+    for item in _iterate_prediction_items(value):
+        payload = _unwrap_prediction_item(item)
+        if isinstance(payload, Mapping):
+            return payload
+    return {}
+
+
+def _extract_preview_texts(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        text = str(item).strip()
+        if text:
+            result.append(text)
+        if len(result) >= 12:
+            break
+    return result
+
+
+def _extract_layout_preview_texts(layout_value: object, parsing_value: object) -> list[str]:
+    result: list[str] = []
+    if isinstance(layout_value, list):
+        for item in layout_value:
+            if not isinstance(item, Mapping):
+                continue
+            text = str(item.get("text") or "").strip()
+            if text:
+                result.append(text)
+            if len(result) >= 12:
+                return result
+    if isinstance(parsing_value, list):
+        for item in parsing_value:
+            if not isinstance(item, Mapping):
+                continue
+            text = str(item.get("block_text") or item.get("block_content") or "").strip()
+            if text:
+                result.append(text)
+            if len(result) >= 12:
+                return result
+    return result

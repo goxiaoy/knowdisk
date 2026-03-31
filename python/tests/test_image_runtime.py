@@ -268,6 +268,12 @@ def test_analyze_local_ocr_image_collects_text_and_regions(monkeypatch, tmp_path
         {"id": "layout-0", "bbox": [0, 0, 100, 40], "text": "门诊"},
         {"id": "layout-1", "bbox": [0, 50, 300, 140], "text": "收费票据"},
     ]
+    assert result["debug"] == {
+        "ocrPayloadKeys": ["rec_boxes", "rec_texts"],
+        "layoutPayloadKeys": ["layout"],
+        "ocrPreviewTexts": ["门诊", "收费票据"],
+        "layoutPreviewTexts": ["门诊", "收费票据"],
+    }
 
 
 def test_analyze_local_ocr_image_falls_back_to_ocr_boxes_when_layout_is_missing(monkeypatch, tmp_path: Path):
@@ -307,6 +313,47 @@ def test_analyze_local_ocr_image_falls_back_to_ocr_boxes_when_layout_is_missing(
         {"id": "ocr-0", "bbox": [10, 20, 30, 40], "text": "住院"},
         {"id": "ocr-1", "bbox": [40, 50, 80, 90], "text": "结算单"},
     ]
+
+
+def test_analyze_local_ocr_image_reads_ppstructure_parsing_result_blocks(monkeypatch, tmp_path: Path):
+    source_path = tmp_path / "image.png"
+    source_path.write_bytes(b"png")
+    monkeypatch.setattr("worker.model.image_runtime.Image.open", lambda path: FakeImage())
+
+    class FakeOcrEngine:
+        def predict(self, input_path):
+            assert input_path == str(source_path)
+            return [{"res": {"rec_texts": ["税", "销售方信息"], "rec_boxes": [[1, 2, 3, 4], [5, 6, 7, 8]]}}]
+
+    class FakeLayoutEngine:
+        def predict(self, input_path):
+            assert input_path == str(source_path)
+            return [
+                {
+                    "res": {
+                        "parsing_res_list": [
+                            {"block_label": "title", "block_bbox": [0, 0, 100, 40], "block_text": "电子发票"},
+                            {"block_label": "text", "block_bbox": [0, 50, 300, 140], "block_content": "销售方信息"},
+                        ]
+                    }
+                }
+            ]
+
+    runtime = LoadedOcrRuntime(
+        model_root=tmp_path,
+        preferred_device="cpu",
+        ocr_engine=FakeOcrEngine(),
+        layout_engine=FakeLayoutEngine(),
+        device="cpu",
+    )
+
+    result = analyze_local_ocr_image(runtime, str(source_path))
+
+    assert result["regions"] == [
+        {"id": "layout-0", "bbox": [0, 0, 100, 40], "text": "电子发票"},
+        {"id": "layout-1", "bbox": [0, 50, 300, 140], "text": "销售方信息"},
+    ]
+    assert result["debug"]["layoutPreviewTexts"] == ["电子发票", "销售方信息"]
 
 
 def test_analyze_moondream_caption_image_calls_caption(monkeypatch, tmp_path: Path):
