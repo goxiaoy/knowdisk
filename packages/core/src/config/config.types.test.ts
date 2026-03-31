@@ -27,7 +27,9 @@ describe("CoreConfig", () => {
       },
       ocr: {
         provider: "local",
-        local: { model: "PaddlePaddle/PaddleOCR-VL" },
+        local: {
+          model: "PaddlePaddle/PP-OCRv4_mobile",
+        },
       },
       caption: {
         provider: "local",

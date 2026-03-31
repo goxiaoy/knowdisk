@@ -35,7 +35,7 @@ test("renders dynamic model tasks and concrete model names", () => {
           },
           ocr: {
             id: "ocr-local",
-            model: "PaddlePaddle/PaddleOCR-VL",
+            model: "PaddlePaddle/PP-OCRv4_mobile",
             state: "downloading",
             progressPct: 12,
             error: "",
@@ -60,6 +60,6 @@ test("renders dynamic model tasks and concrete model names", () => {
   expect(texts).toContain("Caption");
   expect(texts).toContain("Alibaba-NLP/gte-multilingual-base");
   expect(texts).toContain("Alibaba-NLP/gte-multilingual-reranker-base");
-  expect(texts).toContain("PaddlePaddle/PaddleOCR-VL");
+  expect(texts).toContain("PaddlePaddle/PP-OCRv4_mobile");
   expect(texts).toContain("vikhyatk/moondream2");
 });

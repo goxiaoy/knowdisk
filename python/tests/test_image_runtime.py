@@ -1,12 +1,15 @@
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from worker.model.image_runtime import (
+    _prime_transformers_local_remote_code_cache,
+    analyze_local_ocr_image,
     analyze_moondream_caption_image,
-    analyze_paddleocr_vl_image,
     load_local_caption_runtime,
     load_local_ocr_runtime,
 )
-from worker.model.types import LoadedCaptionRuntime, LoadedOcrRuntime
+from worker.model.types import LoadedCaptionRuntime, LoadedOcrRuntime, ModelRuntimeConfig
 
 
 class FakeImage:
@@ -15,39 +18,153 @@ class FakeImage:
         return self
 
 
-def test_load_local_ocr_runtime_loads_processor_and_model(monkeypatch, tmp_path: Path):
-    calls: list[tuple[str, object, object]] = []
+def test_prime_transformers_local_remote_code_cache_copies_python_modules(monkeypatch, tmp_path: Path):
+    model_root = tmp_path / "models" / "moondream2"
+    model_root.mkdir(parents=True, exist_ok=True)
+    (model_root / "hf_moondream.py").write_text("from .layers import x\n", encoding="utf-8")
+    (model_root / "layers.py").write_text("x = 1\n", encoding="utf-8")
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    module_cache = tmp_path / "hf-cache"
 
-    class FakeProcessor:
+    def create_dynamic_module(name: str) -> None:
+        destination = module_cache / name
+        destination.mkdir(parents=True, exist_ok=True)
+        init_file = destination / "__init__.py"
+        if not init_file.exists():
+            init_file.write_text("", encoding="utf-8")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers.dynamic_module_utils",
+        SimpleNamespace(
+            _sanitize_module_name=lambda name: name,
+            create_dynamic_module=create_dynamic_module,
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers.utils",
+        SimpleNamespace(
+            HF_MODULES_CACHE=str(module_cache),
+            TRANSFORMERS_DYNAMIC_MODULE_NAME="transformers_modules",
+        ),
+    )
+
+    _prime_transformers_local_remote_code_cache(model_root)
+
+    destination_root = module_cache / "transformers_modules" / "moondream2"
+    assert (destination_root / "hf_moondream.py").read_text(encoding="utf-8") == "from .layers import x\n"
+    assert (destination_root / "layers.py").read_text(encoding="utf-8") == "x = 1\n"
+
+
+def test_load_local_ocr_runtime_loads_processor_and_model(monkeypatch, tmp_path: Path):
+    calls: list[tuple[str, object, object | None, object | None]] = []
+
+    class FakeOcrEngine:
         pass
 
-    class FakeModel:
-        def eval(self):
-            calls.append(("eval", None, None))
-            return self
+    class FakeLayoutEngine:
+        pass
 
-        def to(self, device):
-            calls.append(("to", device, None))
-            return self
-
-    monkeypatch.setattr(
-        "worker.model.image_runtime.AutoProcessor.from_pretrained",
-        lambda model_path, trust_remote_code: calls.append(("processor", model_path, trust_remote_code)) or FakeProcessor(),
-    )
-    monkeypatch.setattr(
-        "worker.model.image_runtime.AutoModelForCausalLM.from_pretrained",
-        lambda model_path, trust_remote_code, torch_dtype: calls.append(("model", model_path, torch_dtype)) or FakeModel(),
+    monkeypatch.setitem(
+        sys.modules,
+        "paddleocr",
+        SimpleNamespace(
+            PaddleOCR=lambda **kwargs: calls.append(("ocr", kwargs, None, None)) or FakeOcrEngine(),
+            PPStructureV3=lambda **kwargs: calls.append(("layout", kwargs, None, None)) or FakeLayoutEngine(),
+        ),
     )
 
-    runtime = load_local_ocr_runtime(tmp_path, preferred_device="cpu")
+    runtime = load_local_ocr_runtime(
+        tmp_path,
+        preferred_device="cpu",
+        runtime_config=ModelRuntimeConfig.from_mapping(
+            {
+                "basePath": str(tmp_path),
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "cpu",
+                "coreConfig": {
+                    "ocr": {
+                        "provider": "local",
+                        "local": {
+                            "model": "PaddlePaddle/PP-OCRv4_mobile",
+                        },
+                    },
+                    "caption": {"provider": "local", "local": {"model": "vikhyatk/moondream2"}},
+                },
+            }
+        ),
+    )
 
     assert isinstance(runtime, LoadedOcrRuntime)
     assert runtime.model_root == tmp_path
-    assert runtime.processor.__class__.__name__ == "FakeProcessor"
-    assert runtime.model.__class__.__name__ == "FakeModel"
+    assert runtime.ocr_engine.__class__.__name__ == "FakeOcrEngine"
+    assert runtime.layout_engine.__class__.__name__ == "FakeLayoutEngine"
     assert runtime.device == "cpu"
-    assert ("processor", str(tmp_path), True) in calls
-    assert any(call[0] == "model" for call in calls)
+    assert calls[0][0] == "ocr"
+    assert calls[1][0] == "layout"
+    assert "use_general_ocr" not in calls[1][1]
+    assert calls[1][1]["use_textline_orientation"] is False
+    assert calls[0][1]["text_detection_model_name"] == "PP-OCRv4_mobile_det"
+    assert calls[0][1]["text_recognition_model_name"] == "PP-OCRv4_mobile_rec"
+    assert calls[0][1]["doc_orientation_classify_model_name"] == "PP-LCNet_x1_0_doc_ori"
+    assert calls[0][1]["textline_orientation_model_name"] == "PP-LCNet_x1_0_textline_ori"
+    assert calls[0][1]["text_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_det")
+    assert calls[0][1]["text_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_rec")
+    assert calls[0][1]["doc_orientation_classify_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori")
+    assert calls[0][1]["textline_orientation_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_textline_ori")
+    assert calls[1][1]["layout_detection_model_name"] == "PP-DocLayout_plus-L"
+    assert calls[1][1]["region_detection_model_name"] == "PP-DocBlockLayout"
+    assert calls[1][1]["doc_orientation_classify_model_name"] == "PP-LCNet_x1_0_doc_ori"
+    assert calls[1][1]["textline_orientation_model_name"] == "PP-LCNet_x1_0_textline_ori"
+    assert calls[1][1]["text_detection_model_name"] == "PP-OCRv4_mobile_det"
+    assert calls[1][1]["text_recognition_model_name"] == "PP-OCRv4_mobile_rec"
+    assert calls[1][1]["layout_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-DocLayout_plus-L")
+    assert calls[1][1]["region_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-DocBlockLayout")
+    assert calls[1][1]["doc_orientation_classify_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori")
+    assert calls[1][1]["textline_orientation_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_textline_ori")
+    assert calls[1][1]["text_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_det")
+    assert calls[1][1]["text_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_rec")
+
+
+def test_load_local_ocr_runtime_falls_back_to_cpu_when_mps_is_preferred(monkeypatch, tmp_path: Path):
+    calls: list[tuple[str, object, object | None, object | None]] = []
+
+    monkeypatch.setattr("worker.model.image_runtime.torch.cuda.is_available", lambda: False)
+    monkeypatch.setitem(
+        sys.modules,
+        "paddleocr",
+        SimpleNamespace(
+            PaddleOCR=lambda **kwargs: calls.append(("ocr", kwargs.get("device"), None, None)) or object(),
+            PPStructureV3=lambda **kwargs: calls.append(("layout", kwargs.get("device"), None, None)) or object(),
+        ),
+    )
+
+    runtime = load_local_ocr_runtime(
+        tmp_path,
+        preferred_device="mps",
+        runtime_config=ModelRuntimeConfig.from_mapping(
+            {
+                "basePath": str(tmp_path),
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "mps",
+                "coreConfig": {
+                    "ocr": {
+                        "provider": "local",
+                        "local": {
+                            "model": "PaddlePaddle/PP-OCRv4_mobile",
+                        },
+                    },
+                    "caption": {"provider": "local", "local": {"model": "vikhyatk/moondream2"}},
+                },
+            }
+        ),
+    )
+
+    assert runtime.device == "cpu"
+    assert calls == [("ocr", "cpu", None, None), ("layout", "cpu", None, None)]
 
 
 def test_load_local_caption_runtime_loads_moondream_model(monkeypatch, tmp_path: Path):
@@ -64,7 +181,7 @@ def test_load_local_caption_runtime_loads_moondream_model(monkeypatch, tmp_path:
 
     monkeypatch.setattr(
         "worker.model.image_runtime.AutoModelForCausalLM.from_pretrained",
-        lambda model_path, trust_remote_code, torch_dtype: calls.append(("model", model_path, torch_dtype)) or FakeModel(),
+        lambda model_path, trust_remote_code, dtype: calls.append(("model", model_path, dtype)) or FakeModel(),
     )
 
     runtime = load_local_caption_runtime(tmp_path, preferred_device="cpu")
@@ -76,46 +193,92 @@ def test_load_local_caption_runtime_loads_moondream_model(monkeypatch, tmp_path:
     assert calls[0][0] == "model"
 
 
-def test_analyze_paddleocr_vl_image_uses_ocr_prompt(monkeypatch, tmp_path: Path):
+def test_analyze_local_ocr_image_collects_text_and_regions(monkeypatch, tmp_path: Path):
     source_path = tmp_path / "image.png"
     source_path.write_bytes(b"png")
-    calls: list[tuple[str, object]] = []
-
-    class FakeInputs(dict):
-        def to(self, device):
-            calls.append(("inputs.to", device))
-            return self
-
-    class FakeProcessor:
-        def apply_chat_template(self, messages, **kwargs):
-            calls.append(("messages", messages))
-            calls.append(("template_kwargs", kwargs))
-            return FakeInputs({"input_ids": [1]})
-
-        def batch_decode(self, outputs, skip_special_tokens=True):
-            calls.append(("decode", outputs))
-            return ["Detected OCR text"]
-
-    class FakeModel:
-        def generate(self, **kwargs):
-            calls.append(("generate", kwargs))
-            return [[1, 2, 3]]
-
     monkeypatch.setattr("worker.model.image_runtime.Image.open", lambda path: FakeImage())
+
+    class FakeOcrEngine:
+        def predict(self, input_path):
+            assert input_path == str(source_path)
+            return [
+                {
+                    "res": {
+                        "rec_texts": ["门诊", "收费票据"],
+                        "rec_boxes": [[1, 2, 3, 4], [5, 6, 7, 8]],
+                    }
+                }
+            ]
+
+    class FakeLayoutEngine:
+        def predict(self, input_path):
+            assert input_path == str(source_path)
+            return [
+                {
+                    "res": {
+                        "layout": [
+                            {"label": "title", "bbox": [0, 0, 100, 40], "text": "门诊"},
+                            {"label": "text", "bbox": [0, 50, 300, 140], "text": "收费票据"},
+                        ]
+                    }
+                }
+            ]
 
     runtime = LoadedOcrRuntime(
         model_root=tmp_path,
         preferred_device="cpu",
-        model=FakeModel(),
-        processor=FakeProcessor(),
+        ocr_engine=FakeOcrEngine(),
+        layout_engine=FakeLayoutEngine(),
         device="cpu",
     )
 
-    result = analyze_paddleocr_vl_image(runtime, str(source_path))
+    result = analyze_local_ocr_image(runtime, str(source_path))
 
-    assert result == {"text": "Detected OCR text", "page": "", "regions": []}
-    assert calls[0][0] == "messages"
-    assert calls[0][1][0]["content"][1]["text"] == "OCR:"
+    assert result["text"] == "门诊\n收费票据"
+    assert result["page"] == ""
+    assert result["regions"] == [
+        {"id": "layout-0", "bbox": [0, 0, 100, 40], "text": "门诊"},
+        {"id": "layout-1", "bbox": [0, 50, 300, 140], "text": "收费票据"},
+    ]
+
+
+def test_analyze_local_ocr_image_falls_back_to_ocr_boxes_when_layout_is_missing(monkeypatch, tmp_path: Path):
+    source_path = tmp_path / "image.png"
+    source_path.write_bytes(b"png")
+    monkeypatch.setattr("worker.model.image_runtime.Image.open", lambda path: FakeImage())
+
+    class FakeOcrEngine:
+        def predict(self, input_path):
+            assert input_path == str(source_path)
+            return [
+                {
+                    "res": {
+                        "rec_texts": ["住院", "结算单"],
+                        "rec_boxes": [[10, 20, 30, 40], [40, 50, 80, 90]],
+                    }
+                }
+            ]
+
+    class FakeLayoutEngine:
+        def predict(self, input_path):
+            assert input_path == str(source_path)
+            return []
+
+    runtime = LoadedOcrRuntime(
+        model_root=tmp_path,
+        preferred_device="cpu",
+        ocr_engine=FakeOcrEngine(),
+        layout_engine=FakeLayoutEngine(),
+        device="cpu",
+    )
+
+    result = analyze_local_ocr_image(runtime, str(source_path))
+
+    assert result["text"] == "住院\n结算单"
+    assert result["regions"] == [
+        {"id": "ocr-0", "bbox": [10, 20, 30, 40], "text": "住院"},
+        {"id": "ocr-1", "bbox": [40, 50, 80, 90], "text": "结算单"},
+    ]
 
 
 def test_analyze_moondream_caption_image_calls_caption(monkeypatch, tmp_path: Path):

@@ -118,7 +118,7 @@ def _has_core_config(value: object) -> bool:
     ocr = value.get("ocr")
     caption = value.get("caption")
     providers = value.get("providers")
-    if not _has_local_model_section(ocr) or not _has_local_model_section(caption):
+    if not _has_local_ocr_model_section(ocr) or not _has_local_model_section(caption):
         return False
     return isinstance(providers, Mapping) and (
         "huggingface" not in providers
@@ -163,6 +163,16 @@ def _has_reranker_section(value: object) -> bool:
 
 
 def _has_local_model_section(value: object) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and value.get("provider") == "local"
+        and isinstance(value.get("local"), Mapping)
+        and isinstance(value["local"].get("model"), str)
+        and bool(value["local"]["model"])
+    )
+
+
+def _has_local_ocr_model_section(value: object) -> bool:
     return (
         isinstance(value, Mapping)
         and value.get("provider") == "local"

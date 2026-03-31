@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from worker.model.types import ModelRepoFile, ModelRuntimeConfig
+from worker.model.types import DEFAULT_OCR_MODEL_DISPLAY, ModelRepoFile, ModelRuntimeConfig
 
 
 def test_model_runtime_config_normalizes_mapping_inputs():
@@ -14,7 +14,9 @@ def test_model_runtime_config_normalizes_mapping_inputs():
             "coreConfig": {
                 "ocr": {
                     "provider": "local",
-                    "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
+                    "local": {
+                        "model": "PaddlePaddle/PP-OCRv4_mobile",
+                    },
                 },
                 "caption": {
                     "provider": "local",
@@ -27,7 +29,13 @@ def test_model_runtime_config_normalizes_mapping_inputs():
     assert config.base_path == Path("/tmp/knowdisk")
     assert config.embedding_model == "Alibaba-NLP/gte-multilingual-base"
     assert config.reranker_model == "Alibaba-NLP/gte-multilingual-reranker-base"
-    assert config.ocr_model == "PaddlePaddle/PaddleOCR-VL"
+    assert config.ocr_model == "PaddlePaddle/PP-OCRv4_mobile"
+    assert config.ocr_detection_model == "PaddlePaddle/PP-OCRv4_mobile_det"
+    assert config.ocr_recognition_model == "PaddlePaddle/PP-OCRv4_mobile_rec"
+    assert config.ocr_layout_model == "PaddlePaddle/PP-DocLayout_plus-L"
+    assert config.ocr_region_model == "PaddlePaddle/PP-DocBlockLayout"
+    assert config.ocr_doc_orientation_model == "PaddlePaddle/PP-LCNet_x1_0_doc_ori"
+    assert config.ocr_textline_orientation_model == "PaddlePaddle/PP-LCNet_x1_0_textline_ori"
     assert config.caption_model == "vikhyatk/moondream2"
     assert config.preferred_device == "cpu"
     assert config.model_cache_dir == Path("/tmp/knowdisk/model")

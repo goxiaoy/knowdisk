@@ -9,8 +9,16 @@ description = "Python sidecar worker for Know Disk"
 requires-python = ">=3.11"
 dependencies = [
   "docling>=2.78.0,<3",
+  "einops>=0.8.0,<1",
+  "ftfy>=6,<7",
   "mistune>=3,<4",
+  "paddleocr>=3,<4",
+  "paddlepaddle>=3,<4",
+  "premailer>=3,<4",
+  "protobuf>=5,<7",
   "sentence-transformers>=3.0.0,<4",
+  "sentencepiece>=0.2,<1",
+  "tiktoken>=0.9,<1",
   "transformers>=4.45.0,<5",
   "zvec>=0.2.1",
 ]

@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from inspect import Parameter, signature
 from pathlib import Path
 from typing import Any, Protocol
 
 from worker.model.artifact_manager import ModelArtifactManager
-from worker.model.artifacts import has_complete_local_model_artifacts, has_resumable_partial_downloads
+from worker.model.artifacts import (
+    has_complete_local_model_artifacts,
+    has_complete_local_ocr_artifacts,
+    has_resumable_partial_downloads,
+)
 from worker.model.image_runtime import load_local_caption_runtime, load_local_ocr_runtime
 from worker.model.runtime_loader import load_local_embedding_runtime, load_local_reranker_runtime
 from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
@@ -23,7 +28,13 @@ class RerankerRuntimeLoader(Protocol):
 
 
 class OcrRuntimeLoader(Protocol):
-    def __call__(self, model_path: Path, *, preferred_device: str) -> object: ...
+    def __call__(
+        self,
+        model_path: Path,
+        *,
+        preferred_device: str,
+        runtime_config: ModelRuntimeConfig | None = None,
+    ) -> object: ...
 
 
 class CaptionRuntimeLoader(Protocol):
@@ -297,7 +308,16 @@ class ModelService:
             tasks=tasks,
         )
 
-    def _update_progress(self, kind: str, downloaded: int, total: int, *, model: str) -> None:
+    def _update_progress(
+        self,
+        kind: str,
+        downloaded: int,
+        total: int,
+        *,
+        model: str,
+        file: str | None = None,
+        target_path: str | None = None,
+    ) -> None:
         progress_pct = 0 if total <= 0 else min(100, round((downloaded / total) * 100))
         tasks = self.snapshot()["tasks"]
         tasks[kind] = self._task_status(f"{kind}-local", model, "downloading", progress_pct, "")
@@ -318,6 +338,8 @@ class ModelService:
                 downloaded=downloaded,
                 total=total,
                 progressPct=progress_pct,
+                file=file,
+                targetPath=target_path,
             )
 
     def _wait_for_runtime(self, kind: str) -> object:
@@ -356,7 +378,7 @@ class ModelService:
             return
         self._logger.log(
             "warn",
-            "failed to load cached model runtime, falling back to download",
+            "failed to load cached model runtime",
             kind=kind,
             model=model,
             modelRoot=str(model_root),
@@ -465,14 +487,18 @@ class ModelService:
         assert self._runtime_config is not None
         assert self._artifact_manager is not None
         model_name = self._model_name_for_kind(kind)
-        model_root = self._artifact_manager.resolve_model_root(kind, model_name)
         loader = self._loader_for_kind(kind)
 
-        if has_complete_local_model_artifacts(kind, model_root):
+        if kind == "ocr":
+            return self._ensure_ocr_runtime_with_bundle(loader)
+
+        model_root = self._artifact_manager.resolve_model_root(kind, model_name)
+
+        if has_complete_local_model_artifacts(kind, model_root, model=model_name):
             try:
                 loaded = loader(
                     model_root,
-                    preferred_device=self._runtime_config.preferred_device,
+                    **self._loader_kwargs(kind),
                 )
                 runtime = self._coerce_runtime(kind, loaded)
                 self._set_runtime_for_kind(kind, runtime)
@@ -485,47 +511,94 @@ class ModelService:
                     model_root=model_root,
                     error=error,
                 )
-                self._update_task_state(kind, "downloading", 0, model_name)
-                artifact = self._artifact_manager.ensure_artifacts(
-                    kind=kind,
-                    model=model_name,
-                    force_redownload=True,
-                    on_progress=lambda downloaded, total: self._update_progress(
-                        kind,
-                        downloaded,
-                        total,
-                        model=model_name,
-                    ),
-                )
-                loaded = loader(
-                    artifact.model_root,
-                    preferred_device=self._runtime_config.preferred_device,
-                )
-                runtime = self._coerce_runtime(kind, loaded)
-                self._set_runtime_for_kind(kind, runtime)
-                self._update_task_state(kind, "ready", 100, model_name)
-                return runtime
+                raise
 
         self._update_task_state(kind, "downloading", 0, model_name)
         artifact = self._artifact_manager.ensure_artifacts(
             kind=kind,
             model=model_name,
             force_redownload=False,
-            on_progress=lambda downloaded, total: self._update_progress(
+            on_progress=lambda downloaded, total, file=None, target_path=None: self._update_progress(
                 kind,
                 downloaded,
                 total,
                 model=model_name,
+                file=file,
+                target_path=target_path,
             ),
         )
         loaded = loader(
             artifact.model_root,
-            preferred_device=self._runtime_config.preferred_device,
+            **self._loader_kwargs(kind),
         )
         runtime = self._coerce_runtime(kind, loaded)
         self._set_runtime_for_kind(kind, runtime)
         self._update_task_state(kind, "ready", 100, model_name)
         return runtime
+
+    def _ensure_ocr_runtime_with_bundle(self, loader: Any) -> object:
+        assert self._runtime_config is not None
+        assert self._artifact_manager is not None
+        model_name = self._model_name_for_kind("ocr")
+        preset_root = self._artifact_manager.resolve_model_root("ocr", model_name)
+
+        if has_complete_local_ocr_artifacts(self._runtime_config.model_cache_dir, self._runtime_config):
+            try:
+                loaded = loader(
+                    preset_root,
+                    **self._loader_kwargs("ocr"),
+                )
+                runtime = self._coerce_runtime("ocr", loaded)
+                self._set_runtime_for_kind("ocr", runtime)
+                self._update_task_state("ocr", "ready", 100, model_name)
+                return runtime
+            except Exception as error:
+                self._log_cached_runtime_load_failure(
+                    kind="ocr",
+                    model=model_name,
+                    model_root=preset_root,
+                    error=error,
+                )
+                raise
+
+        self._update_task_state("ocr", "downloading", 0, model_name)
+        artifact = self._artifact_manager.ensure_ocr_artifacts(
+            self._runtime_config,
+            force_redownload=False,
+            on_progress=lambda downloaded, total, file=None, target_path=None: self._update_progress(
+                "ocr",
+                downloaded,
+                total,
+                model=model_name,
+                file=file,
+                target_path=target_path,
+            ),
+        )
+        loaded = loader(
+            artifact.model_root,
+            **self._loader_kwargs("ocr"),
+        )
+        runtime = self._coerce_runtime("ocr", loaded)
+        self._set_runtime_for_kind("ocr", runtime)
+        self._update_task_state("ocr", "ready", 100, model_name)
+        return runtime
+
+    def _loader_kwargs(self, kind: str) -> dict[str, object]:
+        assert self._runtime_config is not None
+        kwargs: dict[str, object] = {
+            "preferred_device": self._runtime_config.preferred_device,
+        }
+        if kind != "ocr":
+            return kwargs
+
+        parameters = signature(self._ocr_runtime_loader).parameters.values()
+        accepts_runtime_config = any(
+            parameter.kind == Parameter.VAR_KEYWORD or parameter.name == "runtime_config"
+            for parameter in parameters
+        )
+        if accepts_runtime_config:
+            kwargs["runtime_config"] = self._runtime_config
+        return kwargs
 
     def _coerce_runtime(self, kind: str, runtime: Any) -> object:
         if kind == "reranker":
@@ -533,8 +606,19 @@ class ModelService:
         return runtime
 
 
-def _load_local_ocr_runtime(model_path: Path, *, preferred_device: str) -> object:
-    return load_local_ocr_runtime(Path(model_path), preferred_device=preferred_device)
+def _load_local_ocr_runtime(
+    model_path: Path,
+    *,
+    preferred_device: str,
+    runtime_config: ModelRuntimeConfig | None = None,
+) -> object:
+    if runtime_config is None:
+        raise RuntimeError("ocr runtime_config is required")
+    return load_local_ocr_runtime(
+        Path(model_path),
+        preferred_device=preferred_device,
+        runtime_config=runtime_config,
+    )
 
 
 def _load_local_caption_runtime(model_path: Path, *, preferred_device: str) -> object:

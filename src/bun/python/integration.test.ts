@@ -58,10 +58,7 @@ describe("python worker integration", () => {
             provider: "local",
             local: { model: "Alibaba-NLP/gte-multilingual-reranker-base", topN: 20 },
           },
-          ocr: {
-            provider: "local",
-            local: { model: "PaddlePaddle/PaddleOCR-VL" },
-          },
+          ocr: { provider: "local", local: { model: "PaddlePaddle/PP-OCRv4_mobile" } },
           caption: {
             provider: "local",
             local: { model: "vikhyatk/moondream2" },
@@ -185,10 +182,7 @@ describe("python worker integration", () => {
             provider: "local",
             local: { model: "Alibaba-NLP/gte-multilingual-reranker-base", topN: 20 },
           },
-          ocr: {
-            provider: "local",
-            local: { model: "PaddlePaddle/PaddleOCR-VL" },
-          },
+          ocr: { provider: "local", local: { model: "PaddlePaddle/PP-OCRv4_mobile" } },
           caption: {
             provider: "local",
             local: { model: "vikhyatk/moondream2" },

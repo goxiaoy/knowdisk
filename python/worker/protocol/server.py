@@ -1,5 +1,8 @@
+import importlib
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from pathlib import Path
 
 from worker.model.artifact_manager import FetchCallable, ModelArtifactManager
 from worker.model.types import ModelRuntimeConfig
@@ -72,6 +75,10 @@ class PythonWorkerServer:
 
     def _handle_start(self, params: object) -> dict[str, object]:
         self.model_runtime_config = self._parse_model_runtime_config(params)
+        _configure_model_runtime_cache(
+            self.model_runtime_config.base_path,
+            huggingface_endpoint=self.model_runtime_config.huggingface_endpoint or "https://huggingface.co",
+        )
         if self.services is not None:
             if self._model_fetch is None:
                 raise RuntimeError("model fetch is not configured")
@@ -177,3 +184,64 @@ def _as_mapping(value: object) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ValueError("request params must be a mapping")
     return value
+
+
+def _configure_model_runtime_cache(base_path: Path, *, huggingface_endpoint: str) -> None:
+    hf_home = base_path / "huggingface"
+    hf_modules_cache = hf_home / "modules"
+    transformers_cache = hf_home / "hub"
+    paddlex_cache = base_path / "paddlex"
+    paddlex_official_models = paddlex_cache / "official_models"
+
+    hf_home.mkdir(parents=True, exist_ok=True)
+    hf_modules_cache.mkdir(parents=True, exist_ok=True)
+    transformers_cache.mkdir(parents=True, exist_ok=True)
+    paddlex_cache.mkdir(parents=True, exist_ok=True)
+    paddlex_official_models.mkdir(parents=True, exist_ok=True)
+
+    os.environ["HF_HOME"] = str(hf_home)
+    os.environ["HF_MODULES_CACHE"] = str(hf_modules_cache)
+    os.environ["TRANSFORMERS_CACHE"] = str(transformers_cache)
+    os.environ["PADDLE_PDX_CACHE_HOME"] = str(paddlex_cache)
+    os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+    os.environ["PADDLE_PDX_MODEL_SOURCE"] = "huggingface"
+    os.environ["PADDLE_PDX_HUGGING_FACE_ENDPOINT"] = huggingface_endpoint
+
+    try:
+        transformers_utils = importlib.import_module("transformers.utils")
+    except ImportError:
+        return
+
+    setattr(transformers_utils, "HF_MODULES_CACHE", str(hf_modules_cache))
+    setattr(transformers_utils, "TRANSFORMERS_CACHE", str(transformers_cache))
+
+    try:
+        dynamic_module_utils = importlib.import_module("transformers.dynamic_module_utils")
+    except ImportError:
+        dynamic_module_utils = None
+
+    if dynamic_module_utils is not None:
+        setattr(dynamic_module_utils, "HF_MODULES_CACHE", str(hf_modules_cache))
+
+    try:
+        paddlex_cache_module = importlib.import_module("paddlex.utils.cache")
+    except ImportError:
+        paddlex_cache_module = None
+
+    if paddlex_cache_module is not None:
+        setattr(paddlex_cache_module, "CACHE_DIR", str(paddlex_cache))
+        setattr(paddlex_cache_module, "FUNC_CACHE_DIR", str(paddlex_cache / "func_ret"))
+        setattr(paddlex_cache_module, "FILE_LOCK_DIR", str(paddlex_cache / "locks"))
+        setattr(paddlex_cache_module, "TEMP_DIR", str(paddlex_cache / "temp"))
+
+    try:
+        paddlex_flags_module = importlib.import_module("paddlex.utils.flags")
+    except ImportError:
+        paddlex_flags_module = None
+
+    if paddlex_flags_module is not None:
+        setattr(paddlex_flags_module, "MODEL_SOURCE", "huggingface")
+        setattr(paddlex_flags_module, "DISABLE_MODEL_SOURCE_CHECK", True)
+        setattr(paddlex_flags_module, "HUGGING_FACE_ENDPOINT", huggingface_endpoint)
+
+    importlib.invalidate_caches()

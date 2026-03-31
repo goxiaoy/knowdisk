@@ -48,8 +48,10 @@ export function validateCoreConfig(config: CoreConfig): { ok: boolean; errors: s
 
   if (!config.ocr.local) {
     errors.push("ocr.local is required for ocr.provider=local");
-  } else if (config.ocr.local.model.trim().length === 0) {
-    errors.push("ocr.local.model is required for ocr.provider=local");
+  } else {
+    if (config.ocr.local.model.trim().length === 0) {
+      errors.push("ocr.local.model is required for ocr.provider=local");
+    }
   }
 
   if (!config.caption.local) {

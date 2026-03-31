@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 
-from worker.model.types import LoadedRerankerRuntime, ModelRuntimeConfig
+from worker.model.types import DEFAULT_OCR_MODEL_DISPLAY, LoadedRerankerRuntime, ModelRuntimeConfig
 from worker.model.service import ModelService
 from worker.runtime.status import ModelStatusStore
 
@@ -16,6 +17,19 @@ class FakeArtifactResult:
     downloaded_bytes: int
 
 
+@dataclass(frozen=True)
+class FakeOcrArtifactResult:
+    model_root: Path
+    detection_root: Path
+    recognition_root: Path
+    layout_root: Path
+    region_root: Path
+    doc_orientation_root: Path
+    textline_orientation_root: Path
+    downloaded_files: int
+    downloaded_bytes: int
+
+
 class FakeArtifactManager:
     def __init__(self, cache_root: Path, progress_steps: dict[str, list[tuple[int, int]]] | None = None):
         self.cache_root = cache_root
@@ -23,7 +37,7 @@ class FakeArtifactManager:
         self.calls: list[tuple[str, str, bool]] = []
 
     def resolve_model_root(self, kind: str, model: str) -> Path:
-        return self.cache_root / kind / Path(*model.split("/"))
+        return self.cache_root / Path(*model.split("/"))
 
     def ensure_artifacts(
         self,
@@ -47,6 +61,46 @@ class FakeArtifactManager:
             downloaded_bytes=4,
         )
 
+    def ensure_ocr_artifacts(
+        self,
+        runtime_config: ModelRuntimeConfig,
+        force_redownload: bool = False,
+        on_progress=None,
+    ) -> FakeOcrArtifactResult:
+        self.calls.append(("ocr-bundle", runtime_config.ocr_model, force_redownload))
+        detection_root = self.resolve_model_root("ocr", runtime_config.ocr_detection_model)
+        recognition_root = self.resolve_model_root("ocr", runtime_config.ocr_recognition_model)
+        layout_root = self.resolve_model_root("ocr", runtime_config.ocr_layout_model)
+        region_root = self.resolve_model_root("ocr", runtime_config.ocr_region_model)
+        doc_orientation_root = self.resolve_model_root("ocr", runtime_config.ocr_doc_orientation_model)
+        textline_orientation_root = self.resolve_model_root("ocr", runtime_config.ocr_textline_orientation_model)
+        for root in (
+            detection_root,
+            recognition_root,
+            layout_root,
+            region_root,
+            doc_orientation_root,
+            textline_orientation_root,
+        ):
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "config.json").write_text("{}", encoding="utf-8")
+            (root / "model.safetensors").write_bytes(b"weights")
+        for downloaded, total in self.progress_steps.get("ocr", []):
+            if on_progress is not None:
+                on_progress(downloaded, total)
+
+        return FakeOcrArtifactResult(
+            model_root=self.resolve_model_root("ocr", runtime_config.ocr_model),
+            detection_root=detection_root,
+            recognition_root=recognition_root,
+            layout_root=layout_root,
+            region_root=region_root,
+            doc_orientation_root=doc_orientation_root,
+            textline_orientation_root=textline_orientation_root,
+            downloaded_files=6,
+            downloaded_bytes=24,
+        )
+
 
 def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
     model_root.mkdir(parents=True, exist_ok=True)
@@ -58,9 +112,24 @@ def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
         (model_root / "model.safetensors").write_bytes(b"weights")
         return
     if kind == "ocr":
-        (model_root / "preprocessor_config.json").write_text("{}", encoding="utf-8")
-        (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
-        (model_root / "model.safetensors").write_bytes(b"weights")
+        cache_root = model_root.parents[1]
+        detection_root = cache_root / "PaddlePaddle" / "PP-OCRv4_mobile_det"
+        recognition_root = cache_root / "PaddlePaddle" / "PP-OCRv4_mobile_rec"
+        layout_root = cache_root / "PaddlePaddle" / "PP-DocLayout_plus-L"
+        region_root = cache_root / "PaddlePaddle" / "PP-DocBlockLayout"
+        doc_orientation_root = cache_root / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori"
+        textline_orientation_root = cache_root / "PaddlePaddle" / "PP-LCNet_x1_0_textline_ori"
+        for component_root in (
+            detection_root,
+            recognition_root,
+            layout_root,
+            region_root,
+            doc_orientation_root,
+            textline_orientation_root,
+        ):
+            component_root.mkdir(parents=True, exist_ok=True)
+            (component_root / "config.json").write_text("{}", encoding="utf-8")
+            (component_root / "model.safetensors").write_bytes(b"weights")
         return
     if kind == "caption":
         (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
@@ -82,7 +151,7 @@ def test_local_cache_verify_path_uses_existing_files_without_downloading(tmp_pat
     write_complete_local_model_cache(
         "reranker", manager.resolve_model_root("reranker", "Alibaba-NLP/gte-multilingual-reranker-base")
     )
-    write_complete_local_model_cache("ocr", manager.resolve_model_root("ocr", "PaddlePaddle/PaddleOCR-VL"))
+    write_complete_local_model_cache("ocr", manager.resolve_model_root("ocr", DEFAULT_OCR_MODEL_DISPLAY))
     write_complete_local_model_cache("caption", manager.resolve_model_root("caption", "vikhyatk/moondream2"))
 
     embedding_runtime = object()
@@ -147,7 +216,7 @@ def test_missing_cache_download_path_fetches_and_marks_ready(tmp_path: Path):
     assert manager.calls == [
         ("embedding", "Alibaba-NLP/gte-multilingual-base", False),
         ("reranker", "Alibaba-NLP/gte-multilingual-reranker-base", False),
-        ("ocr", "PaddlePaddle/PaddleOCR-VL", False),
+        ("ocr-bundle", DEFAULT_OCR_MODEL_DISPLAY, False),
         ("caption", "vikhyatk/moondream2", False),
     ]
     assert phases(emitted)[0] == "verifying"
@@ -200,11 +269,8 @@ def test_failed_load_path_marks_only_the_failing_model_failed(tmp_path: Path):
     result = service.ensure_required_models()
 
     assert result == {"ok": False}
-    assert embedding_loader_calls == [
-        manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base"),
-        manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base"),
-    ]
-    assert manager.calls == [("embedding", "Alibaba-NLP/gte-multilingual-base", True)]
+    assert embedding_loader_calls == [manager.resolve_model_root("embedding", "Alibaba-NLP/gte-multilingual-base")]
+    assert manager.calls == []
     assert phases(emitted)[0] == "verifying"
     assert phases(emitted)[-1] == "failed"
     assert service.snapshot()["phase"] == "failed"
@@ -258,7 +324,7 @@ def test_model_status_transitions_cover_success_and_failure_paths(tmp_path: Path
     assert failure_emitted[0]["payload"]["tasks"]["embedding"]["state"] == "waiting"
     assert failure_emitted[0]["payload"]["tasks"]["reranker"]["state"] == "waiting"
     assert phases(failure_emitted)[-1] == "failed"
-    assert "running" in phases(failure_emitted)
+    assert "running" not in phases(failure_emitted)
 
 
 def make_model_service(
@@ -274,7 +340,13 @@ def make_model_service(
             base_path=artifact_manager.cache_root.parent,
             embedding_model="Alibaba-NLP/gte-multilingual-base",
             reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
-            ocr_model="PaddlePaddle/PaddleOCR-VL",
+            ocr_model=DEFAULT_OCR_MODEL_DISPLAY,
+            ocr_detection_model="PaddlePaddle/PP-OCRv4_mobile_det",
+            ocr_recognition_model="PaddlePaddle/PP-OCRv4_mobile_rec",
+            ocr_layout_model="PaddlePaddle/PP-DocLayout_plus-L",
+            ocr_region_model="PaddlePaddle/PP-DocBlockLayout",
+            ocr_doc_orientation_model="PaddlePaddle/PP-LCNet_x1_0_doc_ori",
+            ocr_textline_orientation_model="PaddlePaddle/PP-LCNet_x1_0_textline_ori",
             caption_model="vikhyatk/moondream2",
             preferred_device="cpu",
             model_cache_dir=artifact_manager.cache_root,
@@ -283,6 +355,8 @@ def make_model_service(
         artifact_manager=artifact_manager,
         embedding_runtime_loader=embedding_loader,
         reranker_runtime_loader=reranker_loader,
+        ocr_runtime_loader=lambda model_path, *, preferred_device: object(),
+        caption_runtime_loader=lambda model_path, *, preferred_device: object(),
     )
 
 

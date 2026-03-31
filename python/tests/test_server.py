@@ -1,3 +1,5 @@
+import os
+
 from worker.protocol.server import create_server
 from worker.runtime.types import DeleteNodeRequest, IndexNodeRequest, IndexNodeResult
 
@@ -40,6 +42,40 @@ def test_start_returns_handshake_and_emits_health_event():
             },
         }
     ]
+
+
+def test_start_redirects_huggingface_cache_into_base_path(monkeypatch):
+    monkeypatch.delenv("HF_HOME", raising=False)
+    monkeypatch.delenv("HF_MODULES_CACHE", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_CACHE", raising=False)
+    monkeypatch.delenv("PADDLE_PDX_CACHE_HOME", raising=False)
+    monkeypatch.delenv("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", raising=False)
+    monkeypatch.delenv("PADDLE_PDX_MODEL_SOURCE", raising=False)
+    monkeypatch.delenv("PADDLE_PDX_HUGGING_FACE_ENDPOINT", raising=False)
+
+    server = create_server(event_sink=lambda event: None)
+
+    response = server.handle_request(
+        {
+            "id": "req-cache",
+            "method": "start",
+            "params": {
+                "basePath": "/tmp/knowdisk",
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "cpu",
+            },
+        }
+    )
+
+    assert response["result"]["ok"] is True
+    assert os.environ["HF_HOME"] == "/tmp/knowdisk/huggingface"
+    assert os.environ["HF_MODULES_CACHE"] == "/tmp/knowdisk/huggingface/modules"
+    assert os.environ["TRANSFORMERS_CACHE"] == "/tmp/knowdisk/huggingface/hub"
+    assert os.environ["PADDLE_PDX_CACHE_HOME"] == "/tmp/knowdisk/paddlex"
+    assert os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] == "True"
+    assert os.environ["PADDLE_PDX_MODEL_SOURCE"] == "huggingface"
+    assert os.environ["PADDLE_PDX_HUGGING_FACE_ENDPOINT"] == "https://huggingface.co"
 
 
 def test_shutdown_returns_ok_and_marks_server_stopped():

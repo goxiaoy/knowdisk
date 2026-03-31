@@ -33,10 +33,19 @@ class PythonWorkerImageModelConfig(TypedDict):
     local: NotRequired[PythonWorkerLocalModelConfig]
 
 
+class PythonWorkerOcrLocalModelConfig(TypedDict):
+    model: str
+
+
+class PythonWorkerOcrConfig(TypedDict):
+    provider: Literal["local"]
+    local: NotRequired[PythonWorkerOcrLocalModelConfig]
+
+
 class PythonWorkerCoreConfig(TypedDict):
     embedding: PythonWorkerEmbeddingConfig
     reranker: PythonWorkerRerankerConfig
-    ocr: PythonWorkerImageModelConfig
+    ocr: PythonWorkerOcrConfig
     caption: PythonWorkerImageModelConfig
     providers: dict[str, object]
 

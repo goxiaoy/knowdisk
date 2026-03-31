@@ -6,6 +6,7 @@ from worker.model.artifacts import (
     select_caption_repo_files,
     select_embedding_repo_files,
     select_ocr_repo_files,
+    select_repo_files_for_model,
     select_reranker_repo_files,
 )
 
@@ -64,26 +65,16 @@ def test_select_reranker_repo_files_keeps_transformer_assets():
     ]
 
 
-def test_select_ocr_repo_files_keeps_image_recognition_assets():
+def test_select_ocr_repo_files_skips_runtime_managed_builtin_pipeline():
     selected = select_ocr_repo_files(
         [
             {"rfilename": "README.md", "size": 1},
             {"rfilename": "config.json", "size": 2},
-            {"rfilename": "configuration_paddleocr_vl.py", "size": 2},
-            {"rfilename": "preprocessor_config.json", "size": 3},
-            {"rfilename": "processor_config.json", "size": 4},
-            {"rfilename": "model.safetensors", "size": 5},
-            {"rfilename": "tokenizer.json", "size": 6},
+            {"rfilename": "model.safetensors", "size": 9},
         ]
     )
 
-    assert [item.path for item in selected] == [
-        "config.json",
-        "configuration_paddleocr_vl.py",
-        "preprocessor_config.json",
-        "processor_config.json",
-        "model.safetensors",
-    ]
+    assert selected == []
 
 
 def test_select_caption_repo_files_keeps_multimodal_assets():
@@ -106,6 +97,29 @@ def test_select_caption_repo_files_keeps_multimodal_assets():
         "config.json",
         "hf_moondream.py",
         "vision.py",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "model.safetensors",
+    ]
+
+
+def test_select_repo_files_for_unknown_caption_model_uses_default_caption_rule():
+    selected = select_repo_files_for_model(
+        "caption",
+        "unknown/model",
+        [
+            {"rfilename": "config.json", "size": 2},
+            {"rfilename": "processor_config.json", "size": 3},
+            {"rfilename": "tokenizer.json", "size": 4},
+            {"rfilename": "tokenizer_config.json", "size": 5},
+            {"rfilename": "special_tokens_map.json", "size": 6},
+            {"rfilename": "model.safetensors", "size": 7},
+        ],
+    )
+
+    assert [item.path for item in selected] == [
+        "config.json",
         "processor_config.json",
         "tokenizer.json",
         "tokenizer_config.json",
@@ -166,16 +180,12 @@ def test_reranker_local_artifacts_require_config_and_weights(tmp_path: Path):
     assert has_complete_local_model_artifacts("reranker", model_root) is True
 
 
-def test_ocr_local_artifacts_require_processor_metadata_and_weights(tmp_path: Path):
+def test_ocr_local_artifacts_for_runtime_managed_pipeline_only_require_model_root(tmp_path: Path):
     model_root = tmp_path / "ocr"
-    model_root.mkdir(parents=True, exist_ok=True)
 
     assert has_complete_local_model_artifacts("ocr", model_root) is False
 
-    (model_root / "config.json").write_text("{}", encoding="utf-8")
-    (model_root / "preprocessor_config.json").write_text("{}", encoding="utf-8")
-    (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
-    (model_root / "model.safetensors").write_bytes(b"weights")
+    model_root.mkdir(parents=True, exist_ok=True)
 
     assert has_complete_local_model_artifacts("ocr", model_root) is True
 
@@ -187,13 +197,28 @@ def test_caption_local_artifacts_require_tokenizer_metadata_and_weights(tmp_path
     assert has_complete_local_model_artifacts("caption", model_root) is False
 
     (model_root / "config.json").write_text("{}", encoding="utf-8")
-    (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
     (model_root / "tokenizer.json").write_text("{}", encoding="utf-8")
     (model_root / "tokenizer_config.json").write_text("{}", encoding="utf-8")
     (model_root / "special_tokens_map.json").write_text("{}", encoding="utf-8")
     (model_root / "model.safetensors").write_bytes(b"weights")
 
-    assert has_complete_local_model_artifacts("caption", model_root) is True
+    assert has_complete_local_model_artifacts("caption", model_root, model="vikhyatk/moondream2") is True
+
+
+def test_unknown_caption_local_artifacts_still_require_processor_metadata(tmp_path: Path):
+    model_root = tmp_path / "caption-default"
+    model_root.mkdir(parents=True, exist_ok=True)
+    (model_root / "config.json").write_text("{}", encoding="utf-8")
+    (model_root / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (model_root / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+    (model_root / "special_tokens_map.json").write_text("{}", encoding="utf-8")
+    (model_root / "model.safetensors").write_bytes(b"weights")
+
+    assert has_complete_local_model_artifacts("caption", model_root, model="unknown/model") is False
+
+    (model_root / "processor_config.json").write_text("{}", encoding="utf-8")
+
+    assert has_complete_local_model_artifacts("caption", model_root, model="unknown/model") is True
 
 
 def test_detects_resumable_partial_downloads(tmp_path: Path):

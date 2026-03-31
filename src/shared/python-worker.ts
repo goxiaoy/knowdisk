@@ -218,7 +218,12 @@ function isPythonWorkerCoreConfig(value: unknown): value is PythonWorkerCoreConf
     }
   }
 
-  if (ocr.provider !== "local" || !isRecord(ocr.local) || typeof ocr.local.model !== "string" || ocr.local.model.length === 0) {
+  if (
+    ocr.provider !== "local" ||
+    !isRecord(ocr.local) ||
+    typeof ocr.local.model !== "string" ||
+    ocr.local.model.length === 0
+  ) {
     return false;
   }
 

@@ -1,0 +1,143 @@
+{
+  "Alibaba-NLP/gte-multilingual-base": {
+    "kind": "embedding",
+    "repo_required_files": [
+      "config.json",
+      "config_sentence_transformers.json",
+      "modules.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "special_tokens_map.json",
+      "sentence_bert_config.json",
+      "1_Pooling/config.json",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json",
+      "modules.json",
+      "1_Pooling/config.json"
+    ]
+  },
+  "Alibaba-NLP/gte-multilingual-reranker-base": {
+    "kind": "reranker",
+    "repo_required_files": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "special_tokens_map.json",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-OCRv4_mobile": {
+    "kind": "ocr",
+    "repo_required_files": [],
+    "local_required_files": [],
+    "runtime_managed": true
+  },
+  "PaddlePaddle/PP-OCRv4_mobile_det": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-OCRv4_mobile_rec": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-DocLayout_plus-L": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-DocBlockLayout": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-LCNet_x1_0_doc_ori": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-LCNet_x1_0_textline_ori": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "vikhyatk/moondream2": {
+    "kind": "caption",
+    "repo_required_files": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "special_tokens_map.json",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "special_tokens_map.json"
+    ]
+  }
+}

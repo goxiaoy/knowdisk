@@ -52,7 +52,7 @@ describe("createPythonWorkerStatusStore", () => {
             reranker: null,
             ocr: {
               id: "ocr-local",
-              model: "PaddlePaddle/PaddleOCR-VL",
+              model: "PaddlePaddle/PP-OCRv4_mobile",
               state: "pending",
               progressPct: 0,
               error: "",
@@ -80,7 +80,7 @@ describe("createPythonWorkerStatusStore", () => {
 
     expect(store.getModelStatus().phase).toBe("completed");
     expect(store.getModelStatus().tasks.embedding?.model).toBe("embed");
-    expect(store.getModelStatus().tasks.ocr?.model).toBe("PaddlePaddle/PaddleOCR-VL");
+    expect(store.getModelStatus().tasks.ocr?.model).toBe("PaddlePaddle/PP-OCRv4_mobile");
     expect(store.getIndexStatus()).toEqual({
       available: true,
       phase: "indexing",

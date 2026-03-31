@@ -40,7 +40,7 @@ export function createDefaultCoreConfig(): CoreConfig {
     ocr: {
       provider: "local",
       local: {
-        model: "PaddlePaddle/PaddleOCR-VL",
+        model: "PaddlePaddle/PP-OCRv4_mobile",
       },
     },
     caption: {

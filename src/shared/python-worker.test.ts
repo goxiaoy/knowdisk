@@ -44,7 +44,7 @@ test("accepts valid python worker request frames", () => {
           ocr: {
             provider: "local",
             local: {
-              model: "PaddlePaddle/PaddleOCR-VL",
+              model: "PaddlePaddle/PP-OCRv4_mobile",
             },
           },
           caption: {
@@ -150,7 +150,7 @@ test("rejects malformed python worker frames", () => {
           ocr: {
             provider: "local",
             local: {
-              model: "PaddlePaddle/PaddleOCR-VL",
+              model: "PaddlePaddle/PP-OCRv4_mobile",
             },
           },
           caption: {
@@ -191,7 +191,7 @@ test("rejects malformed python worker frames", () => {
           ocr: {
             provider: "local",
             local: {
-              model: "PaddlePaddle/PaddleOCR-VL",
+              model: "PaddlePaddle/PP-OCRv4_mobile",
             },
           },
           caption: {

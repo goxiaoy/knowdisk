@@ -7,7 +7,7 @@ from pathlib import Path
 from worker.index.queue import IndexQueue
 from worker.index.service import IndexService
 from worker.model.service import ModelService
-from worker.model.types import ModelRuntimeConfig
+from worker.model.types import DEFAULT_OCR_MODEL_DISPLAY, ModelRuntimeConfig
 from worker.parser.types import ParserMount, ParserNode
 from worker.parser.service import parse_node as parse_node_from_mount
 from worker.runtime.bootstrap import create_worker_runtime
@@ -50,10 +50,10 @@ def test_simple_file_indexes_through_parser_queue_and_vector_store(
                             "provider": "local",
                             "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
                         },
-                        "ocr": {
-                            "provider": "local",
-                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
-                        },
+                            "ocr": {
+                                "provider": "local",
+                                "local": {"model": "PaddlePaddle/PP-OCRv4_mobile"},
+                            },
                         "caption": {
                             "provider": "local",
                             "local": {"model": "vikhyatk/moondream2"},
@@ -149,10 +149,10 @@ def test_png_file_indexes_through_parser_queue_and_vector_store(
                             "provider": "local",
                             "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
                         },
-                        "ocr": {
-                            "provider": "local",
-                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
-                        },
+                            "ocr": {
+                                "provider": "local",
+                                "local": {"model": "PaddlePaddle/PP-OCRv4_mobile"},
+                            },
                         "caption": {
                             "provider": "local",
                             "local": {"model": "vikhyatk/moondream2"},
@@ -253,10 +253,10 @@ def test_markdown_file_indexes_into_multiple_rows_through_parser_stack(
                             "provider": "local",
                             "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
                         },
-                        "ocr": {
-                            "provider": "local",
-                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
-                        },
+                            "ocr": {
+                                "provider": "local",
+                                "local": {"model": "PaddlePaddle/PP-OCRv4_mobile"},
+                            },
                         "caption": {
                             "provider": "local",
                             "local": {"model": "vikhyatk/moondream2"},
@@ -467,10 +467,10 @@ def test_incremental_replay_updates_processed_counts_and_vector_rows(tmp_path: P
                             "provider": "local",
                             "local": {"model": "Alibaba-NLP/gte-multilingual-reranker-base"},
                         },
-                        "ocr": {
-                            "provider": "local",
-                            "local": {"model": "PaddlePaddle/PaddleOCR-VL"},
-                        },
+                            "ocr": {
+                                "provider": "local",
+                                "local": {"model": "PaddlePaddle/PP-OCRv4_mobile"},
+                            },
                         "caption": {
                             "provider": "local",
                             "local": {"model": "vikhyatk/moondream2"},
@@ -605,11 +605,29 @@ def test_index_worker_logs_traceback_when_job_fails(tmp_path: Path, monkeypatch)
 def create_model_service(status_store: ModelStatusStore) -> ModelService:
     class FakeArtifactManager:
         def resolve_model_root(self, kind: str, model: str) -> Path:
-            return Path("/tmp") / kind / model.replace("/", "-")
+            return Path("/tmp") / Path(*model.split("/"))
 
         def ensure_artifacts(self, kind: str, model: str, force_redownload: bool = False, on_progress=None):
             _ = (kind, model, force_redownload, on_progress)
             return type("FakeArtifactResult", (), {"model_root": Path("/tmp"), "files": [], "downloaded_files": 0, "downloaded_bytes": 0})()
+
+        def ensure_ocr_artifacts(self, runtime_config: ModelRuntimeConfig, force_redownload: bool = False, on_progress=None):
+            _ = (runtime_config, force_redownload, on_progress)
+            return type(
+                "FakeOcrArtifactResult",
+                (),
+                {
+                    "model_root": Path("/tmp/PaddlePaddle/PP-OCRv4_mobile"),
+                    "detection_root": Path("/tmp/PaddlePaddle/PP-OCRv4_mobile_det"),
+                    "recognition_root": Path("/tmp/PaddlePaddle/PP-OCRv4_mobile_rec"),
+                    "layout_root": Path("/tmp/PaddlePaddle/PP-DocLayout_plus-L"),
+                    "region_root": Path("/tmp/PaddlePaddle/PP-DocBlockLayout"),
+                    "doc_orientation_root": Path("/tmp/PaddlePaddle/PP-LCNet_x1_0_doc_ori"),
+                    "textline_orientation_root": Path("/tmp/PaddlePaddle/PP-LCNet_x1_0_textline_ori"),
+                    "downloaded_files": 0,
+                    "downloaded_bytes": 0,
+                },
+            )()
 
     service = ModelService(
         status_store=status_store,
@@ -617,7 +635,13 @@ def create_model_service(status_store: ModelStatusStore) -> ModelService:
             base_path=Path("/tmp"),
             embedding_model="Alibaba-NLP/gte-multilingual-base",
             reranker_model="Alibaba-NLP/gte-multilingual-reranker-base",
-            ocr_model="PaddlePaddle/PaddleOCR-VL",
+            ocr_model=DEFAULT_OCR_MODEL_DISPLAY,
+            ocr_detection_model="PaddlePaddle/PP-OCRv4_mobile_det",
+            ocr_recognition_model="PaddlePaddle/PP-OCRv4_mobile_rec",
+            ocr_layout_model="PaddlePaddle/PP-DocLayout_plus-L",
+            ocr_region_model="PaddlePaddle/PP-DocBlockLayout",
+            ocr_doc_orientation_model="PaddlePaddle/PP-LCNet_x1_0_doc_ori",
+            ocr_textline_orientation_model="PaddlePaddle/PP-LCNet_x1_0_textline_ori",
             caption_model="vikhyatk/moondream2",
             preferred_device="cpu",
             model_cache_dir=Path("/tmp/model"),
@@ -626,6 +650,8 @@ def create_model_service(status_store: ModelStatusStore) -> ModelService:
         artifact_manager=FakeArtifactManager(),
         embedding_runtime_loader=lambda model_path, *, preferred_device: lambda text: [float(len(text))],
         reranker_runtime_loader=lambda model_path, *, preferred_device: {"provider": "stub-reranker"},
+        ocr_runtime_loader=lambda model_path, *, preferred_device: object(),
+        caption_runtime_loader=lambda model_path, *, preferred_device: object(),
     )
     assert service.ensure_required_models() == {"ok": True}
     return service

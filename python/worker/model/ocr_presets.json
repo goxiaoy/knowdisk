@@ -1,0 +1,10 @@
+{
+  "PaddlePaddle/PP-OCRv4_mobile": {
+    "detection": "PaddlePaddle/PP-OCRv4_mobile_det",
+    "recognition": "PaddlePaddle/PP-OCRv4_mobile_rec",
+    "layout": "PaddlePaddle/PP-DocLayout_plus-L",
+    "region": "PaddlePaddle/PP-DocBlockLayout",
+    "docOrientation": "PaddlePaddle/PP-LCNet_x1_0_doc_ori",
+    "textlineOrientation": "PaddlePaddle/PP-LCNet_x1_0_textline_ori"
+  }
+}

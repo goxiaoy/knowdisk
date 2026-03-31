@@ -16,7 +16,7 @@ from typing import BinaryIO, Callable, TextIO
 
 from worker.index.queue import IndexQueue
 from worker.index.service import IndexService
-from worker.model.image_runtime import analyze_moondream_caption_image, analyze_paddleocr_vl_image
+from worker.model.image_runtime import analyze_local_ocr_image, analyze_moondream_caption_image
 from worker.model.service import ModelService
 from worker.model.types import LoadedCaptionRuntime, LoadedOcrRuntime
 from worker.parser.image_pipeline import parse_image_document
@@ -310,6 +310,10 @@ def _fake_model_siblings(model: str) -> dict[str, bytes]:
             "config.json": b"{}",
             "preprocessor_config.json": b"{}",
             "processor_config.json": b"{}",
+            "tokenizer.model": b"fake-spm",
+            "tokenizer.json": b"{}",
+            "tokenizer_config.json": b"{}",
+            "special_tokens_map.json": b"{}",
             "model.safetensors": b"fake-ocr-weights",
         }
     if model.endswith("moondream2"):
@@ -397,7 +401,7 @@ def _create_image_parser(
             ocr_analyze = _fake_image_ocr_analyzer
             caption_analyze = _fake_image_caption_analyzer
         else:
-            ocr_analyze = analyze_paddleocr_vl_image
+            ocr_analyze = analyze_local_ocr_image
             caption_analyze = analyze_moondream_caption_image
         return parse_image_document(
             node,

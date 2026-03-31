@@ -5,8 +5,19 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, TypeAlias
 
+from worker.model.model_specs import resolve_ocr_preset
+
 ModelArtifactKind: TypeAlias = Literal["embedding", "reranker", "ocr", "caption"]
 ModelPreferredDevice: TypeAlias = Literal["cpu", "mps", "cuda"]
+
+DEFAULT_OCR_MODEL = "PaddlePaddle/PP-OCRv4_mobile"
+DEFAULT_OCR_DETECTION_MODEL = "PaddlePaddle/PP-OCRv4_mobile_det"
+DEFAULT_OCR_RECOGNITION_MODEL = "PaddlePaddle/PP-OCRv4_mobile_rec"
+DEFAULT_OCR_LAYOUT_MODEL = "PaddlePaddle/PP-DocLayout_plus-L"
+DEFAULT_OCR_REGION_MODEL = "PaddlePaddle/PP-DocBlockLayout"
+DEFAULT_OCR_DOC_ORIENTATION_MODEL = "PaddlePaddle/PP-LCNet_x1_0_doc_ori"
+DEFAULT_OCR_TEXTLINE_ORIENTATION_MODEL = "PaddlePaddle/PP-LCNet_x1_0_textline_ori"
+DEFAULT_OCR_MODEL_DISPLAY = DEFAULT_OCR_MODEL
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +26,12 @@ class ModelRuntimeConfig:
     embedding_model: str
     reranker_model: str
     ocr_model: str
+    ocr_detection_model: str
+    ocr_recognition_model: str
+    ocr_layout_model: str
+    ocr_region_model: str
+    ocr_doc_orientation_model: str
+    ocr_textline_orientation_model: str
     caption_model: str
     preferred_device: ModelPreferredDevice
     model_cache_dir: Path
@@ -26,7 +43,15 @@ class ModelRuntimeConfig:
         if preferred_device not in {"cpu", "mps", "cuda"}:
             raise ValueError(f"invalid preferred device: {preferred_device}")
 
-        ocr_model = _extract_model_id(value, "ocr", fallback="PaddlePaddle/PaddleOCR-VL")
+        (
+            ocr_detection_model,
+            ocr_recognition_model,
+            ocr_layout_model,
+            ocr_region_model,
+            ocr_doc_orientation_model,
+            ocr_textline_orientation_model,
+        ) = _extract_ocr_models(value)
+        ocr_model = _extract_ocr_model(value)
         caption_model = _extract_model_id(value, "caption", fallback="vikhyatk/moondream2")
         huggingface_endpoint = value.get("huggingfaceEndpoint")
         return cls(
@@ -34,6 +59,12 @@ class ModelRuntimeConfig:
             embedding_model=str(value["embeddingModel"]),
             reranker_model=str(value["rerankerModel"]),
             ocr_model=ocr_model,
+            ocr_detection_model=ocr_detection_model,
+            ocr_recognition_model=ocr_recognition_model,
+            ocr_layout_model=ocr_layout_model,
+            ocr_region_model=ocr_region_model,
+            ocr_doc_orientation_model=ocr_doc_orientation_model,
+            ocr_textline_orientation_model=ocr_textline_orientation_model,
             caption_model=caption_model,
             preferred_device=preferred_device,
             model_cache_dir=Path(str(value["basePath"])) / "model",
@@ -46,6 +77,12 @@ class ModelRuntimeConfig:
             "embeddingModel": self.embedding_model,
             "rerankerModel": self.reranker_model,
             "ocrModel": self.ocr_model,
+            "ocrDetectionModel": self.ocr_detection_model,
+            "ocrRecognitionModel": self.ocr_recognition_model,
+            "ocrLayoutModel": self.ocr_layout_model,
+            "ocrRegionModel": self.ocr_region_model,
+            "ocrDocOrientationModel": self.ocr_doc_orientation_model,
+            "ocrTextlineOrientationModel": self.ocr_textline_orientation_model,
             "captionModel": self.caption_model,
             "preferredDevice": self.preferred_device,
             "modelCacheDir": str(self.model_cache_dir),
@@ -84,8 +121,8 @@ class LoadedRerankerRuntime:
 class LoadedOcrRuntime:
     model_root: Path
     preferred_device: ModelPreferredDevice
-    model: object | None = None
-    processor: object | None = None
+    ocr_engine: object | None = None
+    layout_engine: object | None = None
     device: str = "cpu"
 
 
@@ -142,3 +179,35 @@ def _extract_model_id(value: Mapping[str, object], kind: str, *, fallback: str) 
         return fallback
 
     return model_value
+
+
+def _extract_ocr_models(value: Mapping[str, object]) -> tuple[str, str, str, str, str, str]:
+    ocr_model = _extract_ocr_model(value)
+    preset = resolve_ocr_preset(ocr_model)
+    return (
+        preset["detection"],
+        preset["recognition"],
+        preset["layout"],
+        preset["region"],
+        preset["docOrientation"],
+        preset["textlineOrientation"],
+    )
+
+
+def _extract_ocr_model(value: Mapping[str, object]) -> str:
+    core_config_value = value.get("coreConfig")
+    if not isinstance(core_config_value, Mapping):
+        return DEFAULT_OCR_MODEL
+
+    ocr_value = core_config_value.get("ocr")
+    if not isinstance(ocr_value, Mapping):
+        return DEFAULT_OCR_MODEL
+
+    local_value = ocr_value.get("local")
+    if not isinstance(local_value, Mapping):
+        return DEFAULT_OCR_MODEL
+
+    model = local_value.get("model")
+    if isinstance(model, str) and model.strip():
+        return model
+    return DEFAULT_OCR_MODEL

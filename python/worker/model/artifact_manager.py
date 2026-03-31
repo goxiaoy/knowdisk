@@ -3,17 +3,14 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass
+from inspect import Parameter, signature
 from pathlib import Path
 from collections.abc import Callable, Mapping
 from urllib.parse import urlsplit
 
-from worker.model.artifacts import (
-    select_caption_repo_files,
-    select_embedding_repo_files,
-    select_ocr_repo_files,
-    select_reranker_repo_files,
-)
-from worker.model.types import ModelArtifactKind, ModelRepoFile
+from worker.model.artifacts import has_complete_local_model_artifacts, select_repo_files_for_model
+from worker.model.model_specs import get_model_artifact_spec
+from worker.model.types import ModelArtifactKind, ModelRepoFile, ModelRuntimeConfig
 from worker.model.download import download_file
 ProgressCallback = Callable[[int, int], None]
 FetchCallable = Callable[[str, dict[str, str] | None], object]
@@ -25,6 +22,19 @@ class ModelArtifactEnsureResult:
     model: str
     model_root: Path
     files: list[ModelRepoFile]
+    downloaded_files: int
+    downloaded_bytes: int
+
+
+@dataclass(frozen=True)
+class OcrArtifactEnsureResult:
+    model_root: Path
+    detection_root: Path
+    recognition_root: Path
+    layout_root: Path
+    region_root: Path
+    doc_orientation_root: Path
+    textline_orientation_root: Path
     downloaded_files: int
     downloaded_bytes: int
 
@@ -46,13 +56,19 @@ class ModelArtifactManager:
         self._require_status(response, 200, f"Failed to list model files for {model}")
         payload = self._read_json(response)
         siblings = payload.get("siblings", []) if isinstance(payload, Mapping) else []
-        files = self._select_required_files(kind, siblings)
+        files = self._select_required_files(model, kind, siblings)
         if not files:
             raise ValueError(f"No required model artifacts found for {kind} model {model}")
         return files
 
     def resolve_model_root(self, kind: ModelArtifactKind, model: str) -> Path:
-        return self._cache_dir / kind / Path(*model.split("/"))
+        _ = kind
+        return self._cache_dir / Path(*model.split("/"))
+
+    def resolve_ocr_model_root(self, role: str, model: str) -> Path:
+        if role not in {"detection", "recognition", "layout", "region", "docOrientation", "textlineOrientation"}:
+            raise ValueError(f"unknown ocr artifact role: {role}")
+        return self._cache_dir / Path(*model.split("/"))
 
     def ensure_artifacts(
         self,
@@ -62,8 +78,110 @@ class ModelArtifactManager:
         on_progress: ProgressCallback | None = None,
     ) -> ModelArtifactEnsureResult:
         model_root = self.resolve_model_root(kind, model)
+        return self._ensure_artifacts_to_root(
+            kind=kind,
+            model=model,
+            model_root=model_root,
+            force_redownload=force_redownload,
+            on_progress=on_progress,
+        )
+
+    def ensure_ocr_artifacts(
+        self,
+        runtime_config: ModelRuntimeConfig,
+        force_redownload: bool = False,
+        on_progress: ProgressCallback | None = None,
+    ) -> OcrArtifactEnsureResult:
+        downloads: list[tuple[str, str, Path]] = [
+            ("detection", runtime_config.ocr_detection_model, self.resolve_ocr_model_root("detection", runtime_config.ocr_detection_model)),
+            (
+                "recognition",
+                runtime_config.ocr_recognition_model,
+                self.resolve_ocr_model_root("recognition", runtime_config.ocr_recognition_model),
+            ),
+            ("layout", runtime_config.ocr_layout_model, self.resolve_ocr_model_root("layout", runtime_config.ocr_layout_model)),
+            ("region", runtime_config.ocr_region_model, self.resolve_ocr_model_root("region", runtime_config.ocr_region_model)),
+            (
+                "docOrientation",
+                runtime_config.ocr_doc_orientation_model,
+                self.resolve_ocr_model_root("docOrientation", runtime_config.ocr_doc_orientation_model),
+            ),
+            (
+                "textlineOrientation",
+                runtime_config.ocr_textline_orientation_model,
+                self.resolve_ocr_model_root("textlineOrientation", runtime_config.ocr_textline_orientation_model),
+            ),
+        ]
+        total_bytes = 0
+        downloaded_bytes = 0
+        downloaded_files = 0
+
+        for role, model, model_root in downloads:
+            files = self._resolve_file_sizes(model, self.list_model_files("ocr", model))
+            total_bytes += sum(file.size for file in files)
+
+        for role, model, model_root in downloads:
+            result = self._ensure_artifacts_to_root(
+                kind="ocr",
+                model=model,
+                model_root=model_root,
+                force_redownload=force_redownload,
+                on_progress=(
+                    None
+                    if on_progress is None
+                    else lambda current, total, offset=downloaded_bytes: on_progress(offset + current, total_bytes)
+                ),
+            )
+            downloaded_bytes += result.downloaded_bytes
+            downloaded_files += result.downloaded_files
+
+        if on_progress is not None:
+            on_progress(downloaded_bytes, total_bytes)
+        return OcrArtifactEnsureResult(
+            model_root=self.resolve_model_root("ocr", runtime_config.ocr_model),
+            detection_root=self.resolve_ocr_model_root("detection", runtime_config.ocr_detection_model),
+            recognition_root=self.resolve_ocr_model_root("recognition", runtime_config.ocr_recognition_model),
+            layout_root=self.resolve_ocr_model_root("layout", runtime_config.ocr_layout_model),
+            region_root=self.resolve_ocr_model_root("region", runtime_config.ocr_region_model),
+            doc_orientation_root=self.resolve_ocr_model_root("docOrientation", runtime_config.ocr_doc_orientation_model),
+            textline_orientation_root=self.resolve_ocr_model_root(
+                "textlineOrientation", runtime_config.ocr_textline_orientation_model
+            ),
+            downloaded_files=downloaded_files,
+            downloaded_bytes=downloaded_bytes,
+        )
+
+    def _ensure_artifacts_to_root(
+        self,
+        *,
+        kind: ModelArtifactKind,
+        model: str,
+        model_root: Path,
+        force_redownload: bool,
+        on_progress: ProgressCallback | None,
+    ) -> ModelArtifactEnsureResult:
+        spec = get_model_artifact_spec(kind, model)
+        if spec.runtime_managed:
+            model_root.mkdir(parents=True, exist_ok=True)
+            return ModelArtifactEnsureResult(
+                kind=kind,
+                model=model,
+                model_root=model_root,
+                files=[],
+                downloaded_files=0,
+                downloaded_bytes=0,
+            )
         if force_redownload and model_root.exists():
             self._remove_tree(model_root)
+        if not force_redownload and has_complete_local_model_artifacts(kind, model_root, model=model):
+            return ModelArtifactEnsureResult(
+                kind=kind,
+                model=model,
+                model_root=model_root,
+                files=[],
+                downloaded_files=0,
+                downloaded_bytes=0,
+            )
 
         files = self._resolve_file_sizes(model, self.list_model_files(kind, model))
         total_bytes = sum(file.size for file in files)
@@ -75,13 +193,23 @@ class ModelArtifactManager:
             file_total = file.size
             if self._is_completed_file(destination, expected_size=file_total):
                 downloaded_bytes += file_total if file_total > 0 else destination.stat().st_size
-                if on_progress is not None:
-                    on_progress(downloaded_bytes, total_bytes)
+                self._notify_progress(
+                    on_progress,
+                    downloaded_bytes,
+                    total_bytes,
+                    file=file.path,
+                    target_path=str(destination),
+                )
                 continue
 
             def report_progress(downloaded_in_file: int, _file_total: int, *, offset: int = downloaded_bytes) -> None:
-                if on_progress is not None:
-                    on_progress(offset + downloaded_in_file, total_bytes)
+                self._notify_progress(
+                    on_progress,
+                    offset + downloaded_in_file,
+                    total_bytes,
+                    file=file.path,
+                    target_path=str(destination),
+                )
 
             download_file(
                 self._model_file_url(model, file.path),
@@ -92,8 +220,7 @@ class ModelArtifactManager:
             downloaded_bytes += file_total if file_total > 0 else destination.stat().st_size
             downloaded_files += 1
 
-        if on_progress is not None:
-            on_progress(downloaded_bytes, total_bytes)
+        self._notify_progress(on_progress, downloaded_bytes, total_bytes)
         return ModelArtifactEnsureResult(
             kind=kind,
             model=model,
@@ -105,18 +232,11 @@ class ModelArtifactManager:
 
     def _select_required_files(
         self,
+        model: str,
         kind: ModelArtifactKind,
         siblings: list[Mapping[str, object]] | tuple[Mapping[str, object], ...] | list[object],
     ) -> list[ModelRepoFile]:
-        if kind == "embedding":
-            return select_embedding_repo_files(siblings)
-        if kind == "reranker":
-            return select_reranker_repo_files(siblings)
-        if kind == "ocr":
-            return select_ocr_repo_files(siblings)
-        if kind == "caption":
-            return select_caption_repo_files(siblings)
-        raise ValueError(f"unknown model artifact kind: {kind}")
+        return select_repo_files_for_model(kind, model, siblings)
 
     def _model_list_url(self, model: str) -> str:
         return f"{self._huggingface_endpoint}/api/models/{model}"
@@ -217,3 +337,24 @@ class ModelArtifactManager:
                 details.append(f"host={parsed.netloc}")
             details.append(str(error))
             raise ValueError(": ".join(details)) from error
+
+    def _notify_progress(
+        self,
+        callback: ProgressCallback | None,
+        downloaded: int,
+        total: int,
+        *,
+        file: str | None = None,
+        target_path: str | None = None,
+    ) -> None:
+        if callback is None:
+            return
+        parameters = signature(callback).parameters.values()
+        accepts_metadata = any(
+            parameter.kind == Parameter.VAR_KEYWORD or parameter.name in {"file", "target_path"}
+            for parameter in parameters
+        )
+        if accepts_metadata:
+            callback(downloaded, total, file=file, target_path=target_path)  # type: ignore[misc]
+            return
+        callback(downloaded, total)

@@ -60,6 +60,16 @@ describe("validateCoreConfig", () => {
     });
   });
 
+  it("requires local ocr model preset for local provider", () => {
+    const config = createDefaultCoreConfig();
+    config.ocr.local!.model = "";
+
+    expect(validateCoreConfig(config)).toEqual({
+      ok: false,
+      errors: ["ocr.local.model is required for ocr.provider=local"],
+    });
+  });
+
   it("requires local caption settings for local provider", () => {
     const config = createDefaultCoreConfig();
     config.caption.local = undefined;
