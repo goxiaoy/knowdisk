@@ -5,6 +5,13 @@
     "layout": "PaddlePaddle/PP-DocLayout_plus-L",
     "region": "PaddlePaddle/PP-DocBlockLayout",
     "docOrientation": "PaddlePaddle/PP-LCNet_x1_0_doc_ori",
-    "textlineOrientation": "PaddlePaddle/PP-LCNet_x1_0_textline_ori"
+    "textlineOrientation": "PaddlePaddle/PP-LCNet_x1_0_textline_ori",
+    "docUnwarping": "PaddlePaddle/UVDoc",
+    "tableClassification": "PaddlePaddle/PP-LCNet_x1_0_table_cls",
+    "wiredTableStructureRecognition": "PaddlePaddle/SLANeXt_wired",
+    "wirelessTableStructureRecognition": "PaddlePaddle/SLANet_plus",
+    "wiredTableCellsDetection": "PaddlePaddle/RT-DETR-L_wired_table_cell_det",
+    "wirelessTableCellsDetection": "PaddlePaddle/RT-DETR-L_wireless_table_cell_det",
+    "formulaRecognition": "PaddlePaddle/PP-FormulaNet_plus-L"
   }
 }

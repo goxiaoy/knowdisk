@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from worker.model.types import DEFAULT_OCR_MODEL_DISPLAY, ModelRepoFile, ModelRuntimeConfig
+from worker.model.model_specs import resolve_ocr_preset
 
 
 def test_model_runtime_config_normalizes_mapping_inputs():
@@ -40,6 +41,18 @@ def test_model_runtime_config_normalizes_mapping_inputs():
     assert config.preferred_device == "cpu"
     assert config.model_cache_dir == Path("/tmp/knowdisk/model")
     assert config.huggingface_endpoint == "https://huggingface.co"
+
+
+def test_ocr_preset_includes_hidden_pp_structure_defaults():
+    preset = resolve_ocr_preset("PaddlePaddle/PP-OCRv4_mobile")
+
+    assert preset["docUnwarping"] == "PaddlePaddle/UVDoc"
+    assert preset["tableClassification"] == "PaddlePaddle/PP-LCNet_x1_0_table_cls"
+    assert preset["wiredTableStructureRecognition"] == "PaddlePaddle/SLANeXt_wired"
+    assert preset["wirelessTableStructureRecognition"] == "PaddlePaddle/SLANet_plus"
+    assert preset["wiredTableCellsDetection"] == "PaddlePaddle/RT-DETR-L_wired_table_cell_det"
+    assert preset["wirelessTableCellsDetection"] == "PaddlePaddle/RT-DETR-L_wireless_table_cell_det"
+    assert preset["formulaRecognition"] == "PaddlePaddle/PP-FormulaNet_plus-L"
 
 
 def test_model_repo_file_round_trips_to_legacy_dict():

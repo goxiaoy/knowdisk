@@ -14,7 +14,7 @@ describe("CoreConfig", () => {
           embeddingModel: "text-embedding-3-small",
         },
         huggingface: {
-          endpoint: "https://hf-mirror.com",
+          endpoint: "https://huggingface.co",
         },
       },
       embedding: {

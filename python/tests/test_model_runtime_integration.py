@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from worker.model.types import DEFAULT_OCR_MODEL_DISPLAY, LoadedRerankerRuntime, ModelRuntimeConfig
+from worker.model.model_specs import resolve_ocr_preset
 from worker.model.service import ModelService
 from worker.runtime.status import ModelStatusStore
 
@@ -113,20 +114,8 @@ def write_complete_local_model_cache(kind: str, model_root: Path) -> None:
         return
     if kind == "ocr":
         cache_root = model_root.parents[1]
-        detection_root = cache_root / "PaddlePaddle" / "PP-OCRv4_mobile_det"
-        recognition_root = cache_root / "PaddlePaddle" / "PP-OCRv4_mobile_rec"
-        layout_root = cache_root / "PaddlePaddle" / "PP-DocLayout_plus-L"
-        region_root = cache_root / "PaddlePaddle" / "PP-DocBlockLayout"
-        doc_orientation_root = cache_root / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori"
-        textline_orientation_root = cache_root / "PaddlePaddle" / "PP-LCNet_x1_0_textline_ori"
-        for component_root in (
-            detection_root,
-            recognition_root,
-            layout_root,
-            region_root,
-            doc_orientation_root,
-            textline_orientation_root,
-        ):
+        for model in resolve_ocr_preset(DEFAULT_OCR_MODEL_DISPLAY).values():
+            component_root = cache_root / Path(*model.split("/"))
             component_root.mkdir(parents=True, exist_ok=True)
             (component_root / "config.json").write_text("{}", encoding="utf-8")
             (component_root / "model.safetensors").write_bytes(b"weights")

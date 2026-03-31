@@ -15,7 +15,7 @@ export function createDefaultCoreConfig(): CoreConfig {
         apiKey: "",
       },
       huggingface: {
-        endpoint: "https://hf-mirror.com",
+        endpoint: "https://huggingface.co",
       },
       qwen: {
         endpoint: "",

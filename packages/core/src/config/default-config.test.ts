@@ -10,7 +10,7 @@ describe("createDefaultCoreConfig", () => {
       level: "info",
       name: "knowdisk",
     });
-    expect(config.providers.huggingface?.endpoint).toBe("https://hf-mirror.com");
+    expect(config.providers.huggingface?.endpoint).toBe("https://huggingface.co");
     expect(config.embedding.provider).toBe("local");
     expect(config.reranker.provider).toBe("local");
     expect(config.embedding.local?.model).toBe("Alibaba-NLP/gte-multilingual-base");

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
-from worker.model.model_specs import get_model_artifact_spec
+from worker.model.model_specs import get_model_artifact_spec, resolve_ocr_preset
 from worker.model.types import DEFAULT_OCR_MODEL_DISPLAY, ModelArtifactKind, ModelRepoFile, ModelRuntimeConfig
 
 _MODEL_WEIGHT_FILES = {
@@ -76,14 +76,7 @@ def has_complete_local_model_artifacts(
 
 def has_complete_local_ocr_artifacts(model_cache_dir: str | Path, runtime_config: ModelRuntimeConfig) -> bool:
     cache_dir = Path(model_cache_dir)
-    component_models = (
-        runtime_config.ocr_detection_model,
-        runtime_config.ocr_recognition_model,
-        runtime_config.ocr_layout_model,
-        runtime_config.ocr_region_model,
-        runtime_config.ocr_doc_orientation_model,
-        runtime_config.ocr_textline_orientation_model,
-    )
+    component_models = tuple(dict.fromkeys(resolve_ocr_preset(runtime_config.ocr_model).values()))
     return all(
         has_complete_local_model_artifacts(
             "ocr",

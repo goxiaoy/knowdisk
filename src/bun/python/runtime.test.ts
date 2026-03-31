@@ -120,7 +120,7 @@ function createCoreConfigSubset(): PythonWorkerCoreConfig {
     },
     providers: {
       huggingface: {
-        endpoint: "https://hf-mirror.com",
+        endpoint: "https://huggingface.co",
       },
     },
   };
@@ -214,7 +214,7 @@ describe("createPythonWorkerRuntime", () => {
       maxRestarts: 0,
       startupConfig: createStartupConfig({
         coreConfig: createCoreConfigSubset(),
-        huggingfaceEndpoint: "https://hf-mirror.com",
+        huggingfaceEndpoint: "https://huggingface.co",
       }),
     });
 
@@ -224,7 +224,7 @@ describe("createPythonWorkerRuntime", () => {
       method: "start",
       params: createStartupConfig({
         coreConfig: createCoreConfigSubset(),
-        huggingfaceEndpoint: "https://hf-mirror.com",
+        huggingfaceEndpoint: "https://huggingface.co",
       }),
     });
   });

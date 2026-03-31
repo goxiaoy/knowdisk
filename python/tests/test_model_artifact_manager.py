@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError
 
+from requests import RequestException
+
 from worker.model.artifact_manager import ModelArtifactManager
 from worker.model.types import ModelRepoFile, ModelRuntimeConfig
 
@@ -25,6 +27,18 @@ class FakeBodyOnlyResponse:
     status: int
     headers: dict[str, str]
     body: list[bytes] | bytes | None = None
+
+
+class FlakyBody:
+    def __init__(self, chunks: list[bytes], *, fail_after: int | None = None) -> None:
+        self._chunks = chunks
+        self._fail_after = fail_after
+
+    def __iter__(self):
+        for index, chunk in enumerate(self._chunks):
+            if self._fail_after is not None and index >= self._fail_after:
+                raise RequestException("tls eof")
+            yield chunk
 
 
 def test_lists_model_files_from_configured_endpoint(tmp_path: Path):
@@ -206,6 +220,51 @@ def test_preserves_partial_downloads_for_resume(tmp_path: Path):
     assert (model_root / "config.json").read_bytes() == b"test"
     assert not part_path.exists()
     assert calls[1][1] == {"Range": "bytes=2-"}
+
+
+def test_retries_streaming_request_failures_with_range_resume(tmp_path: Path):
+    calls: list[tuple[str, dict[str, str] | None]] = []
+    model_root = tmp_path / "cache" / "Alibaba-NLP" / "gte-multilingual-base"
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        calls.append((url, headers))
+        if url.endswith("/api/models/Alibaba-NLP/gte-multilingual-base"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}]},
+            )
+        if headers is None:
+            return FakeResponse(
+                status=200,
+                headers={"content-length": "4"},
+                body=FlakyBody([b"te", b"st"], fail_after=1),
+            )
+        assert headers == {"Range": "bytes=2-"}
+        return FakeResponse(
+            status=206,
+            headers={
+                "content-length": "2",
+                "content-range": "bytes 2-3/4",
+            },
+            body=[b"st"],
+        )
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+
+    result = manager.ensure_artifacts(
+        kind="embedding",
+        model="Alibaba-NLP/gte-multilingual-base",
+    )
+
+    assert result.model_root == model_root
+    assert (model_root / "config.json").read_bytes() == b"test"
+    assert calls[1][1] is None
+    assert calls[2][1] == {"Range": "bytes=2-"}
 
 
 def test_skips_completed_files_and_reports_existing_bytes_in_progress(tmp_path: Path):
@@ -487,7 +546,7 @@ def test_list_model_file_errors_include_endpoint_details(tmp_path: Path):
         raise AssertionError("expected list_model_files to report endpoint details on fetch error")
 
 
-def test_ensure_ocr_artifacts_downloads_detection_recognition_and_layout_models(tmp_path: Path):
+def test_ensure_ocr_artifacts_downloads_all_default_pp_structure_models(tmp_path: Path):
     calls: list[tuple[str, dict[str, str] | None]] = []
     progress: list[tuple[int, int]] = []
 
@@ -529,6 +588,48 @@ def test_ensure_ocr_artifacts_downloads_detection_recognition_and_layout_models(
                 headers={"content-type": "application/json"},
                 payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
             )
+        if url.endswith("/api/models/PaddlePaddle/UVDoc"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
+        if url.endswith("/api/models/PaddlePaddle/PP-LCNet_x1_0_table_cls"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
+        if url.endswith("/api/models/PaddlePaddle/SLANeXt_wired"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
+        if url.endswith("/api/models/PaddlePaddle/SLANet_plus"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
+        if url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wired_table_cell_det"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
+        if url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wireless_table_cell_det"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
+        if url.endswith("/api/models/PaddlePaddle/PP-FormulaNet_plus-L"):
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
         return FakeResponse(status=200, headers={"content-length": "4"}, body=[b"test"])
 
     manager = ModelArtifactManager(
@@ -556,8 +657,8 @@ def test_ensure_ocr_artifacts_downloads_detection_recognition_and_layout_models(
 
     result = manager.ensure_ocr_artifacts(runtime_config, on_progress=lambda downloaded, total: progress.append((downloaded, total)))
 
-    assert result.downloaded_files == 12
-    assert result.downloaded_bytes == 48
+    assert result.downloaded_files == 26
+    assert result.downloaded_bytes == 104
     assert result.detection_root == tmp_path / "cache" / "PaddlePaddle" / "PP-OCRv4_mobile_det"
     assert result.recognition_root == tmp_path / "cache" / "PaddlePaddle" / "PP-OCRv4_mobile_rec"
     assert result.layout_root == tmp_path / "cache" / "PaddlePaddle" / "PP-DocLayout_plus-L"
@@ -570,4 +671,65 @@ def test_ensure_ocr_artifacts_downloads_detection_recognition_and_layout_models(
     assert (result.region_root / "model.safetensors").read_bytes() == b"test"
     assert (result.doc_orientation_root / "config.json").read_bytes() == b"test"
     assert (result.textline_orientation_root / "model.safetensors").read_bytes() == b"test"
-    assert progress[-1] == (48, 48)
+    assert any(url.endswith("/api/models/PaddlePaddle/UVDoc") for url, _ in calls)
+    assert any(url.endswith("/api/models/PaddlePaddle/PP-LCNet_x1_0_table_cls") for url, _ in calls)
+    assert any(url.endswith("/api/models/PaddlePaddle/SLANeXt_wired") for url, _ in calls)
+    assert any(url.endswith("/api/models/PaddlePaddle/SLANet_plus") for url, _ in calls)
+    assert any(url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wired_table_cell_det") for url, _ in calls)
+    assert any(url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wireless_table_cell_det") for url, _ in calls)
+    assert any(url.endswith("/api/models/PaddlePaddle/PP-FormulaNet_plus-L") for url, _ in calls)
+    assert progress[-1] == (104, 104)
+
+
+def test_ensure_ocr_artifacts_forwards_file_metadata_in_progress_callback(tmp_path: Path):
+    progress: list[tuple[int, int, str | None, str | None]] = []
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        _ = headers
+        if "/api/models/" in url:
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}]},
+            )
+        return FakeResponse(
+            status=200,
+            headers={"content-length": "4"},
+            body=[b"test"],
+        )
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+    runtime_config = ModelRuntimeConfig.from_mapping(
+        {
+            "basePath": str(tmp_path),
+            "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+            "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+            "preferredDevice": "cpu",
+            "coreConfig": {
+                "ocr": {
+                    "provider": "local",
+                    "local": {
+                        "model": "PaddlePaddle/PP-OCRv4_mobile",
+                    },
+                },
+                "caption": {"provider": "local", "local": {"model": "vikhyatk/moondream2"}},
+            },
+        }
+    )
+
+    manager.ensure_ocr_artifacts(
+        runtime_config,
+        on_progress=lambda downloaded, total, file=None, target_path=None: progress.append(
+            (downloaded, total, file, target_path)
+        ),
+    )
+
+    assert any(item[2] == "config.json" for item in progress)
+    assert any(
+        item[3] == str(tmp_path / "cache" / "PaddlePaddle" / "PP-OCRv4_mobile_det" / "config.json")
+        for item in progress
+    )

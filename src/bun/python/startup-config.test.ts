@@ -19,7 +19,7 @@ describe("createPythonWorkerStartupConfig", () => {
       embeddingModel: "Alibaba-NLP/gte-multilingual-base",
       rerankerModel: "Alibaba-NLP/gte-multilingual-reranker-base",
       preferredDevice: "cpu",
-      huggingfaceEndpoint: "https://hf-mirror.com",
+      huggingfaceEndpoint: "https://huggingface.co",
       coreConfig: createPythonWorkerCoreConfigSubset(config),
     });
   });

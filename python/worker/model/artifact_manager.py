@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from urllib.parse import urlsplit
 
 from worker.model.artifacts import has_complete_local_model_artifacts, select_repo_files_for_model
-from worker.model.model_specs import get_model_artifact_spec
+from worker.model.model_specs import get_model_artifact_spec, resolve_ocr_preset
 from worker.model.types import ModelArtifactKind, ModelRepoFile, ModelRuntimeConfig
 from worker.model.download import download_file
 ProgressCallback = Callable[[int, int], None]
@@ -92,25 +92,10 @@ class ModelArtifactManager:
         force_redownload: bool = False,
         on_progress: ProgressCallback | None = None,
     ) -> OcrArtifactEnsureResult:
-        downloads: list[tuple[str, str, Path]] = [
-            ("detection", runtime_config.ocr_detection_model, self.resolve_ocr_model_root("detection", runtime_config.ocr_detection_model)),
-            (
-                "recognition",
-                runtime_config.ocr_recognition_model,
-                self.resolve_ocr_model_root("recognition", runtime_config.ocr_recognition_model),
-            ),
-            ("layout", runtime_config.ocr_layout_model, self.resolve_ocr_model_root("layout", runtime_config.ocr_layout_model)),
-            ("region", runtime_config.ocr_region_model, self.resolve_ocr_model_root("region", runtime_config.ocr_region_model)),
-            (
-                "docOrientation",
-                runtime_config.ocr_doc_orientation_model,
-                self.resolve_ocr_model_root("docOrientation", runtime_config.ocr_doc_orientation_model),
-            ),
-            (
-                "textlineOrientation",
-                runtime_config.ocr_textline_orientation_model,
-                self.resolve_ocr_model_root("textlineOrientation", runtime_config.ocr_textline_orientation_model),
-            ),
+        preset = resolve_ocr_preset(runtime_config.ocr_model)
+        downloads = [
+            (role, model, self.resolve_model_root("ocr", model))
+            for role, model in preset.items()
         ]
         total_bytes = 0
         downloaded_bytes = 0
@@ -129,14 +114,20 @@ class ModelArtifactManager:
                 on_progress=(
                     None
                     if on_progress is None
-                    else lambda current, total, offset=downloaded_bytes: on_progress(offset + current, total_bytes)
+                    else lambda current, total, file=None, target_path=None, offset=downloaded_bytes: self._notify_progress(
+                        on_progress,
+                        offset + current,
+                        total_bytes,
+                        file=file,
+                        target_path=target_path,
+                    )
                 ),
             )
             downloaded_bytes += result.downloaded_bytes
             downloaded_files += result.downloaded_files
 
         if on_progress is not None:
-            on_progress(downloaded_bytes, total_bytes)
+            self._notify_progress(on_progress, downloaded_bytes, total_bytes)
         return OcrArtifactEnsureResult(
             model_root=self.resolve_model_root("ocr", runtime_config.ocr_model),
             detection_root=self.resolve_ocr_model_root("detection", runtime_config.ocr_detection_model),

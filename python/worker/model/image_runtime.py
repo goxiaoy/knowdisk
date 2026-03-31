@@ -9,6 +9,7 @@ import torch
 from PIL import Image
 from transformers import AutoModelForCausalLM
 
+from worker.model.model_specs import resolve_ocr_preset
 from worker.model.types import LoadedCaptionRuntime, LoadedOcrRuntime, ModelRuntimeConfig
 
 
@@ -20,46 +21,79 @@ def load_local_ocr_runtime(
 ) -> LoadedOcrRuntime:
     device = _resolve_ocr_device(preferred_device)
     paddleocr = _import_paddleocr()
-    detection_root = _resolve_cached_model_root(runtime_config.model_cache_dir, runtime_config.ocr_detection_model)
-    recognition_root = _resolve_cached_model_root(runtime_config.model_cache_dir, runtime_config.ocr_recognition_model)
-    layout_root = _resolve_cached_model_root(runtime_config.model_cache_dir, runtime_config.ocr_layout_model)
-    region_root = _resolve_cached_model_root(runtime_config.model_cache_dir, runtime_config.ocr_region_model)
-    doc_orientation_root = _resolve_cached_model_root(
-        runtime_config.model_cache_dir, runtime_config.ocr_doc_orientation_model
+    preset = resolve_ocr_preset(runtime_config.ocr_model)
+    detection_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["detection"])
+    recognition_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["recognition"])
+    layout_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["layout"])
+    region_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["region"])
+    doc_orientation_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["docOrientation"])
+    textline_orientation_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["textlineOrientation"])
+    doc_unwarping_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["docUnwarping"])
+    table_classification_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["tableClassification"])
+    wired_table_structure_root = _resolve_cached_model_root(
+        runtime_config.model_cache_dir, preset["wiredTableStructureRecognition"]
     )
-    textline_orientation_root = _resolve_cached_model_root(
-        runtime_config.model_cache_dir, runtime_config.ocr_textline_orientation_model
+    wireless_table_structure_root = _resolve_cached_model_root(
+        runtime_config.model_cache_dir, preset["wirelessTableStructureRecognition"]
     )
+    wired_table_cells_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["wiredTableCellsDetection"])
+    wireless_table_cells_root = _resolve_cached_model_root(
+        runtime_config.model_cache_dir, preset["wirelessTableCellsDetection"]
+    )
+    formula_recognition_root = _resolve_cached_model_root(runtime_config.model_cache_dir, preset["formulaRecognition"])
     ocr_engine = paddleocr.PaddleOCR(
-        doc_orientation_classify_model_name=_paddle_model_name(runtime_config.ocr_doc_orientation_model),
+        doc_orientation_classify_model_name=_paddle_model_name(preset["docOrientation"]),
         doc_orientation_classify_model_dir=str(doc_orientation_root),
-        text_detection_model_name=_paddle_model_name(runtime_config.ocr_detection_model),
+        doc_unwarping_model_name=_paddle_model_name(preset["docUnwarping"]),
+        doc_unwarping_model_dir=str(doc_unwarping_root),
+        text_detection_model_name=_paddle_model_name(preset["detection"]),
         text_detection_model_dir=str(detection_root),
-        textline_orientation_model_name=_paddle_model_name(runtime_config.ocr_textline_orientation_model),
+        textline_orientation_model_name=_paddle_model_name(preset["textlineOrientation"]),
         textline_orientation_model_dir=str(textline_orientation_root),
-        text_recognition_model_name=_paddle_model_name(runtime_config.ocr_recognition_model),
+        text_recognition_model_name=_paddle_model_name(preset["recognition"]),
         text_recognition_model_dir=str(recognition_root),
-        use_doc_orientation_classify=False,
-        use_doc_unwarping=False,
-        use_textline_orientation=False,
+        use_doc_orientation_classify=True,
+        use_doc_unwarping=True,
+        use_textline_orientation=True,
         device=_resolve_paddle_device(device),
     )
     layout_engine = paddleocr.PPStructureV3(
-        layout_detection_model_name=_paddle_model_name(runtime_config.ocr_layout_model),
+        layout_detection_model_name=_paddle_model_name(preset["layout"]),
         layout_detection_model_dir=str(layout_root),
-        region_detection_model_name=_paddle_model_name(runtime_config.ocr_region_model),
+        region_detection_model_name=_paddle_model_name(preset["region"]),
         region_detection_model_dir=str(region_root),
-        doc_orientation_classify_model_name=_paddle_model_name(runtime_config.ocr_doc_orientation_model),
+        doc_orientation_classify_model_name=_paddle_model_name(preset["docOrientation"]),
         doc_orientation_classify_model_dir=str(doc_orientation_root),
-        text_detection_model_name=_paddle_model_name(runtime_config.ocr_detection_model),
+        doc_unwarping_model_name=_paddle_model_name(preset["docUnwarping"]),
+        doc_unwarping_model_dir=str(doc_unwarping_root),
+        text_detection_model_name=_paddle_model_name(preset["detection"]),
         text_detection_model_dir=str(detection_root),
-        textline_orientation_model_name=_paddle_model_name(runtime_config.ocr_textline_orientation_model),
+        textline_orientation_model_name=_paddle_model_name(preset["textlineOrientation"]),
         textline_orientation_model_dir=str(textline_orientation_root),
-        text_recognition_model_name=_paddle_model_name(runtime_config.ocr_recognition_model),
+        text_recognition_model_name=_paddle_model_name(preset["recognition"]),
         text_recognition_model_dir=str(recognition_root),
-        use_doc_orientation_classify=False,
-        use_doc_unwarping=False,
-        use_textline_orientation=False,
+        table_classification_model_name=_paddle_model_name(preset["tableClassification"]),
+        table_classification_model_dir=str(table_classification_root),
+        wired_table_structure_recognition_model_name=_paddle_model_name(preset["wiredTableStructureRecognition"]),
+        wired_table_structure_recognition_model_dir=str(wired_table_structure_root),
+        wireless_table_structure_recognition_model_name=_paddle_model_name(preset["wirelessTableStructureRecognition"]),
+        wireless_table_structure_recognition_model_dir=str(wireless_table_structure_root),
+        wired_table_cells_detection_model_name=_paddle_model_name(preset["wiredTableCellsDetection"]),
+        wired_table_cells_detection_model_dir=str(wired_table_cells_root),
+        wireless_table_cells_detection_model_name=_paddle_model_name(preset["wirelessTableCellsDetection"]),
+        wireless_table_cells_detection_model_dir=str(wireless_table_cells_root),
+        table_orientation_classify_model_name=_paddle_model_name(preset["docOrientation"]),
+        table_orientation_classify_model_dir=str(doc_orientation_root),
+        formula_recognition_model_name=_paddle_model_name(preset["formulaRecognition"]),
+        formula_recognition_model_dir=str(formula_recognition_root),
+        use_doc_orientation_classify=True,
+        use_doc_unwarping=True,
+        use_textline_orientation=True,
+        use_table_recognition=True,
+        use_formula_recognition=True,
+        use_region_detection=True,
+        use_chart_recognition=False,
+        use_seal_recognition=False,
         device=_resolve_paddle_device(device),
     )
     return LoadedOcrRuntime(

@@ -123,6 +123,104 @@
       "config.json"
     ]
   },
+  "PaddlePaddle/UVDoc": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-LCNet_x1_0_table_cls": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/SLANeXt_wired": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/SLANet_plus": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/RT-DETR-L_wired_table_cell_det": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/RT-DETR-L_wireless_table_cell_det": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
+  "PaddlePaddle/PP-FormulaNet_plus-L": {
+    "kind": "ocr",
+    "repo_required_files": [
+      "config.json",
+      "inference.json",
+      "inference.pdiparams",
+      "inference.yml",
+      "model.safetensors",
+      "pytorch_model.bin"
+    ],
+    "local_required_files": [
+      "config.json"
+    ]
+  },
   "vikhyatk/moondream2": {
     "kind": "caption",
     "repo_required_files": [

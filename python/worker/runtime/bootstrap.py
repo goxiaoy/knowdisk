@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import requests
 import sys
 import threading
 import time
 import traceback
-from urllib.request import Request, urlopen
 from dataclasses import dataclass
 from collections.abc import Iterable
 from inspect import Parameter, signature
@@ -30,8 +30,11 @@ from worker.vector.repository import VectorRepository
 
 _FAKE_MODEL_RUNTIME_ENV = "KNOWDISK_PYTHON_FAKE_MODEL_RUNTIME"
 _MODEL_FETCH_USER_AGENT = (
-    "Mozilla/5.0 (compatible; KnowDiskPythonWorker/0.1; +https://github.com/knowdisk)"
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
 )
+_MODEL_FETCH_TIMEOUT_SECONDS = 30
+_MODEL_FETCH_MAX_ATTEMPTS = 6
 
 
 @dataclass(slots=True)
@@ -241,7 +244,7 @@ class StreamingResponseBody:
 
     def __iter__(self):
         try:
-            yield from self._response
+            yield from self._response.iter_content(chunk_size=8192)
         finally:
             close = getattr(self._response, "close", None)
             if callable(close):
@@ -253,10 +256,27 @@ def fetch_model_http(url: str, headers: dict[str, str] | None = None) -> FetchRe
         "User-Agent": _MODEL_FETCH_USER_AGENT,
         **(headers or {}),
     }
-    request = Request(url, headers=request_headers)
-    response = urlopen(request)
+    last_error: Exception | None = None
+    for attempt in range(_MODEL_FETCH_MAX_ATTEMPTS):
+        try:
+            response = requests.get(
+                url,
+                headers=request_headers,
+                stream=True,
+                timeout=_MODEL_FETCH_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            break
+        except requests.RequestException as error:
+            last_error = error
+            if attempt + 1 >= _MODEL_FETCH_MAX_ATTEMPTS:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+    else:
+        assert last_error is not None
+        raise last_error
     return FetchResponse(
-        status=getattr(response, "status", response.getcode()),
+        status=response.status_code,
         headers={str(key): str(value) for key, value in response.headers.items()},
         body=StreamingResponseBody(response),
     )

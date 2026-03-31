@@ -105,27 +105,55 @@ def test_load_local_ocr_runtime_loads_processor_and_model(monkeypatch, tmp_path:
     assert calls[0][0] == "ocr"
     assert calls[1][0] == "layout"
     assert "use_general_ocr" not in calls[1][1]
-    assert calls[1][1]["use_textline_orientation"] is False
+    assert calls[0][1]["use_doc_orientation_classify"] is True
+    assert calls[0][1]["use_doc_unwarping"] is True
+    assert calls[0][1]["use_textline_orientation"] is True
     assert calls[0][1]["text_detection_model_name"] == "PP-OCRv4_mobile_det"
     assert calls[0][1]["text_recognition_model_name"] == "PP-OCRv4_mobile_rec"
     assert calls[0][1]["doc_orientation_classify_model_name"] == "PP-LCNet_x1_0_doc_ori"
+    assert calls[0][1]["doc_unwarping_model_name"] == "UVDoc"
     assert calls[0][1]["textline_orientation_model_name"] == "PP-LCNet_x1_0_textline_ori"
     assert calls[0][1]["text_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_det")
     assert calls[0][1]["text_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_rec")
     assert calls[0][1]["doc_orientation_classify_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori")
+    assert calls[0][1]["doc_unwarping_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "UVDoc")
     assert calls[0][1]["textline_orientation_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_textline_ori")
+    assert calls[1][1]["use_doc_orientation_classify"] is True
+    assert calls[1][1]["use_doc_unwarping"] is True
+    assert calls[1][1]["use_textline_orientation"] is True
+    assert calls[1][1]["use_table_recognition"] is True
+    assert calls[1][1]["use_formula_recognition"] is True
+    assert calls[1][1]["use_region_detection"] is True
+    assert calls[1][1]["use_chart_recognition"] is False
+    assert calls[1][1]["use_seal_recognition"] is False
     assert calls[1][1]["layout_detection_model_name"] == "PP-DocLayout_plus-L"
     assert calls[1][1]["region_detection_model_name"] == "PP-DocBlockLayout"
     assert calls[1][1]["doc_orientation_classify_model_name"] == "PP-LCNet_x1_0_doc_ori"
+    assert calls[1][1]["doc_unwarping_model_name"] == "UVDoc"
     assert calls[1][1]["textline_orientation_model_name"] == "PP-LCNet_x1_0_textline_ori"
     assert calls[1][1]["text_detection_model_name"] == "PP-OCRv4_mobile_det"
     assert calls[1][1]["text_recognition_model_name"] == "PP-OCRv4_mobile_rec"
+    assert calls[1][1]["table_classification_model_name"] == "PP-LCNet_x1_0_table_cls"
+    assert calls[1][1]["wired_table_structure_recognition_model_name"] == "SLANeXt_wired"
+    assert calls[1][1]["wireless_table_structure_recognition_model_name"] == "SLANet_plus"
+    assert calls[1][1]["wired_table_cells_detection_model_name"] == "RT-DETR-L_wired_table_cell_det"
+    assert calls[1][1]["wireless_table_cells_detection_model_name"] == "RT-DETR-L_wireless_table_cell_det"
+    assert calls[1][1]["table_orientation_classify_model_name"] == "PP-LCNet_x1_0_doc_ori"
+    assert calls[1][1]["formula_recognition_model_name"] == "PP-FormulaNet_plus-L"
     assert calls[1][1]["layout_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-DocLayout_plus-L")
     assert calls[1][1]["region_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-DocBlockLayout")
     assert calls[1][1]["doc_orientation_classify_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori")
+    assert calls[1][1]["doc_unwarping_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "UVDoc")
     assert calls[1][1]["textline_orientation_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_textline_ori")
     assert calls[1][1]["text_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_det")
     assert calls[1][1]["text_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_rec")
+    assert calls[1][1]["table_classification_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_table_cls")
+    assert calls[1][1]["wired_table_structure_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "SLANeXt_wired")
+    assert calls[1][1]["wireless_table_structure_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "SLANet_plus")
+    assert calls[1][1]["wired_table_cells_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "RT-DETR-L_wired_table_cell_det")
+    assert calls[1][1]["wireless_table_cells_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "RT-DETR-L_wireless_table_cell_det")
+    assert calls[1][1]["table_orientation_classify_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori")
+    assert calls[1][1]["formula_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-FormulaNet_plus-L")
 
 
 def test_load_local_ocr_runtime_falls_back_to_cpu_when_mps_is_preferred(monkeypatch, tmp_path: Path):
