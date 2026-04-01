@@ -43,7 +43,7 @@ import { createPythonWorkerRuntime } from "./python/runtime";
 import { createPythonWorkerStartupConfig } from "./python/startup-config";
 import { createPythonWorkerStatusStore } from "./python/status";
 import { createPythonWorkerTransport } from "./python/transport";
-import { isMissingRpcSendTransportError } from "./rpc-transport";
+import { createRendererRpcSender } from "./renderer-rpc";
 import { buildRecentFileSearchResults } from "./search";
 import { startBackgroundServices } from "./startup";
 import { createMainWindowOptions } from "./window-options";
@@ -528,42 +528,28 @@ const mainWindow = new BrowserWindow({
   }),
   rpc,
 });
+const rendererRpcSender = createRendererRpcSender({
+  webview: mainWindow.webview,
+  logger: app.logger,
+});
 
 const stopPythonWorkerStatusSubscription = pythonWorkerRuntime.subscribeStatusEvents((event) => {
   pythonWorkerStatus.applyEvent(event);
   if (event.type !== "statusSnapshot" && event.type !== "model_status_changed") {
     return;
   }
-  try {
-    rpc.send.modelStatusUpdated(pythonWorkerStatus.getModelStatus());
-  } catch (error) {
-    if (isMissingRpcSendTransportError(error)) {
-      return;
-    }
-    app.logger.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "failed to push python worker model status update to renderer"
-    );
-  }
+  rendererRpcSender.send(
+    () => rpc.send.modelStatusUpdated(pythonWorkerStatus.getModelStatus()),
+    "failed to push python worker model status update to renderer"
+  );
 });
 
 const stopPythonWorkerExitSubscription = pythonWorkerTransport.subscribeExit(() => {
   pythonWorkerStatus.reset();
-  try {
-    rpc.send.modelStatusUpdated(pythonWorkerStatus.getModelStatus());
-  } catch (error) {
-    if (isMissingRpcSendTransportError(error)) {
-      return;
-    }
-    app.logger.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "failed to push python worker unavailable status to renderer"
-    );
-  }
+  rendererRpcSender.send(
+    () => rpc.send.modelStatusUpdated(pythonWorkerStatus.getModelStatus()),
+    "failed to push python worker unavailable status to renderer"
+  );
 });
 
 const stopPythonWorkerStderrSubscription = pythonWorkerTransport.subscribeStderr((chunk) => {
@@ -600,19 +586,10 @@ const stopVfsStatusSubscription =
   app.vfs.subscribeSyncerEvents?.(({ mountId, event }) => {
     updateVfsMountStatus(mountId, event);
     vfsStatus = recomputeVfsStatus();
-    try {
-      rpc.send.vfsStatusUpdated(vfsStatus);
-    } catch (error) {
-      if (isMissingRpcSendTransportError(error)) {
-        return;
-      }
-      app.logger.error(
-        {
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "failed to push vfs status update to renderer"
-      );
-    }
+    rendererRpcSender.send(
+      () => rpc.send.vfsStatusUpdated(vfsStatus),
+      "failed to push vfs status update to renderer"
+    );
   }) ?? (() => {});
 
 const stopVfsNodeChangesSubscription = app.vfs.subscribeNodeChanges((node) => {
@@ -625,19 +602,10 @@ const stopVfsNodeChangesSubscription = app.vfs.subscribeNodeChanges((node) => {
     vfsMountStatus.set(mount.mountId, mount);
   }
   vfsStatus = recomputeVfsStatus();
-  try {
-    rpc.send.vfsStatusUpdated(vfsStatus);
-  } catch (error) {
-    if (isMissingRpcSendTransportError(error)) {
-      return;
-    }
-    app.logger.error(
-      {
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "failed to push vfs mount node change to renderer"
-    );
-  }
+  rendererRpcSender.send(
+    () => rpc.send.vfsStatusUpdated(vfsStatus),
+    "failed to push vfs mount node change to renderer"
+  );
 });
 
 void startBackgroundServices({

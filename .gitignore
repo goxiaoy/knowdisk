@@ -44,6 +44,7 @@ Thumbs.db
 
 # Local worktrees
 .worktrees/
+.omx/
 
 # example runtime
 .vfs-example/
