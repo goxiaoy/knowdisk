@@ -236,10 +236,10 @@ export function FilesTree({
   return (
     <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
       <Card className="flex h-full min-h-0 flex-col p-3">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="app-drag electrobun-webkit-app-region-drag mb-3 flex items-center justify-between">
         <p className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500">Files</p>
         <Button
-          className="gap-1.5 rounded-lg"
+          className="app-no-drag gap-1.5 rounded-lg"
           onClick={onAddDirectory}
           size="sm"
           variant="outline"

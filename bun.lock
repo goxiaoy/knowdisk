@@ -7,9 +7,7 @@
       "dependencies": {
         "@knowdisk/core": "workspace:*",
         "@knowdisk/vfs": "workspace:*",
-        "@milkdown/kit": "^7.19.0",
-        "@milkdown/react": "^7.19.0",
-        "@milkdown/theme-nord": "^7.19.0",
+        "@milkdown/crepe": "^7.19.0",
         "@modelcontextprotocol/sdk": "^1.26.0",
         "aws-sdk": "^2.1693.0",
         "chokidar": "^5.0.0",
@@ -347,10 +345,6 @@
     "@milkdown/preset-gfm": ["@milkdown/preset-gfm@7.19.0", "", { "dependencies": { "@milkdown/core": "7.19.0", "@milkdown/ctx": "7.19.0", "@milkdown/exception": "7.19.0", "@milkdown/preset-commonmark": "7.19.0", "@milkdown/prose": "7.19.0", "@milkdown/transformer": "7.19.0", "@milkdown/utils": "7.19.0", "prosemirror-safari-ime-span": "^1.0.1", "remark-gfm": "^4.0.1" } }, "sha512-wW5ShJUhIaWNnbtv4IjV+xh9TvVId+Lm8CAurUs2E1nBX2N5wHTzzl2/9WOTt/g4u49e64rJewkwZJri8MPy7g=="],
 
     "@milkdown/prose": ["@milkdown/prose@7.19.0", "", { "dependencies": { "@milkdown/exception": "7.19.0", "prosemirror-changeset": "^2.3.1", "prosemirror-commands": "^1.7.1", "prosemirror-dropcursor": "^1.8.2", "prosemirror-gapcursor": "^1.4.0", "prosemirror-history": "^1.5.0", "prosemirror-inputrules": "^1.5.1", "prosemirror-keymap": "^1.2.3", "prosemirror-model": "^1.25.4", "prosemirror-schema-list": "^1.5.1", "prosemirror-state": "^1.4.4", "prosemirror-tables": "^1.8.1", "prosemirror-transform": "^1.10.5", "prosemirror-view": "^1.41.3" } }, "sha512-T/uYqSr4YT4uZtu4nBxTWyvZhVs2Lzh9qpcYH81PVwtZUT3b57+e+39s1D7UKAwFGi0qB7qZu/53l6pcw8radg=="],
-
-    "@milkdown/react": ["@milkdown/react@7.19.0", "", { "dependencies": { "@milkdown/crepe": "7.19.0", "@milkdown/kit": "7.19.0" }, "peerDependencies": { "react": "*", "react-dom": "*" } }, "sha512-rtvnM2tC8A0IAzkG2u7XYPNtN08Yek+z9AHUbf4SRyVbXsOCTRSZxA7FEGul1iLl6TUz4oU8tQnMHPH4iWXBtA=="],
-
-    "@milkdown/theme-nord": ["@milkdown/theme-nord@7.19.0", "", { "dependencies": { "@milkdown/core": "7.19.0", "@milkdown/ctx": "7.19.0", "@milkdown/prose": "7.19.0", "clsx": "^2.0.0" } }, "sha512-TBbUuAJT8wiw3wZVVpDuA0U+UmNUulRgdtXnu72y2QNHdMLmYalw0Yjfx11cDEB52/Ld/z+xHuRvPNf30OSMjw=="],
 
     "@milkdown/transformer": ["@milkdown/transformer@7.19.0", "", { "dependencies": { "@milkdown/exception": "7.19.0", "@milkdown/prose": "7.19.0", "remark": "^15.0.1", "unified": "^11.0.3" } }, "sha512-Ui1vwbyTd1nAaieTylI8ibNbXSAxygkiFjkwOPGO5w0Eu7leH+0hVrbeGUCSzYdJfjGsN537CYu/8kvLIR+lQg=="],
 

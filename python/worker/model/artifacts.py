@@ -76,7 +76,15 @@ def has_complete_local_model_artifacts(
 
 def has_complete_local_ocr_artifacts(model_cache_dir: str | Path, runtime_config: ModelRuntimeConfig) -> bool:
     cache_dir = Path(model_cache_dir)
-    component_models = tuple(dict.fromkeys(resolve_ocr_preset(runtime_config.ocr_model).values()))
+    component_models = tuple(
+        dict.fromkeys(
+            resolve_ocr_preset(
+                runtime_config.ocr_model,
+                enable_table_recognition=runtime_config.ocr_enable_table_recognition,
+                enable_formula_recognition=runtime_config.ocr_enable_formula_recognition,
+            ).values()
+        )
+    )
     return all(
         has_complete_local_model_artifacts(
             "ocr",

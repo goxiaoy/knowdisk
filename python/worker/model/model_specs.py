@@ -112,11 +112,28 @@ def get_model_artifact_spec(kind: ModelArtifactKind, model: str) -> ModelArtifac
     )
 
 
-def resolve_ocr_preset(model: str) -> dict[str, str]:
+def resolve_ocr_preset(
+    model: str,
+    *,
+    enable_table_recognition: bool = True,
+    enable_formula_recognition: bool = True,
+) -> dict[str, str]:
     payload = _load_ocr_preset_payload().get(model)
     if payload is None:
         raise ValueError(f"invalid ocr model preset: {model}")
-    return {str(key): str(value) for key, value in payload.items()}
+    resolved = {str(key): str(value) for key, value in payload.items()}
+    if not enable_table_recognition:
+        for key in (
+            "tableClassification",
+            "wiredTableStructureRecognition",
+            "wirelessTableStructureRecognition",
+            "wiredTableCellsDetection",
+            "wirelessTableCellsDetection",
+        ):
+            resolved.pop(key, None)
+    if not enable_formula_recognition:
+        resolved.pop("formulaRecognition", None)
+    return resolved
 
 
 def get_model_kind(model: str) -> ModelArtifactKind | None:

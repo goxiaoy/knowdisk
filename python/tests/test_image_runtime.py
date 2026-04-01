@@ -121,8 +121,8 @@ def test_load_local_ocr_runtime_loads_processor_and_model(monkeypatch, tmp_path:
     assert calls[1][1]["use_doc_orientation_classify"] is True
     assert calls[1][1]["use_doc_unwarping"] is True
     assert calls[1][1]["use_textline_orientation"] is True
-    assert calls[1][1]["use_table_recognition"] is True
-    assert calls[1][1]["use_formula_recognition"] is True
+    assert calls[1][1]["use_table_recognition"] is False
+    assert calls[1][1]["use_formula_recognition"] is False
     assert calls[1][1]["use_region_detection"] is True
     assert calls[1][1]["use_chart_recognition"] is False
     assert calls[1][1]["use_seal_recognition"] is False
@@ -133,13 +133,13 @@ def test_load_local_ocr_runtime_loads_processor_and_model(monkeypatch, tmp_path:
     assert calls[1][1]["textline_orientation_model_name"] == "PP-LCNet_x1_0_textline_ori"
     assert calls[1][1]["text_detection_model_name"] == "PP-OCRv4_mobile_det"
     assert calls[1][1]["text_recognition_model_name"] == "PP-OCRv4_mobile_rec"
-    assert calls[1][1]["table_classification_model_name"] == "PP-LCNet_x1_0_table_cls"
-    assert calls[1][1]["wired_table_structure_recognition_model_name"] == "SLANeXt_wired"
-    assert calls[1][1]["wireless_table_structure_recognition_model_name"] == "SLANet_plus"
-    assert calls[1][1]["wired_table_cells_detection_model_name"] == "RT-DETR-L_wired_table_cell_det"
-    assert calls[1][1]["wireless_table_cells_detection_model_name"] == "RT-DETR-L_wireless_table_cell_det"
+    assert calls[1][1]["table_classification_model_name"] is None
+    assert calls[1][1]["wired_table_structure_recognition_model_name"] is None
+    assert calls[1][1]["wireless_table_structure_recognition_model_name"] is None
+    assert calls[1][1]["wired_table_cells_detection_model_name"] is None
+    assert calls[1][1]["wireless_table_cells_detection_model_name"] is None
     assert calls[1][1]["table_orientation_classify_model_name"] == "PP-LCNet_x1_0_doc_ori"
-    assert calls[1][1]["formula_recognition_model_name"] == "PP-FormulaNet_plus-L"
+    assert calls[1][1]["formula_recognition_model_name"] is None
     assert calls[1][1]["layout_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-DocLayout_plus-L")
     assert calls[1][1]["region_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-DocBlockLayout")
     assert calls[1][1]["doc_orientation_classify_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori")
@@ -147,13 +147,55 @@ def test_load_local_ocr_runtime_loads_processor_and_model(monkeypatch, tmp_path:
     assert calls[1][1]["textline_orientation_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_textline_ori")
     assert calls[1][1]["text_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_det")
     assert calls[1][1]["text_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-OCRv4_mobile_rec")
-    assert calls[1][1]["table_classification_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_table_cls")
-    assert calls[1][1]["wired_table_structure_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "SLANeXt_wired")
-    assert calls[1][1]["wireless_table_structure_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "SLANet_plus")
-    assert calls[1][1]["wired_table_cells_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "RT-DETR-L_wired_table_cell_det")
-    assert calls[1][1]["wireless_table_cells_detection_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "RT-DETR-L_wireless_table_cell_det")
+    assert calls[1][1]["table_classification_model_dir"] is None
+    assert calls[1][1]["wired_table_structure_recognition_model_dir"] is None
+    assert calls[1][1]["wireless_table_structure_recognition_model_dir"] is None
+    assert calls[1][1]["wired_table_cells_detection_model_dir"] is None
+    assert calls[1][1]["wireless_table_cells_detection_model_dir"] is None
     assert calls[1][1]["table_orientation_classify_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-LCNet_x1_0_doc_ori")
-    assert calls[1][1]["formula_recognition_model_dir"] == str(tmp_path / "model" / "PaddlePaddle" / "PP-FormulaNet_plus-L")
+    assert calls[1][1]["formula_recognition_model_dir"] is None
+
+
+def test_load_local_ocr_runtime_enables_optional_table_and_formula_modules(monkeypatch, tmp_path: Path):
+    calls: list[tuple[str, object, object | None, object | None]] = []
+
+    monkeypatch.setitem(
+        sys.modules,
+        "paddleocr",
+        SimpleNamespace(
+            PaddleOCR=lambda **kwargs: calls.append(("ocr", kwargs, None, None)) or object(),
+            PPStructureV3=lambda **kwargs: calls.append(("layout", kwargs, None, None)) or object(),
+        ),
+    )
+
+    load_local_ocr_runtime(
+        tmp_path,
+        preferred_device="cpu",
+        runtime_config=ModelRuntimeConfig.from_mapping(
+            {
+                "basePath": str(tmp_path),
+                "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+                "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+                "preferredDevice": "cpu",
+                "coreConfig": {
+                    "ocr": {
+                        "provider": "local",
+                        "local": {
+                            "model": "PaddlePaddle/PP-OCRv4_mobile",
+                            "enableTableRecognition": True,
+                            "enableFormulaRecognition": True,
+                        },
+                    },
+                    "caption": {"provider": "local", "local": {"model": "vikhyatk/moondream2"}},
+                },
+            }
+        ),
+    )
+
+    assert calls[1][1]["use_table_recognition"] is True
+    assert calls[1][1]["use_formula_recognition"] is True
+    assert calls[1][1]["table_classification_model_name"] == "PP-LCNet_x1_0_table_cls"
+    assert calls[1][1]["formula_recognition_model_name"] == "PP-FormulaNet_plus-L"
 
 
 def test_load_local_ocr_runtime_falls_back_to_cpu_when_mps_is_preferred(monkeypatch, tmp_path: Path):
@@ -232,7 +274,7 @@ def test_analyze_local_ocr_image_collects_text_and_regions(monkeypatch, tmp_path
             return [
                 {
                     "res": {
-                        "rec_texts": ["门诊", "收费票据"],
+                        "rec_texts": ["Alpha", "Beta Form"],
                         "rec_boxes": [[1, 2, 3, 4], [5, 6, 7, 8]],
                     }
                 }
@@ -245,8 +287,8 @@ def test_analyze_local_ocr_image_collects_text_and_regions(monkeypatch, tmp_path
                 {
                     "res": {
                         "layout": [
-                            {"label": "title", "bbox": [0, 0, 100, 40], "text": "门诊"},
-                            {"label": "text", "bbox": [0, 50, 300, 140], "text": "收费票据"},
+                            {"label": "title", "bbox": [0, 0, 100, 40], "text": "Alpha"},
+                            {"label": "text", "bbox": [0, 50, 300, 140], "text": "Beta Form"},
                         ]
                     }
                 }
@@ -262,17 +304,17 @@ def test_analyze_local_ocr_image_collects_text_and_regions(monkeypatch, tmp_path
 
     result = analyze_local_ocr_image(runtime, str(source_path))
 
-    assert result["text"] == "门诊\n收费票据"
+    assert result["text"] == "Alpha\nBeta Form"
     assert result["page"] == ""
     assert result["regions"] == [
-        {"id": "layout-0", "bbox": [0, 0, 100, 40], "text": "门诊"},
-        {"id": "layout-1", "bbox": [0, 50, 300, 140], "text": "收费票据"},
+        {"id": "layout-0", "bbox": [0, 0, 100, 40], "text": "Alpha"},
+        {"id": "layout-1", "bbox": [0, 50, 300, 140], "text": "Beta Form"},
     ]
     assert result["debug"] == {
         "ocrPayloadKeys": ["rec_boxes", "rec_texts"],
         "layoutPayloadKeys": ["layout"],
-        "ocrPreviewTexts": ["门诊", "收费票据"],
-        "layoutPreviewTexts": ["门诊", "收费票据"],
+        "ocrPreviewTexts": ["Alpha", "Beta Form"],
+        "layoutPreviewTexts": ["Alpha", "Beta Form"],
     }
 
 
@@ -287,7 +329,7 @@ def test_analyze_local_ocr_image_falls_back_to_ocr_boxes_when_layout_is_missing(
             return [
                 {
                     "res": {
-                        "rec_texts": ["住院", "结算单"],
+                        "rec_texts": ["Gamma", "Delta Memo"],
                         "rec_boxes": [[10, 20, 30, 40], [40, 50, 80, 90]],
                     }
                 }
@@ -308,10 +350,10 @@ def test_analyze_local_ocr_image_falls_back_to_ocr_boxes_when_layout_is_missing(
 
     result = analyze_local_ocr_image(runtime, str(source_path))
 
-    assert result["text"] == "住院\n结算单"
+    assert result["text"] == "Gamma\nDelta Memo"
     assert result["regions"] == [
-        {"id": "ocr-0", "bbox": [10, 20, 30, 40], "text": "住院"},
-        {"id": "ocr-1", "bbox": [40, 50, 80, 90], "text": "结算单"},
+        {"id": "ocr-0", "bbox": [10, 20, 30, 40], "text": "Gamma"},
+        {"id": "ocr-1", "bbox": [40, 50, 80, 90], "text": "Delta Memo"},
     ]
 
 
@@ -323,7 +365,7 @@ def test_analyze_local_ocr_image_reads_ppstructure_parsing_result_blocks(monkeyp
     class FakeOcrEngine:
         def predict(self, input_path):
             assert input_path == str(source_path)
-            return [{"res": {"rec_texts": ["税", "销售方信息"], "rec_boxes": [[1, 2, 3, 4], [5, 6, 7, 8]]}}]
+            return [{"res": {"rec_texts": ["Alpha", "Seller Block"], "rec_boxes": [[1, 2, 3, 4], [5, 6, 7, 8]]}}]
 
     class FakeLayoutEngine:
         def predict(self, input_path):
@@ -332,8 +374,8 @@ def test_analyze_local_ocr_image_reads_ppstructure_parsing_result_blocks(monkeyp
                 {
                     "res": {
                         "parsing_res_list": [
-                            {"block_label": "title", "block_bbox": [0, 0, 100, 40], "block_text": "电子发票"},
-                            {"block_label": "text", "block_bbox": [0, 50, 300, 140], "block_content": "销售方信息"},
+                            {"block_label": "title", "block_bbox": [0, 0, 100, 40], "block_text": "Document Title"},
+                            {"block_label": "text", "block_bbox": [0, 50, 300, 140], "block_content": "Seller Block"},
                         ]
                     }
                 }
@@ -350,10 +392,10 @@ def test_analyze_local_ocr_image_reads_ppstructure_parsing_result_blocks(monkeyp
     result = analyze_local_ocr_image(runtime, str(source_path))
 
     assert result["regions"] == [
-        {"id": "layout-0", "bbox": [0, 0, 100, 40], "text": "电子发票"},
-        {"id": "layout-1", "bbox": [0, 50, 300, 140], "text": "销售方信息"},
+        {"id": "layout-0", "bbox": [0, 0, 100, 40], "text": "Document Title"},
+        {"id": "layout-1", "bbox": [0, 50, 300, 140], "text": "Seller Block"},
     ]
-    assert result["debug"]["layoutPreviewTexts"] == ["电子发票", "销售方信息"]
+    assert result["debug"]["layoutPreviewTexts"] == ["Document Title", "Seller Block"]
 
 
 def test_analyze_moondream_caption_image_calls_caption(monkeypatch, tmp_path: Path):

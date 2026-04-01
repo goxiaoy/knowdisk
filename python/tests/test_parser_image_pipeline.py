@@ -166,12 +166,12 @@ def test_parse_image_document_logs_ocr_debug_summary(tmp_path: Path):
         _ = runtime, source_path
         return {
             "text": "Detected text",
-            "regions": [{"id": "r1", "text": "税"}],
+            "regions": [{"id": "r1", "text": "Alpha"}],
             "debug": {
                 "ocrPayloadKeys": ["rec_boxes", "rec_texts", "textline_orientation_angles"],
                 "layoutPayloadKeys": ["layout"],
-                "ocrPreviewTexts": ["税", "销售方信息"],
-                "layoutPreviewTexts": ["电子发票"],
+                "ocrPreviewTexts": ["Alpha", "Seller Block"],
+                "layoutPreviewTexts": ["Document Title"],
             },
         }
 
@@ -197,4 +197,4 @@ def test_parse_image_document_logs_ocr_debug_summary(tmp_path: Path):
     output = logger_stream.getvalue()
     assert '"msg":"image ocr debug"' in output
     assert '"ocrPayloadKeys":["rec_boxes","rec_texts","textline_orientation_angles"]' in output
-    assert '"ocrPreviewTexts":["\\u7a0e","\\u9500\\u552e\\u65b9\\u4fe1\\u606f"]' in output
+    assert '"ocrPreviewTexts":["Alpha","Seller Block"]' in output

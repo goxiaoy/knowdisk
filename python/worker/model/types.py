@@ -32,6 +32,8 @@ class ModelRuntimeConfig:
     ocr_region_model: str
     ocr_doc_orientation_model: str
     ocr_textline_orientation_model: str
+    ocr_enable_table_recognition: bool
+    ocr_enable_formula_recognition: bool
     caption_model: str
     preferred_device: ModelPreferredDevice
     model_cache_dir: Path
@@ -65,6 +67,8 @@ class ModelRuntimeConfig:
             ocr_region_model=ocr_region_model,
             ocr_doc_orientation_model=ocr_doc_orientation_model,
             ocr_textline_orientation_model=ocr_textline_orientation_model,
+            ocr_enable_table_recognition=_extract_ocr_feature_flag(value, "enableTableRecognition"),
+            ocr_enable_formula_recognition=_extract_ocr_feature_flag(value, "enableFormulaRecognition"),
             caption_model=caption_model,
             preferred_device=preferred_device,
             model_cache_dir=Path(str(value["basePath"])) / "model",
@@ -83,6 +87,8 @@ class ModelRuntimeConfig:
             "ocrRegionModel": self.ocr_region_model,
             "ocrDocOrientationModel": self.ocr_doc_orientation_model,
             "ocrTextlineOrientationModel": self.ocr_textline_orientation_model,
+            "ocrEnableTableRecognition": self.ocr_enable_table_recognition,
+            "ocrEnableFormulaRecognition": self.ocr_enable_formula_recognition,
             "captionModel": self.caption_model,
             "preferredDevice": self.preferred_device,
             "modelCacheDir": str(self.model_cache_dir),
@@ -211,3 +217,22 @@ def _extract_ocr_model(value: Mapping[str, object]) -> str:
     if isinstance(model, str) and model.strip():
         return model
     return DEFAULT_OCR_MODEL
+
+
+def _extract_ocr_feature_flag(value: Mapping[str, object], key: str) -> bool:
+    core_config_value = value.get("coreConfig")
+    if not isinstance(core_config_value, Mapping):
+        return False
+
+    ocr_value = core_config_value.get("ocr")
+    if not isinstance(ocr_value, Mapping):
+        return False
+
+    local_value = ocr_value.get("local")
+    if not isinstance(local_value, Mapping):
+        return False
+
+    flag = local_value.get(key)
+    if isinstance(flag, bool):
+        return flag
+    return False

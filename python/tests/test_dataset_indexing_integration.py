@@ -181,6 +181,8 @@ def create_model_service() -> ModelService:
             ocr_region_model="PaddlePaddle/PP-DocBlockLayout",
             ocr_doc_orientation_model="PaddlePaddle/PP-LCNet_x1_0_doc_ori",
             ocr_textline_orientation_model="PaddlePaddle/PP-LCNet_x1_0_textline_ori",
+            ocr_enable_table_recognition=False,
+            ocr_enable_formula_recognition=False,
             caption_model="vikhyatk/moondream2",
             preferred_device="cpu",
             model_cache_dir=Path("/tmp/model"),

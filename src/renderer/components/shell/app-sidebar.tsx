@@ -38,12 +38,12 @@ export function AppSidebar({
       className="z-10 flex h-full min-h-0 flex-col overflow-visible rounded-[28px] p-3 md:p-4"
       data-testid="app-sidebar"
     >
-      <div className="flex items-start justify-between pb-3">
+      <div className="app-drag electrobun-webkit-app-region-drag flex items-start justify-between pb-3">
         <div>
           <p className="text-lg font-semibold text-slate-900">KnowDisk</p>
           <p className="text-xs text-slate-500">Desktop workspace</p>
         </div>
-        <Button className="rounded-xl" size="icon" variant="ghost" type="button">
+        <Button className="app-no-drag rounded-xl" size="icon" variant="ghost" type="button">
           <SlidersHorizontal className="h-4 w-4" />
         </Button>
       </div>

@@ -1,73 +1,68 @@
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-type MilkdownRendererProps = {
-  markdown: string;
-};
+type CrepeModule = typeof import("@milkdown/crepe");
+type CrepeInstance = InstanceType<CrepeModule["Crepe"]>;
+
+const disabledFeatures = (Crepe: CrepeModule["Crepe"]) => ({
+  [Crepe.Feature.BlockEdit]: false,
+  [Crepe.Feature.Cursor]: false,
+  [Crepe.Feature.ImageBlock]: false,
+  [Crepe.Feature.LinkTooltip]: false,
+  [Crepe.Feature.Placeholder]: false,
+  [Crepe.Feature.Toolbar]: false,
+});
 
 export function MarkdownViewer({ markdown }: { markdown: string }) {
-  const [Renderer, setRenderer] = useState<ComponentType<MilkdownRendererProps> | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const instanceRef = useRef<CrepeInstance | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !rootRef.current) {
       return;
     }
 
     let active = true;
 
-    const load = async () => {
-      const [{ Milkdown, MilkdownProvider, useEditor }, core, { commonmark }, { nord }] =
-        await Promise.all([
-        import("@milkdown/react"),
-        import("@milkdown/kit/core"),
-        import("@milkdown/kit/preset/commonmark"),
-        import("@milkdown/theme-nord"),
-        ]);
+    const mount = async () => {
+      setLoading(true);
+      const { Crepe } = await import("@milkdown/crepe");
+      if (!active || !rootRef.current) {
+        return;
+      }
 
-      const DynamicRendererInner = ({ markdown: value }: MilkdownRendererProps) => {
-        const editor = useEditor(
-          (root) =>
-            core.Editor.make()
-              .config((ctx) => {
-                ctx.set(core.rootCtx, root);
-                ctx.set(core.defaultValueCtx, value);
-                ctx.set(core.editorViewOptionsCtx, {
-                  editable: () => false,
-                });
-              })
-              .use(commonmark)
-              .use(nord),
-          [value]
-        );
+      const crepe = new Crepe({
+        root: rootRef.current,
+        defaultValue: markdown,
+        features: disabledFeatures(Crepe),
+      });
 
-        return (
-          <div className="relative">
-            {editor.loading ? (
-              <div className="absolute inset-x-0 top-0 z-10 text-sm pointer-events-none text-slate-500">
-                Rendering markdown...
-              </div>
-            ) : null}
-            <Milkdown />
-          </div>
-        );
-      };
+      crepe.setReadonly(true);
+      instanceRef.current = crepe;
 
-      const DynamicRenderer = ({ markdown: value }: MilkdownRendererProps) => (
-        <MilkdownProvider>
-          <DynamicRendererInner markdown={value} />
-        </MilkdownProvider>
-      );
-
-      if (active) {
-        setRenderer(() => DynamicRenderer);
+      try {
+        await crepe.create();
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
       }
     };
 
-    void load();
+    void mount();
 
     return () => {
       active = false;
+      const current = instanceRef.current;
+      instanceRef.current = null;
+      if (current) {
+        void current.destroy();
+      }
+      if (rootRef.current) {
+        rootRef.current.innerHTML = "";
+      }
     };
-  }, []);
+  }, [markdown]);
 
   const fallback = useMemo(
     () => (
@@ -78,9 +73,22 @@ export function MarkdownViewer({ markdown }: { markdown: string }) {
     [markdown]
   );
 
-  if (!Renderer || typeof window === "undefined") {
+  if (typeof window === "undefined") {
     return fallback;
   }
 
-  return <Renderer markdown={markdown} />;
+  return (
+    <div className="relative">
+      {loading ? (
+        <div className="absolute inset-x-0 top-0 z-10 text-sm pointer-events-none text-slate-500">
+          Rendering markdown...
+        </div>
+      ) : null}
+      <div
+        ref={rootRef}
+        data-testid="markdown-crepe-root"
+        className="milkdown markdown-crepe-viewer"
+      />
+    </div>
+  );
 }

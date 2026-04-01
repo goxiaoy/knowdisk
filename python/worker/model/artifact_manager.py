@@ -66,7 +66,21 @@ class ModelArtifactManager:
         return self._cache_dir / Path(*model.split("/"))
 
     def resolve_ocr_model_root(self, role: str, model: str) -> Path:
-        if role not in {"detection", "recognition", "layout", "region", "docOrientation", "textlineOrientation"}:
+        if role not in {
+            "detection",
+            "recognition",
+            "layout",
+            "region",
+            "docOrientation",
+            "textlineOrientation",
+            "docUnwarping",
+            "tableClassification",
+            "wiredTableStructureRecognition",
+            "wirelessTableStructureRecognition",
+            "wiredTableCellsDetection",
+            "wirelessTableCellsDetection",
+            "formulaRecognition",
+        }:
             raise ValueError(f"unknown ocr artifact role: {role}")
         return self._cache_dir / Path(*model.split("/"))
 
@@ -92,7 +106,11 @@ class ModelArtifactManager:
         force_redownload: bool = False,
         on_progress: ProgressCallback | None = None,
     ) -> OcrArtifactEnsureResult:
-        preset = resolve_ocr_preset(runtime_config.ocr_model)
+        preset = resolve_ocr_preset(
+            runtime_config.ocr_model,
+            enable_table_recognition=runtime_config.ocr_enable_table_recognition,
+            enable_formula_recognition=runtime_config.ocr_enable_formula_recognition,
+        )
         downloads = [
             (role, model, self.resolve_model_root("ocr", model))
             for role, model in preset.items()

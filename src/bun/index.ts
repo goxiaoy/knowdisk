@@ -46,6 +46,7 @@ import { createPythonWorkerTransport } from "./python/transport";
 import { isMissingRpcSendTransportError } from "./rpc-transport";
 import { buildRecentFileSearchResults } from "./search";
 import { startBackgroundServices } from "./startup";
+import { createMainWindowOptions } from "./window-options";
 import {
   applyMountNodeChange,
   applyVfsSyncerEvent,
@@ -520,16 +521,11 @@ const rpc = defineElectrobunRPC<AppRPCSchema>("bun", {
 });
 
 const mainWindow = new BrowserWindow({
-  title: "Knowdisk",
-  url:
-    process.env.ELECTROBUN_RENDERER_URL?.trim() ||
-    (useDevelopmentRuntime ? DEV_SERVER_URL : PROD_VIEW_URL),
-  frame: {
-    width: 1400,
-    height: 900,
-    x: 120,
-    y: 100,
-  },
+  ...createMainWindowOptions({
+    rendererUrl:
+      process.env.ELECTROBUN_RENDERER_URL?.trim() ||
+      (useDevelopmentRuntime ? DEV_SERVER_URL : PROD_VIEW_URL),
+  }),
   rpc,
 });
 

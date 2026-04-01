@@ -41,6 +41,8 @@ export function createDefaultCoreConfig(): CoreConfig {
       provider: "local",
       local: {
         model: "PaddlePaddle/PP-OCRv4_mobile",
+        enableTableRecognition: false,
+        enableFormulaRecognition: false,
       },
     },
     caption: {

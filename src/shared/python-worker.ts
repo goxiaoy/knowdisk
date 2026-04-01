@@ -35,6 +35,8 @@ export type PythonWorkerCoreConfig = {
     provider: "local";
     local?: {
       model: string;
+      enableTableRecognition?: boolean;
+      enableFormulaRecognition?: boolean;
     };
   };
   caption: {
@@ -223,6 +225,20 @@ function isPythonWorkerCoreConfig(value: unknown): value is PythonWorkerCoreConf
     !isRecord(ocr.local) ||
     typeof ocr.local.model !== "string" ||
     ocr.local.model.length === 0
+  ) {
+    return false;
+  }
+
+  if (
+    ocr.local.enableTableRecognition !== undefined &&
+    typeof ocr.local.enableTableRecognition !== "boolean"
+  ) {
+    return false;
+  }
+
+  if (
+    ocr.local.enableFormulaRecognition !== undefined &&
+    typeof ocr.local.enableFormulaRecognition !== "boolean"
   ) {
     return false;
   }

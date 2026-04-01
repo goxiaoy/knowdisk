@@ -29,9 +29,7 @@
   "dependencies": {
     "@knowdisk/core": "workspace:*",
     "@knowdisk/vfs": "workspace:*",
-    "@milkdown/kit": "^7.19.0",
-    "@milkdown/react": "^7.19.0",
-    "@milkdown/theme-nord": "^7.19.0",
+    "@milkdown/crepe": "^7.19.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "aws-sdk": "^2.1693.0",
     "chokidar": "^5.0.0",

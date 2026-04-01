@@ -53,6 +53,8 @@ export type CoreConfig = {
     provider: OcrProviderId;
     local?: {
       model: string;
+      enableTableRecognition?: boolean;
+      enableFormulaRecognition?: boolean;
     };
   };
   caption: {

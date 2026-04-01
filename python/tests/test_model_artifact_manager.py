@@ -546,7 +546,7 @@ def test_list_model_file_errors_include_endpoint_details(tmp_path: Path):
         raise AssertionError("expected list_model_files to report endpoint details on fetch error")
 
 
-def test_ensure_ocr_artifacts_downloads_all_default_pp_structure_models(tmp_path: Path):
+def test_ensure_ocr_artifacts_downloads_only_core_models_by_default(tmp_path: Path):
     calls: list[tuple[str, dict[str, str] | None]] = []
     progress: list[tuple[int, int]] = []
 
@@ -657,8 +657,8 @@ def test_ensure_ocr_artifacts_downloads_all_default_pp_structure_models(tmp_path
 
     result = manager.ensure_ocr_artifacts(runtime_config, on_progress=lambda downloaded, total: progress.append((downloaded, total)))
 
-    assert result.downloaded_files == 26
-    assert result.downloaded_bytes == 104
+    assert result.downloaded_files == 14
+    assert result.downloaded_bytes == 56
     assert result.detection_root == tmp_path / "cache" / "PaddlePaddle" / "PP-OCRv4_mobile_det"
     assert result.recognition_root == tmp_path / "cache" / "PaddlePaddle" / "PP-OCRv4_mobile_rec"
     assert result.layout_root == tmp_path / "cache" / "PaddlePaddle" / "PP-DocLayout_plus-L"
@@ -672,13 +672,63 @@ def test_ensure_ocr_artifacts_downloads_all_default_pp_structure_models(tmp_path
     assert (result.doc_orientation_root / "config.json").read_bytes() == b"test"
     assert (result.textline_orientation_root / "model.safetensors").read_bytes() == b"test"
     assert any(url.endswith("/api/models/PaddlePaddle/UVDoc") for url, _ in calls)
+    assert not any(url.endswith("/api/models/PaddlePaddle/PP-LCNet_x1_0_table_cls") for url, _ in calls)
+    assert not any(url.endswith("/api/models/PaddlePaddle/SLANeXt_wired") for url, _ in calls)
+    assert not any(url.endswith("/api/models/PaddlePaddle/SLANet_plus") for url, _ in calls)
+    assert not any(url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wired_table_cell_det") for url, _ in calls)
+    assert not any(url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wireless_table_cell_det") for url, _ in calls)
+    assert not any(url.endswith("/api/models/PaddlePaddle/PP-FormulaNet_plus-L") for url, _ in calls)
+    assert progress[-1] == (56, 56)
+
+
+def test_ensure_ocr_artifacts_downloads_optional_table_and_formula_models_when_enabled(tmp_path: Path):
+    calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def fetch(url: str, headers: dict[str, str] | None = None) -> FakeResponse:
+        calls.append((url, headers))
+        if "/api/models/" in url:
+            return FakeResponse(
+                status=200,
+                headers={"content-type": "application/json"},
+                payload={"siblings": [{"rfilename": "config.json", "size": 4}, {"rfilename": "model.safetensors", "size": 4}]},
+            )
+        return FakeResponse(status=200, headers={"content-length": "4"}, body=[b"test"])
+
+    manager = ModelArtifactManager(
+        cache_dir=tmp_path / "cache",
+        huggingface_endpoint="https://hf.example",
+        fetch=fetch,
+    )
+    runtime_config = ModelRuntimeConfig.from_mapping(
+        {
+            "basePath": str(tmp_path),
+            "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+            "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+            "preferredDevice": "cpu",
+            "coreConfig": {
+                "ocr": {
+                    "provider": "local",
+                    "local": {
+                        "model": "PaddlePaddle/PP-OCRv4_mobile",
+                        "enableTableRecognition": True,
+                        "enableFormulaRecognition": True,
+                    },
+                },
+                "caption": {"provider": "local", "local": {"model": "vikhyatk/moondream2"}},
+            },
+        }
+    )
+
+    result = manager.ensure_ocr_artifacts(runtime_config)
+
+    assert result.downloaded_files == 26
+    assert result.downloaded_bytes == 104
     assert any(url.endswith("/api/models/PaddlePaddle/PP-LCNet_x1_0_table_cls") for url, _ in calls)
     assert any(url.endswith("/api/models/PaddlePaddle/SLANeXt_wired") for url, _ in calls)
     assert any(url.endswith("/api/models/PaddlePaddle/SLANet_plus") for url, _ in calls)
     assert any(url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wired_table_cell_det") for url, _ in calls)
     assert any(url.endswith("/api/models/PaddlePaddle/RT-DETR-L_wireless_table_cell_det") for url, _ in calls)
     assert any(url.endswith("/api/models/PaddlePaddle/PP-FormulaNet_plus-L") for url, _ in calls)
-    assert progress[-1] == (104, 104)
 
 
 def test_ensure_ocr_artifacts_forwards_file_metadata_in_progress_callback(tmp_path: Path):

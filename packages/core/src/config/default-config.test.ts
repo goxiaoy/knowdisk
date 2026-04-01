@@ -17,6 +17,8 @@ describe("createDefaultCoreConfig", () => {
     expect(config.reranker.local?.model).toBe("Alibaba-NLP/gte-multilingual-reranker-base");
     expect(config.ocr.provider).toBe("local");
     expect(config.ocr.local?.model).toBe("PaddlePaddle/PP-OCRv4_mobile");
+    expect(config.ocr.local?.enableTableRecognition).toBe(false);
+    expect(config.ocr.local?.enableFormulaRecognition).toBe(false);
     expect(config.caption.provider).toBe("local");
     expect(config.caption.local?.model).toBe("vikhyatk/moondream2");
     expect(config.basePath.endsWith(`${sep}.knowdisk`)).toBe(true);

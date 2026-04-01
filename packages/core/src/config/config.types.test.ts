@@ -29,6 +29,8 @@ describe("CoreConfig", () => {
         provider: "local",
         local: {
           model: "PaddlePaddle/PP-OCRv4_mobile",
+          enableTableRecognition: true,
+          enableFormulaRecognition: false,
         },
       },
       caption: {
@@ -43,6 +45,7 @@ describe("CoreConfig", () => {
     expect(config.providers.openai?.endpoint).toBe("https://api.openai.com");
     expect(config.embedding.provider).toBe("openai");
     expect(config.basePath).toBe("/tmp/.knowdisk");
+    expect(config.ocr.local?.enableTableRecognition).toBe(true);
     expect(configModule).toBeObject();
   });
 });

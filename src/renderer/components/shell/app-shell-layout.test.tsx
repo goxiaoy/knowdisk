@@ -37,10 +37,13 @@ test("app shell keeps the viewport fixed and relies on internal scrolling", () =
   const topLevel = tree.findAllByType("div")[0];
   expect(topLevel.props.className).toContain("h-screen");
   expect(topLevel.props.className).toContain("overflow-hidden");
+  expect(topLevel.props.className).toContain("app-drag");
+  expect(topLevel.props.className).toContain("electrobun-webkit-app-region-drag");
   expect(topLevel.props.className).toContain("#f8fafc");
 
   const cards = tree.findAll((node) => typeof node.props.className === "string" && node.props.className.includes("rounded-3xl"));
   expect(cards.some((node) => String(node.props.className).includes("h-full min-h-0"))).toBe(true);
+  expect(cards.some((node) => String(node.props.className).includes("app-no-drag"))).toBe(true);
 });
 
 test("app shell lets sidebar overlays escape and stack above the main panel", () => {

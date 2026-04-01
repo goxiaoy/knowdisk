@@ -37,6 +37,8 @@ def test_model_runtime_config_normalizes_mapping_inputs():
     assert config.ocr_region_model == "PaddlePaddle/PP-DocBlockLayout"
     assert config.ocr_doc_orientation_model == "PaddlePaddle/PP-LCNet_x1_0_doc_ori"
     assert config.ocr_textline_orientation_model == "PaddlePaddle/PP-LCNet_x1_0_textline_ori"
+    assert config.ocr_enable_table_recognition is False
+    assert config.ocr_enable_formula_recognition is False
     assert config.caption_model == "vikhyatk/moondream2"
     assert config.preferred_device == "cpu"
     assert config.model_cache_dir == Path("/tmp/knowdisk/model")
@@ -53,6 +55,34 @@ def test_ocr_preset_includes_hidden_pp_structure_defaults():
     assert preset["wiredTableCellsDetection"] == "PaddlePaddle/RT-DETR-L_wired_table_cell_det"
     assert preset["wirelessTableCellsDetection"] == "PaddlePaddle/RT-DETR-L_wireless_table_cell_det"
     assert preset["formulaRecognition"] == "PaddlePaddle/PP-FormulaNet_plus-L"
+
+
+def test_model_runtime_config_enables_optional_ocr_modules_from_config():
+    config = ModelRuntimeConfig.from_mapping(
+        {
+            "basePath": "/tmp/knowdisk",
+            "embeddingModel": "Alibaba-NLP/gte-multilingual-base",
+            "rerankerModel": "Alibaba-NLP/gte-multilingual-reranker-base",
+            "preferredDevice": "cpu",
+            "coreConfig": {
+                "ocr": {
+                    "provider": "local",
+                    "local": {
+                        "model": "PaddlePaddle/PP-OCRv4_mobile",
+                        "enableTableRecognition": True,
+                        "enableFormulaRecognition": True,
+                    },
+                },
+                "caption": {
+                    "provider": "local",
+                    "local": {"model": "vikhyatk/moondream2"},
+                },
+            },
+        }
+    )
+
+    assert config.ocr_enable_table_recognition is True
+    assert config.ocr_enable_formula_recognition is True
 
 
 def test_model_repo_file_round_trips_to_legacy_dict():

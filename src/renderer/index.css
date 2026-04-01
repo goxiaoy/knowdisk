@@ -1,4 +1,6 @@
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap");
+@import "@milkdown/crepe/theme/common/style.css";
+@import "@milkdown/crepe/theme/frame.css";
 
 @tailwind base;
 @tailwind components;
@@ -31,6 +33,15 @@ body {
   font-family: "Manrope", "IBM Plex Sans", "Segoe UI", sans-serif;
 }
 
+.markdown-crepe-viewer {
+  min-height: 320px;
+}
+
+.markdown-crepe-viewer .milkdown,
+.markdown-crepe-viewer .ProseMirror {
+  font-family: "Manrope", "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
 .ProseMirror {
   min-height: 320px;
   outline: none;
@@ -58,6 +69,27 @@ body {
 
 .filetree-row:hover .filetree-marquee-track {
   animation: filetree-marquee 8s linear infinite;
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+.electrobun-webkit-app-region-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 @keyframes filetree-marquee {
