@@ -24,13 +24,6 @@ export type ListChildrenPageLocalOutput = {
   nextCursor?: LocalPageCursor;
 };
 
-export type VfsPageCacheRow = {
-  cacheKey: string;
-  itemsJson: string;
-  nextCursor: string | null;
-  expiresAtMs: number;
-};
-
 export type VfsNodeEventRow = {
   id: string;
   sourceRef: string;
@@ -62,9 +55,6 @@ export type VfsRepository = {
   getNodeById: (nodeId: string) => VfsNode | null;
   listChildrenPageLocal: (input: ListChildrenPageLocalInput) => ListChildrenPageLocalOutput;
 
-  upsertPageCache: (row: VfsPageCacheRow) => void;
-  getPageCacheIfFresh: (cacheKey: string, nowMs: number) => VfsPageCacheRow | null;
-  deletePageCacheByMountId: (mountId: string) => void;
   insertNodeEvents: (rows: Array<Omit<VfsNodeEventRow, "id">>) => void;
   listNodeEvents: (input?: ListNodeEventsInput) => VfsNodeEventRow[];
   getQueueProgressByMountId: (mountId: string) => {

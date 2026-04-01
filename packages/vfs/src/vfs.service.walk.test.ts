@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
 import { decodeVfsCursorToken } from "./vfs.cursor";
-import { decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 import { createVfsProviderRegistry } from "./vfs.provider.registry";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsService } from "./vfs.service";
@@ -37,12 +36,11 @@ function setup() {
 }
 
 describe("vfs service walkChildren", () => {
-  test("syncMetadata=true: resolves local page and returns local cursor", async () => {
+  test("returns local page results and local cursor", async () => {
     const ctx = setup();
     const mount = await ctx.service.mount({
       providerType: "mock-local",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -102,7 +100,7 @@ describe("vfs service walkChildren", () => {
     ctx.cleanup();
   });
 
-  test("syncMetadata=false: fetches provider page and backfills node/page cache", async () => {
+  test("unsynced mount returns empty local results without querying the provider", async () => {
     const ctx = setup();
     let called = 0;
     const adapter: VfsProviderAdapter = {
@@ -131,7 +129,6 @@ describe("vfs service walkChildren", () => {
     const mount = await ctx.service.mount({
       providerType: "mock-remote",
       providerExtra: { token: "s3-token" },
-      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -141,24 +138,17 @@ describe("vfs service walkChildren", () => {
       (item) => item.kind === "mount" && item.mountId === mount.mountId
     );
     expect(mountNode).toBeDefined();
-    const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
-    expect(called).toBe(1);
-    expect(page.source).toBe("remote");
-    expect(page.items.map((item) => item.sourceRef)).toEqual(["remote-1"]);
-    expect(() => decodeBase64UrlNodeIdToUuid(page.items[0]!.nodeId)).not.toThrow();
-    expect(page.nextCursor?.mode).toBe("remote");
 
-    const local = ctx.repo.listChildrenPageLocal({
-      mountId: mount.mountId,
-      parentId: mountNode!.nodeId,
-      limit: 10,
-    });
-    expect(local.items.map((item) => item.sourceRef)).toEqual(["remote-1"]);
+    const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
+    expect(called).toBe(0);
+    expect(page.source).toBe("local");
+    expect(page.items).toEqual([]);
+    expect(page.nextCursor).toBeUndefined();
 
     ctx.cleanup();
   });
 
-  test("syncMetadata=false with fresh cached page and same cursor: returns cache hit", async () => {
+  test("returns synced local rows for remote-backed mounts after metadata is stored", async () => {
     const ctx = setup();
     let called = 0;
     ctx.registry.register("mock-remote-cache", () => ({
@@ -181,61 +171,9 @@ describe("vfs service walkChildren", () => {
       },
     }));
 
-    await ctx.service.mount({
+    const mount = await ctx.service.mount({
       providerType: "mock-remote-cache",
       providerExtra: {},
-      syncMetadata: false,
-      metadataTtlSec: 60,
-      reconcileIntervalMs: 1_000,
-    });
-
-    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
-    const mountNode = roots.items.find((item) => item.kind === "mount");
-    expect(mountNode).toBeDefined();
-    const first = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
-    expect(called).toBe(1);
-    expect(first.items).toHaveLength(1);
-
-    ctx.setNowMs(2_000);
-    const second = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
-    expect(called).toBe(1);
-    expect(second.items.map((item) => item.sourceRef)).toEqual(["r1"]);
-
-    const decoded = decodeVfsCursorToken(second.nextCursor!.token);
-    expect(decoded).toEqual({ mode: "remote", providerCursor: "cursor-1" });
-
-    ctx.cleanup();
-  });
-
-  test("syncMetadata=false: node change invalidates remote page cache for same mount", async () => {
-    const ctx = setup();
-    let called = 0;
-    ctx.registry.register("mock-remote-invalidate", () => ({
-      type: "mock-remote-invalidate",
-      capabilities: { watch: false },
-      async listChildren() {
-        called += 1;
-        if (called === 1) {
-          return {
-            items: [
-              {
-                id: "r1",
-                parentId: null,
-                name: "cached.md",
-                kind: "file",
-                providerVersion: "v1",
-              },
-            ],
-          };
-        }
-        return { items: [] };
-      },
-    }));
-
-    const mount = await ctx.service.mount({
-      providerType: "mock-remote-invalidate",
-      providerExtra: {},
-      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -246,24 +184,27 @@ describe("vfs service walkChildren", () => {
     );
     expect(mountNode).toBeDefined();
 
-    const first = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
-    expect(first.items).toHaveLength(1);
-    expect(called).toBe(1);
-
-    ctx.repo.insertNodeEvents([
+    ctx.repo.upsertNodes([
       {
-        sourceRef: first.items[0]!.sourceRef,
+        nodeId: "remote-row-1",
         mountId: mount.mountId,
         parentId: mountNode!.nodeId,
-        type: "delete",
-        node: null,
-        createdAtMs: 5_000,
+        name: "cached.md",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "r1",
+        providerVersion: "v1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
       },
     ]);
 
-    const second = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
-    expect(called).toBe(2);
-    expect(second.items).toEqual([]);
+    ctx.setNowMs(2_000);
+    const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
+    expect(called).toBe(0);
+    expect(page.items.map((item) => item.sourceRef)).toEqual(["r1"]);
 
     ctx.cleanup();
   });
@@ -284,7 +225,6 @@ describe("vfs service walkChildren", () => {
     const mount = await ctx.service.mount({
       providerType: adapter.type,
       providerExtra: {},
-      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -296,13 +236,12 @@ describe("vfs service walkChildren", () => {
     expect(mountNode).toBeDefined();
 
     await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
-    expect(called).toBe(1);
+    expect(called).toBe(0);
 
     const ext = ctx.repo.getNodeMountExtByMountId(mount.mountId);
     expect(ext).toBeDefined();
     ctx.repo.upsertNodeMountExt({
       ...ext!,
-      syncMetadata: true,
       updatedAtMs: 2_000,
     });
     ctx.repo.upsertNodes([
@@ -325,27 +264,16 @@ describe("vfs service walkChildren", () => {
     const page = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
     expect(page.source).toBe("local");
     expect(page.items.map((item) => item.nodeId)).toEqual(["db-local-1"]);
-    expect(called).toBe(1);
+    expect(called).toBe(0);
 
     ctx.cleanup();
   });
 
-  test("syncMetadata=false passes core operation input keys (parentId)", async () => {
+  test("local cursor token still decodes after pagination", async () => {
     const ctx = setup();
-    let seenParentId: string | null | undefined;
-    ctx.registry.register("mock-core-keys", () => ({
-      type: "mock-core-keys",
-      capabilities: { watch: false },
-      async listChildren(input) {
-        seenParentId = input.parentId;
-        return { items: [] };
-      },
-    }));
-
     const mount = await ctx.service.mount({
-      providerType: "mock-core-keys",
+      providerType: "mock-local-cursor",
       providerExtra: {},
-      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -355,8 +283,41 @@ describe("vfs service walkChildren", () => {
     );
     expect(mountNode).toBeDefined();
 
-    await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 10 });
-    expect(seenParentId).toBeNull();
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "cursor-1",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "a.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "a.txt",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      {
+        nodeId: "cursor-2",
+        mountId: mount.mountId,
+        parentId: mountNode!.nodeId,
+        name: "b.txt",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "b.txt",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    const first = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 1 });
+    expect(first.nextCursor).toBeDefined();
+    const decoded = decodeVfsCursorToken(first.nextCursor!.token);
+    expect(decoded.mode).toBe("local");
 
     ctx.cleanup();
   });

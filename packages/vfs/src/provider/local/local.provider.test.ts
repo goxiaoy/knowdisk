@@ -24,7 +24,6 @@ function makeMount(directory: string): VfsMount {
     mountId: "local-1",
     providerType: "local",
     providerExtra: { directory },
-    syncMetadata: true,
     metadataTtlSec: 60,
     reconcileIntervalMs: 1000,
   };

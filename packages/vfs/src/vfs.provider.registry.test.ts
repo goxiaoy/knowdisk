@@ -19,7 +19,6 @@ describe("vfs provider registry", () => {
       mountId: "m1",
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     };
@@ -42,7 +41,6 @@ describe("vfs provider registry", () => {
       mountId: "m1",
       providerType: "drive",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     };
@@ -73,7 +71,6 @@ describe("vfs provider registry", () => {
       mountId: "scoped-id",
       providerType: "drive",
       providerExtra: { token: "t" },
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     };
@@ -88,7 +85,6 @@ describe("vfs provider registry", () => {
       mountId: "m1",
       providerType: "unknown",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     };
@@ -103,7 +99,6 @@ describe("vfs provider registry", () => {
       mountId: "m-local",
       providerType: "local",
       providerExtra: { directory: "/tmp" },
-      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     };

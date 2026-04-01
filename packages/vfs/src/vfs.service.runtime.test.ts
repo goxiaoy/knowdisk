@@ -111,7 +111,6 @@ describe("vfs service runtime", () => {
     const mount1 = await ctx.service.mount({
       providerType: "mock-hook-runtime",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -127,7 +126,6 @@ describe("vfs service runtime", () => {
     const mount2 = await ctx.service.mount({
       providerType: "mock-hook-runtime",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -157,7 +155,6 @@ describe("vfs service runtime", () => {
     await ctx.service.mountInternal("mount-1", {
       providerType: "mock-service-node-changes",
       providerExtra: {},
-      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -229,7 +226,6 @@ describe("vfs service runtime", () => {
     const mount = await ctx.service.mount({
       providerType: "mock-async-reconcile",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -275,7 +271,6 @@ describe("vfs service runtime", () => {
     const m1 = await ctx.service.mount({
       providerType: adapter.type,
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -286,7 +281,6 @@ describe("vfs service runtime", () => {
     const m2 = await ctx.service.mount({
       providerType: adapter.type,
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -366,7 +360,6 @@ describe("vfs service runtime", () => {
     const mount = await service.mount({
       providerType: "mock-unmount-delete-hooks",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -436,7 +429,6 @@ describe("vfs service runtime", () => {
     await ctx.service.mount({
       providerType: "mock-reconcile-runtime",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 20,
     });
@@ -470,14 +462,12 @@ describe("vfs service runtime", () => {
     await ctx.service.mount({
       providerType: "mock-fail-start",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 20,
     });
     await ctx.service.mount({
       providerType: "mock-ok-start",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 20,
     });
@@ -501,7 +491,6 @@ describe("vfs service runtime", () => {
     await ctx.service.mount({
       providerType: "mock-slow-start",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     });
@@ -537,7 +526,6 @@ describe("vfs service runtime", () => {
       providerType: "mock-auto-sync-off",
       providerExtra: {},
       autoSync: false,
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 20,
     });

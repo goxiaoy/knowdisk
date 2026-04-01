@@ -40,7 +40,6 @@ function makeMount(extra?: Partial<VfsMount>): VfsMount {
     mountId: "m1",
     providerType: "mock",
     providerExtra: {},
-    syncMetadata: true,
     metadataTtlSec: 60,
     reconcileIntervalMs: 1000,
     ...extra,

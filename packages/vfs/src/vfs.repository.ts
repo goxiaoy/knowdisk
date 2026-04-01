@@ -8,7 +8,6 @@ import type {
   ListChildrenPageLocalOutput,
   VfsNodeEventRow,
   VfsNodeMountExtRow,
-  VfsPageCacheRow,
   VfsRepository,
 } from "./vfs.repository.types";
 import type { VfsNode } from "./vfs.types";
@@ -42,15 +41,14 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
     upsertNodeMountExt(row: VfsNodeMountExtRow) {
       db.query(
         `INSERT INTO vfs_node_mount_ext (
-          node_id, mount_id, provider_type, provider_extra, auto_sync, sync_metadata, sync_content,
+          node_id, mount_id, provider_type, provider_extra, auto_sync, sync_content,
           metadata_ttl_sec, reconcile_interval_ms, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(node_id) DO UPDATE SET
           mount_id=excluded.mount_id,
           provider_type=excluded.provider_type,
           provider_extra=excluded.provider_extra,
           auto_sync=excluded.auto_sync,
-          sync_metadata=excluded.sync_metadata,
           sync_content=excluded.sync_content,
           metadata_ttl_sec=excluded.metadata_ttl_sec,
           reconcile_interval_ms=excluded.reconcile_interval_ms,
@@ -61,7 +59,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         row.providerType,
         JSON.stringify(row.providerExtra ?? {}),
         row.autoSync === false ? 0 : 1,
-        row.syncMetadata ? 1 : 0,
         row.syncContent ? 1 : 0,
         row.metadataTtlSec,
         row.reconcileIntervalMs,
@@ -79,7 +76,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             provider_type AS providerType,
             provider_extra AS providerExtra,
             auto_sync AS autoSync,
-            sync_metadata AS syncMetadata,
             sync_content AS syncContent,
             metadata_ttl_sec AS metadataTtlSec,
             reconcile_interval_ms AS reconcileIntervalMs,
@@ -89,9 +85,8 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
           ORDER BY mount_id ASC`
         )
         .all() as Array<
-        Omit<VfsNodeMountExtRow, "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"> & {
+        Omit<VfsNodeMountExtRow, "autoSync" | "syncContent" | "providerExtra"> & {
           autoSync: number | null;
-          syncMetadata: number;
           syncContent: number;
           providerExtra: unknown;
         }
@@ -100,7 +95,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         ...row,
         providerExtra: parseProviderExtra(row.providerExtra),
         autoSync: row.autoSync === null ? true : row.autoSync === 1,
-        syncMetadata: row.syncMetadata === 1,
         syncContent: row.syncContent === 1,
       }));
     },
@@ -118,7 +112,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
             provider_type AS providerType,
             provider_extra AS providerExtra,
             auto_sync AS autoSync,
-            sync_metadata AS syncMetadata,
             sync_content AS syncContent,
             metadata_ttl_sec AS metadataTtlSec,
             reconcile_interval_ms AS reconcileIntervalMs,
@@ -130,10 +123,9 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         .get(mountId) as
         | (Omit<
             VfsNodeMountExtRow,
-            "autoSync" | "syncMetadata" | "syncContent" | "providerExtra"
+            "autoSync" | "syncContent" | "providerExtra"
           > & {
             autoSync: number | null;
-            syncMetadata: number;
             syncContent: number;
             providerExtra: unknown;
           })
@@ -145,7 +137,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
         ...row,
         providerExtra: parseProviderExtra(row.providerExtra),
         autoSync: row.autoSync === null ? true : row.autoSync === 1,
-        syncMetadata: row.syncMetadata === 1,
         syncContent: row.syncContent === 1,
       };
     },
@@ -327,37 +318,6 @@ export function createVfsRepository(opts: { dbPath: string }): VfsRepository {
       };
     },
 
-    upsertPageCache(row: VfsPageCacheRow) {
-      db.query(
-        `INSERT INTO vfs_page_cache (
-          cache_key, items_json, next_cursor, expires_at_ms
-        ) VALUES (?, ?, ?, ?)
-        ON CONFLICT(cache_key) DO UPDATE SET
-          items_json=excluded.items_json,
-          next_cursor=excluded.next_cursor,
-          expires_at_ms=excluded.expires_at_ms`
-      ).run(row.cacheKey, row.itemsJson, row.nextCursor, row.expiresAtMs);
-    },
-
-    getPageCacheIfFresh(cacheKey: string, nowMs: number) {
-      return db
-        .query(
-          `SELECT
-            cache_key AS cacheKey,
-            items_json AS itemsJson,
-            next_cursor AS nextCursor,
-            expires_at_ms AS expiresAtMs
-          FROM vfs_page_cache
-          WHERE cache_key = ?
-            AND expires_at_ms > ?`
-        )
-        .get(cacheKey, nowMs) as VfsPageCacheRow | null;
-    },
-
-    deletePageCacheByMountId(mountId: string) {
-      db.query(`DELETE FROM vfs_page_cache WHERE cache_key LIKE ?`).run(`${mountId}::%`);
-    },
-
     insertNodeEvents(rows: Array<Omit<VfsNodeEventRow, "id">>) {
       if (rows.length === 0) {
         return;
@@ -504,7 +464,6 @@ function migrate(db: Database): void {
       provider_type TEXT NOT NULL,
       provider_extra TEXT NOT NULL,
       auto_sync INTEGER NOT NULL DEFAULT 1,
-      sync_metadata INTEGER NOT NULL,
       sync_content INTEGER NOT NULL DEFAULT 0,
       metadata_ttl_sec INTEGER NOT NULL,
       reconcile_interval_ms INTEGER NOT NULL,
@@ -512,15 +471,6 @@ function migrate(db: Database): void {
       updated_at_ms INTEGER NOT NULL,
       FOREIGN KEY(node_id) REFERENCES vfs_nodes(node_id)
     );
-
-    CREATE TABLE IF NOT EXISTS vfs_page_cache (
-      cache_key TEXT PRIMARY KEY,
-      items_json TEXT NOT NULL,
-      next_cursor TEXT,
-      expires_at_ms INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_vfs_page_cache_exp
-      ON vfs_page_cache (expires_at_ms);
 
     CREATE TABLE IF NOT EXISTS vfs_node_events (
       id TEXT PRIMARY KEY,

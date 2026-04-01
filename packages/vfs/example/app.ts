@@ -86,7 +86,6 @@ export async function createVfsExampleApp(input?: {
   const localMount = await vfs.mountInternal("local-testdata", {
     providerType: "local",
     providerExtra: { directory: testdataDir },
-    syncMetadata: true,
     syncContent: true,
     metadataTtlSec: 30,
     reconcileIntervalMs: 600_000,
@@ -117,7 +116,6 @@ export async function createVfsExampleApp(input?: {
         providerType: ext.providerType,
         providerExtra: ext.providerExtra,
         autoSync: ext.autoSync,
-        syncMetadata: ext.syncMetadata,
         syncContent: ext.syncContent,
         metadataTtlSec: ext.metadataTtlSec,
         reconcileIntervalMs: ext.reconcileIntervalMs,
@@ -245,32 +243,12 @@ export async function createVfsExampleApp(input?: {
               mountId: ext.mountId,
               providerType: ext.providerType,
               providerExtra: ext.providerExtra,
-              syncMetadata: ext.syncMetadata,
+              autoSync: ext.autoSync,
               syncContent: ext.syncContent,
               metadataTtlSec: ext.metadataTtlSec,
               reconcileIntervalMs: ext.reconcileIntervalMs,
             };
-            const provider = registry.get(mount);
-            if (provider.getMetadata && ext.providerType !== "local") {
-              try {
-                const fetched = await provider.getMetadata({
-                  id: node.sourceRef,
-                });
-                if (fetched) {
-                  metadata = {
-                    ...metadata,
-                    name: fetched.name,
-                    kind: fetched.kind,
-                    size: fetched.size,
-                    mtimeMs: fetched.mtimeMs,
-                    sourceRef: fetched.sourceRef,
-                    providerVersion: fetched.providerVersion,
-                  };
-                }
-              } catch {
-                // keep db metadata as fallback
-              }
-            }
+            registry.get(mount);
           }
         }
         return Response.json({ metadata });

@@ -11,7 +11,7 @@ describe("vfs types", () => {
     const mount: VfsMountConfig = {
       providerType: "drive",
       providerExtra: { token: "x" },
-      syncMetadata: true,
+      syncContent: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1_000,
     };
@@ -29,7 +29,7 @@ describe("vfs types", () => {
       createdAtMs: 1,
       updatedAtMs: 1,
     };
-    expect(mount.syncMetadata).toBe(true);
+    expect(mount.syncContent).toBe(false);
     expect(node.providerVersion).toBe("rev-1");
   });
 

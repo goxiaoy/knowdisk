@@ -32,7 +32,6 @@ describe("vfs integration", () => {
     const mount = await ctx.service.mount({
       providerType: "local",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -79,7 +78,7 @@ describe("vfs integration", () => {
     ctx.cleanup();
   });
 
-  test("mount remote mock provider and page children via remote cursor", async () => {
+  test("mount remote mock provider browses only locally until sync populates metadata", async () => {
     const ctx = setup();
     let calls = 0;
     ctx.registry.register("mock-remote", () => ({
@@ -118,7 +117,6 @@ describe("vfs integration", () => {
     await ctx.service.mount({
       providerType: "mock-remote",
       providerExtra: { token: "remote-token" },
-      syncMetadata: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -126,20 +124,48 @@ describe("vfs integration", () => {
     const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 10 });
     const mountNode = roots.items.find((item) => item.kind === "mount");
     expect(mountNode).toBeDefined();
-    const page1 = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 1 });
-    const page2 = await ctx.service.walkChildren({
-      parentNodeId: mountNode!.nodeId,
-      limit: 1,
-      cursor: page1.nextCursor,
-    });
+    const beforeSync = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 1 });
+    expect(calls).toBe(0);
+    expect(beforeSync.source).toBe("local");
+    expect(beforeSync.items).toEqual([]);
 
-    expect(calls).toBe(2);
-    expect(page1.source).toBe("remote");
-    expect(page1.items.map((item) => item.sourceRef)).toEqual(["r1"]);
-    expect(page2.items.map((item) => item.sourceRef)).toEqual(["r2"]);
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "remote-r1",
+        mountId: mountNode!.mountId,
+        parentId: mountNode!.nodeId,
+        name: "r1.md",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "r1",
+        providerVersion: "rv1",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      {
+        nodeId: "remote-r2",
+        mountId: mountNode!.mountId,
+        parentId: mountNode!.nodeId,
+        name: "r2.md",
+        kind: "file",
+        size: 1,
+        mtimeMs: 1,
+        sourceRef: "r2",
+        providerVersion: "rv2",
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+    const afterSync = await ctx.service.walkChildren({ parentNodeId: mountNode!.nodeId, limit: 1 });
+    expect(calls).toBe(0);
+    expect(afterSync.source).toBe("local");
+    expect(afterSync.items.map((item) => item.sourceRef)).toEqual(["r1"]);
 
-    const cursorPayload = decodeVfsCursorToken(page1.nextCursor!.token);
-    expect(cursorPayload).toEqual({ mode: "remote", providerCursor: "p2" });
+    const cursorPayload = decodeVfsCursorToken(afterSync.nextCursor!.token);
+    expect(cursorPayload).toEqual({ mode: "local", lastName: "r1.md", lastNodeId: "remote-r1" });
 
     ctx.cleanup();
   });
@@ -149,7 +175,6 @@ describe("vfs integration", () => {
     const mount = await ctx.service.mount({
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -162,7 +187,6 @@ describe("vfs integration", () => {
     const mount = await ctx.service.mountInternal("explicit-id", {
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -176,7 +200,6 @@ describe("vfs integration", () => {
       name: "My Docs",
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -195,7 +218,6 @@ describe("vfs integration", () => {
       name: "Before",
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -223,7 +245,6 @@ describe("vfs integration", () => {
       name: "Mounted",
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -246,7 +267,6 @@ describe("vfs integration", () => {
     const mount = await ctx.service.mount({
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -327,7 +347,6 @@ describe("vfs integration", () => {
     const mount = await ctx.service.mount({
       providerType: "mock-mutate",
       providerExtra: {},
-      syncMetadata: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
     });
@@ -370,7 +389,6 @@ describe("vfs integration", () => {
     const mount = await ctx.service.mount({
       providerType: "mock",
       providerExtra: {},
-      syncMetadata: true,
       syncContent: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
@@ -452,7 +470,6 @@ describe("vfs integration", () => {
     const mount = await ctx.service.mount({
       providerType: "mock-stream",
       providerExtra: {},
-      syncMetadata: true,
       syncContent: false,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,

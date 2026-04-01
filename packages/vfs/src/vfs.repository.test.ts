@@ -29,7 +29,6 @@ describe("vfs repository", () => {
     expect(tables.map((t) => t.name)).toContain("vfs_node_events");
     expect(tables.map((t) => t.name)).toContain("vfs_node_mount_ext");
     expect(tables.map((t) => t.name)).toContain("vfs_nodes");
-    expect(tables.map((t) => t.name)).toContain("vfs_page_cache");
     const mountColumns = db.query("PRAGMA table_info(vfs_node_mount_ext)").all() as Array<{
       name: string;
     }>;
@@ -72,7 +71,6 @@ describe("vfs repository", () => {
       providerType: "google_drive",
       providerExtra: { token: "secret-token", tenant: "acme" },
       autoSync: false,
-      syncMetadata: true,
       syncContent: true,
       metadataTtlSec: 60,
       reconcileIntervalMs: 1000,
@@ -83,7 +81,6 @@ describe("vfs repository", () => {
     const mount = repo.getNodeMountExtByMountId("m1");
     expect(mount).not.toBeNull();
     expect(mount?.autoSync).toBe(false);
-    expect(mount?.syncMetadata).toBe(true);
     expect(mount?.syncContent).toBe(true);
     expect(mount?.nodeId).toBe("mount-node-1");
     expect(mount?.providerExtra).toEqual({ token: "secret-token", tenant: "acme" });
@@ -203,45 +200,6 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("save/get page cache with ttl checks", () => {
-    const { dir, repo } = makeRepo();
-    repo.upsertPageCache({
-      cacheKey: "m1::root::cursor0",
-      itemsJson: "[]",
-      nextCursor: "provider-cursor",
-      expiresAtMs: 100,
-    });
-
-    expect(repo.getPageCacheIfFresh("m1::root::cursor0", 50)?.itemsJson).toBe("[]");
-    expect(repo.getPageCacheIfFresh("m1::root::cursor0", 101)).toBeNull();
-
-    repo.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("delete page cache by mount id removes only matched mount keys", () => {
-    const { dir, repo } = makeRepo();
-    repo.upsertPageCache({
-      cacheKey: "m1::p1::::10",
-      itemsJson: '[{"id":"a"}]',
-      nextCursor: null,
-      expiresAtMs: 1000,
-    });
-    repo.upsertPageCache({
-      cacheKey: "m2::p1::::10",
-      itemsJson: '[{"id":"b"}]',
-      nextCursor: null,
-      expiresAtMs: 1000,
-    });
-
-    repo.deletePageCacheByMountId("m1");
-
-    expect(repo.getPageCacheIfFresh("m1::p1::::10", 1)).toBeNull();
-    expect(repo.getPageCacheIfFresh("m2::p1::::10", 1)?.itemsJson).toBe('[{"id":"b"}]');
-
-    repo.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
 
   test("insert/list/delete node events refreshes id on conflict and deletes by event rows", () => {
     const { dir, repo } = makeRepo();

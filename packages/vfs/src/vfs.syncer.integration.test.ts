@@ -64,7 +64,6 @@ describe("vfs syncer integration", () => {
         mountId: "local-int",
         providerType: "local",
         providerExtra: { directory: sourceRoot },
-        syncMetadata: true,
         syncContent: true,
         metadataTtlSec: 60,
         reconcileIntervalMs: 1000,

@@ -4,7 +4,6 @@ import { join } from "node:path";
 import {
   decodeVfsCursorToken,
   encodeVfsLocalCursorToken,
-  encodeVfsRemoteCursorToken,
 } from "./vfs.cursor";
 import {
   createVfsContentNodeEventsProcessor,
@@ -43,9 +42,6 @@ export function createVfsService(deps: {
   const syncerEventListeners = new Set<(event: { mountId: string; event: VfsSyncerEvent }) => void>();
   const syncers = new Map<string, { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }>();
   let nextHookRegistrationId = 1;
-  deps.repository.subscribeNodeEventsChanged((mountId) => {
-    deps.repository.deletePageCacheByMountId(mountId);
-  });
 
   const mountFromExt = (ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>): VfsMount => {
     if (!ext) {
@@ -56,7 +52,6 @@ export function createVfsService(deps: {
       providerType: ext.providerType,
       providerExtra: ext.providerExtra,
       autoSync: ext.autoSync !== false,
-      syncMetadata: ext.syncMetadata,
       syncContent: ext.syncContent,
       metadataTtlSec: ext.metadataTtlSec,
       reconcileIntervalMs: ext.reconcileIntervalMs,
@@ -322,7 +317,6 @@ export function createVfsService(deps: {
         providerType: mount.providerType,
         providerExtra: mount.providerExtra,
         autoSync: mount.autoSync !== false,
-        syncMetadata: mount.syncMetadata,
         syncContent: mount.syncContent ?? false,
         metadataTtlSec: mount.metadataTtlSec,
         reconcileIntervalMs: mount.reconcileIntervalMs,
@@ -391,7 +385,6 @@ export function createVfsService(deps: {
         providerType: ext.providerType,
         providerExtra: ext.providerExtra,
         autoSync: ext.autoSync !== false,
-        syncMetadata: ext.syncMetadata,
         syncContent: ext.syncContent,
         metadataTtlSec: ext.metadataTtlSec,
         reconcileIntervalMs: ext.reconcileIntervalMs,
@@ -599,92 +592,17 @@ export function createVfsService(deps: {
         providerType: ext.providerType,
         providerExtra: ext.providerExtra,
         autoSync: ext.autoSync !== false,
-        syncMetadata: ext.syncMetadata,
         syncContent: ext.syncContent,
         metadataTtlSec: ext.metadataTtlSec,
         reconcileIntervalMs: ext.reconcileIntervalMs,
       };
-
-      if (resolvedMount.syncMetadata) {
-        return walkLocalChildren({
-          repository: deps.repository,
-          mountId: resolvedMount.mountId,
-          parentNodeId: parentNode.nodeId,
-          limit: input.limit,
-          cursorToken: input.cursor?.token,
-        });
-      }
-
-      const adapter = deps.registry.get(resolvedMount);
-      const parentProviderId = parentNode.kind === "mount" ? null : parentNode.sourceRef;
-      const providerCursor = decodeRemoteCursor(input.cursor?.token);
-      const cacheKey = `${resolvedMount.mountId}::${parentNode.nodeId}::${providerCursor ?? ""}::${input.limit}`;
-      const cached = deps.repository.getPageCacheIfFresh(cacheKey, nowMs());
-
-      if (cached) {
-        return {
-          items: JSON.parse(cached.itemsJson) as VfsNode[],
-          nextCursor: cached.nextCursor
-            ? {
-                mode: "remote",
-                token: encodeVfsRemoteCursorToken({
-                  providerCursor: cached.nextCursor,
-                }),
-              }
-            : undefined,
-          source: "remote",
-        };
-      }
-
-      const listed = await adapter.listChildren({
-        parentId: parentProviderId,
-        parentSourceRef: parentProviderId,
+      return walkLocalChildren({
+        repository: deps.repository,
+        mountId: resolvedMount.mountId,
+        parentNodeId: parentNode.nodeId,
         limit: input.limit,
-        cursor: providerCursor ?? undefined,
-      } as unknown as Parameters<typeof adapter.listChildren>[0]);
-
-      const now = nowMs();
-      const items = listed.items.map((item) => {
-        const sourceRef = item.sourceRef ?? (item as unknown as { id?: string }).id ?? "";
-        return {
-          nodeId: createVfsNodeId({
-            mountId: resolvedMount.mountId,
-            sourceRef,
-          }),
-          mountId: resolvedMount.mountId,
-          parentId: parentNode.nodeId,
-          name: item.name,
-          kind: item.kind,
-          size: item.size ?? null,
-          mtimeMs: item.mtimeMs ?? null,
-          sourceRef,
-          providerVersion: item.providerVersion ?? null,
-          deletedAtMs: null,
-          createdAtMs: now,
-          updatedAtMs: now,
-        } satisfies VfsNode;
+        cursorToken: input.cursor?.token,
       });
-
-      deps.repository.upsertNodes(items);
-      deps.repository.upsertPageCache({
-        cacheKey,
-        itemsJson: JSON.stringify(items),
-        nextCursor: listed.nextCursor ?? null,
-        expiresAtMs: nowMs() + resolvedMount.metadataTtlSec * 1000,
-      });
-
-      return {
-        items,
-        nextCursor: listed.nextCursor
-          ? {
-              mode: "remote",
-              token: encodeVfsRemoteCursorToken({
-                providerCursor: listed.nextCursor,
-              }),
-            }
-          : undefined,
-        source: "remote",
-      };
     },
 
     async triggerReconcile(mountId: string) {
@@ -731,17 +649,6 @@ function decodeLocalCursor(token?: string) {
     lastName: decoded.lastName,
     lastNodeId: decoded.lastNodeId,
   };
-}
-
-function decodeRemoteCursor(token?: string) {
-  if (!token) {
-    return null;
-  }
-  const decoded = decodeVfsCursorToken(token);
-  if (decoded.mode !== "remote") {
-    throw new Error("Expected remote cursor token");
-  }
-  return decoded.providerCursor;
 }
 
 function toRepositoryNode(input: { mountId: string; item: VfsNode; now: number }): VfsNode {
