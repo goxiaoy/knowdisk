@@ -9,7 +9,6 @@ import {
   createVfsContentNodeEventsProcessor,
   createVfsMetadataNodeEventsProcessor,
 } from "./vfs.node-event-processor";
-import { walk } from "./vfs.provider.walk";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsSyncer } from "./vfs.syncer";
 import type { VfsMount } from "./vfs.types";
@@ -112,7 +111,7 @@ describe("vfs syncer integration", () => {
       const fsMap1 = await walkLocalFs(sourceRoot);
       const dbMap1 = new Map(
         repo
-          .listNodesByMountId(mount.mountId)
+          .listNodesByMountNodeId(mount.mountId)
           .filter((node) => node.deletedAtMs === null)
           .map((node) => [node.sourceRef, node])
       );
@@ -135,9 +134,9 @@ describe("vfs syncer integration", () => {
       rmSync(join(sourceRoot, "docs", "b.txt"), { force: true });
 
       const settled = await waitUntil(() => {
-        const c = repo.listNodesByMountIdAndSourceRef(mount.mountId, "newdir/c.txt");
-        const a = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
-        const b = repo.listNodesByMountIdAndSourceRef(mount.mountId, "docs/b.txt");
+        const c = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "newdir/c.txt");
+        const a = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
+        const b = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "docs/b.txt");
         return (
           c?.deletedAtMs === null &&
           a?.deletedAtMs === null &&
@@ -153,7 +152,7 @@ describe("vfs syncer integration", () => {
       const fsMap2 = await walkLocalFs(sourceRoot);
       const dbMap2 = new Map(
         repo
-          .listNodesByMountId(mount.mountId)
+          .listNodesByMountNodeId(mount.mountId)
           .filter((node) => node.deletedAtMs === null)
           .map((node) => [node.sourceRef, node])
       );

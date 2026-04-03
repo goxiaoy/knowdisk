@@ -8,9 +8,11 @@ import {
   type CoreConfig,
 } from "@knowdisk/core";
 import {
+  createVfsMountRepository,
   createVfsProviderRegistry,
   createVfsRepository,
   createVfsService,
+  type VfsMountRepository,
   type VfsNodeEventHooks,
   type VfsRepository,
   type VfsService,
@@ -34,6 +36,7 @@ export type AppContainerPaths = {
 export type AppContainerDeps = {
   createLoggerService: typeof createLoggerService;
   createVfsRepository: typeof createVfsRepository;
+  createVfsMountRepository: typeof createVfsMountRepository;
   createVfsProviderRegistry: typeof createVfsProviderRegistry;
   createVfsService: typeof createVfsService;
 };
@@ -44,6 +47,7 @@ export type AppContainer = {
   paths: AppContainerPaths;
   logger: Logger;
   vfsRepository: VfsRepository;
+  vfsMountRepository: VfsMountRepository;
   vfs: VfsService;
   close(): Promise<void>;
 };
@@ -53,6 +57,7 @@ const TOKENS = {
   coreConfig: "CoreConfig",
   fetchService: "Fetch",
   vfsRepository: "VfsRepository",
+  vfsMountRepository: "VfsMountRepository",
   vfsService: "VfsService",
 } as const;
 
@@ -64,6 +69,7 @@ export function createAppContainer(input?: {
   const deps: AppContainerDeps = {
     createLoggerService,
     createVfsRepository,
+    createVfsMountRepository,
     createVfsProviderRegistry,
     createVfsService,
     ...input?.deps,
@@ -87,14 +93,17 @@ export function createAppContainer(input?: {
   container.registerInstance(TOKENS.fetchService, fetch);
 
   const vfsRepository = deps.createVfsRepository({ dbPath: paths.vfsDbPath });
+  const vfsMountRepository = deps.createVfsMountRepository({ dbPath: paths.vfsDbPath });
   const vfsRegistry = deps.createVfsProviderRegistry(container);
   const vfs = deps.createVfsService({
     repository: vfsRepository,
+    mountRepository: vfsMountRepository,
     registry: vfsRegistry,
     contentRootParent: paths.vfsContentRootDir,
     logger,
   });
   container.registerInstance(TOKENS.vfsRepository, vfsRepository);
+  container.registerInstance(TOKENS.vfsMountRepository, vfsMountRepository);
   container.registerInstance(TOKENS.vfsService, vfs);
 
   return {
@@ -103,6 +112,7 @@ export function createAppContainer(input?: {
     paths,
     logger,
     vfsRepository,
+    vfsMountRepository,
     vfs,
     async close() {
       const errors: Error[] = [];
@@ -115,6 +125,7 @@ export function createAppContainer(input?: {
       }
       for (const close of [
         () => vfsRepository.close(),
+        () => vfsMountRepository.close(),
       ]) {
         try {
           close();

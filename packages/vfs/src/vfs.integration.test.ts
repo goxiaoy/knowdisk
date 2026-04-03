@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
 import { decodeVfsCursorToken } from "./vfs.cursor";
+import { createVfsMountRepository } from "./vfs.mount.repository";
 import { createVfsProviderRegistry } from "./vfs.provider.registry";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsService } from "./vfs.service";
@@ -12,21 +13,63 @@ import { createVfsService } from "./vfs.service";
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-integration-"));
   const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+  const mountRepo = createVfsMountRepository({ dbPath: join(dir, "vfs.db") });
   const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
-  const service = createVfsService({ repository: repo, registry, nowMs: () => 1_000 });
+  const service = createVfsService({
+    repository: repo,
+    mountRepository: mountRepo,
+    registry,
+    nowMs: () => 1_000,
+  });
   return {
     dir,
     repo,
+    mountRepo,
     registry,
     service,
     cleanup() {
       repo.close();
+      mountRepo.close();
       rmSync(dir, { recursive: true, force: true });
     },
   };
 }
 
 describe("vfs integration", () => {
+  test("createNode creates managed root folder and managed child folder", async () => {
+    const ctx = setup();
+    const rootFolder = await ctx.service.createNode({
+      parentId: null,
+      type: "folder",
+      name: "Workspace",
+    });
+
+    expect("kind" in rootFolder ? rootFolder.kind : null).toBe("folder");
+    expect("origin" in rootFolder ? rootFolder.origin : null).toBe("managed");
+    expect("type" in rootFolder ? rootFolder.type : null).toBe("folder");
+
+    const childFolder = await ctx.service.createNode({
+      parentId: "nodeId" in rootFolder ? rootFolder.nodeId : "",
+      type: "folder",
+      name: "Notes",
+    });
+
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    expect(roots.items.some((item) => item.nodeId === ("nodeId" in rootFolder ? rootFolder.nodeId : ""))).toBe(
+      true
+    );
+
+    const children = await ctx.service.walkChildren({
+      parentNodeId: "nodeId" in rootFolder ? rootFolder.nodeId : "",
+      limit: 20,
+    });
+    expect(children.items.map((item) => item.nodeId)).toContain(
+      "nodeId" in childFolder ? childFolder.nodeId : ""
+    );
+
+    ctx.cleanup();
+  });
+
   test("mount local folder and page children from metadata", async () => {
     const ctx = setup();
     const mount = await ctx.service.mount({
@@ -239,6 +282,111 @@ describe("vfs integration", () => {
     ctx.cleanup();
   });
 
+  test("nested mount nodes remain visible under parent tree nodes", async () => {
+    const ctx = setup();
+    const parentMount = await ctx.service.mountInternal("parent-mount", {
+      name: "Parent",
+      providerType: "mock",
+      providerExtra: {},
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    const parentMountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === parentMount.mountId
+    );
+    expect(parentMountNode).toBeDefined();
+
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "provider-folder",
+        mountId: parentMount.mountId,
+        parentId: parentMountNode!.nodeId,
+        name: "docs",
+        kind: "folder",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "docs",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    const nested = await ctx.service.createNode({
+      parentId: "provider-folder",
+      type: "mount",
+      name: "Nested",
+      mountId: "nested-mount",
+      ext: {
+        providerType: "mock",
+        providerExtra: {},
+        metadataTtlSec: 60,
+        reconcileIntervalMs: 1000,
+      },
+    });
+
+    expect("mountId" in nested ? nested.mountId : null).toBe("nested-mount");
+
+    const children = await ctx.service.walkChildren({ parentNodeId: "provider-folder", limit: 20 });
+    expect(
+      children.items.some((item) => item.kind === "mount" && item.mountId === "nested-mount")
+    ).toBe(true);
+    ctx.cleanup();
+  });
+
+  test("managed folder can exist under provider folder and can be renamed/deleted locally", async () => {
+    const ctx = setup();
+    const parentMount = await ctx.service.mountInternal("parent-mount", {
+      name: "Parent",
+      providerType: "mock",
+      providerExtra: {},
+      metadataTtlSec: 60,
+      reconcileIntervalMs: 1000,
+    });
+    const roots = await ctx.service.walkChildren({ parentNodeId: null, limit: 20 });
+    const parentMountNode = roots.items.find(
+      (item) => item.kind === "mount" && item.mountId === parentMount.mountId
+    );
+    ctx.repo.upsertNodes([
+      {
+        nodeId: "provider-folder-2",
+        mountId: parentMount.mountId,
+        mountNodeId: parentMount.mountId,
+        parentId: parentMountNode!.nodeId,
+        name: "docs",
+        kind: "folder",
+        type: "folder",
+        origin: "provider",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "docs",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    const managedFolder = await ctx.service.createNode({
+      parentId: "provider-folder-2",
+      type: "folder",
+      name: "Drafts",
+    });
+    expect("origin" in managedFolder ? managedFolder.origin : null).toBe("managed");
+
+    const renamed = await ctx.service.renameNode({
+      id: "nodeId" in managedFolder ? managedFolder.nodeId : "",
+      name: "Drafts 2",
+    });
+    expect(renamed.name).toBe("Drafts 2");
+
+    await ctx.service.deleteNode({ id: renamed.nodeId });
+    expect(ctx.repo.getNodeById(renamed.nodeId)?.deletedAtMs).not.toBeNull();
+    ctx.cleanup();
+  });
+
   test("service delete unmounts mount nodes", async () => {
     const ctx = setup();
     const mount = await ctx.service.mountInternal("explicit-id", {
@@ -382,6 +530,7 @@ describe("vfs integration", () => {
     mkdirSync(contentRootParent, { recursive: true });
     const service = createVfsService({
       repository: ctx.repo,
+      mountRepository: ctx.mountRepo,
       registry: ctx.registry,
       nowMs: () => 1_000,
       contentRootParent,
@@ -430,6 +579,7 @@ describe("vfs integration", () => {
     const ctx = setup();
     const service = createVfsService({
       repository: ctx.repo,
+      mountRepository: ctx.mountRepo,
       registry: ctx.registry,
       nowMs: () => 1_000,
       contentRootParent: join(ctx.dir, "content"),

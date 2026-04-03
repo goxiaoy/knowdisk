@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
 import { decodeVfsCursorToken } from "./vfs.cursor";
+import { createVfsMountRepository } from "./vfs.mount.repository";
 import { createVfsProviderRegistry } from "./vfs.provider.registry";
 import { createVfsRepository } from "./vfs.repository";
 import { createVfsService } from "./vfs.service";
@@ -13,16 +14,19 @@ import type { VfsProviderAdapter } from "./vfs.provider.types";
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-service-"));
   const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+  const mountRepo = createVfsMountRepository({ dbPath: join(dir, "vfs.db") });
   const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
   let nowMs = 1_000;
   const service = createVfsService({
     repository: repo,
+    mountRepository: mountRepo,
     registry,
     nowMs: () => nowMs,
   });
   return {
     dir,
     repo,
+    mountRepo,
     registry,
     service,
     setNowMs(value: number) {
@@ -30,6 +34,7 @@ function setup() {
     },
     cleanup() {
       repo.close();
+      mountRepo.close();
       rmSync(dir, { recursive: true, force: true });
     },
   };

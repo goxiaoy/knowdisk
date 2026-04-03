@@ -13,6 +13,10 @@ function sortNodes(items: FileTreeNode[]): FileTreeNode[] {
       if (a.kind === "folder") return -1;
       if (b.kind === "folder") return 1;
     }
+    if (a.origin !== b.origin) {
+      if (a.origin === "managed") return -1;
+      if (b.origin === "managed") return 1;
+    }
     return a.name.localeCompare(b.name);
   });
 }

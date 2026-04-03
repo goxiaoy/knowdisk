@@ -215,7 +215,7 @@ export function createVfsSyncer(input: {
     async fullSync() {
       emit({ type: "status", payload: { isSyncing: true, phase: "metadata" } });
       const now = nowMs();
-      const existing = input.repository.listNodesByMountId(input.mount.mountId);
+      const existing = input.repository.listNodesByMountNodeId(input.mount.mountId);
       const existingByRef = new Map(existing.map((node) => [node.sourceRef, node]));
 
       const walkedItems = await walk({

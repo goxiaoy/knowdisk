@@ -9,6 +9,7 @@ import {
 test("queue progress updates pending-only semantics", () => {
   const status = applyVfsSyncerEvent(
     {
+      mountNodeId: "m1",
       mountId: "m1",
       name: "Docs",
       phase: "metadata",
@@ -29,6 +30,7 @@ test("queue progress updates pending-only semantics", () => {
 test("metadata progress updates phase but preserves queue-based percentage", () => {
   const status = applyVfsSyncerEvent(
     {
+      mountNodeId: "m1",
       mountId: "m1",
       name: "Docs",
       phase: "idle",
@@ -53,6 +55,7 @@ test("metadata progress updates phase but preserves queue-based percentage", () 
 test("idle status clears remaining queue and completes progress", () => {
   const status = applyVfsSyncerEvent(
     {
+      mountNodeId: "m1",
       mountId: "m1",
       name: "Docs",
       phase: "content",
@@ -76,6 +79,7 @@ test("refreshVfsMountPendingUnits recalculates pending counts on demand", async 
   const mounts = await refreshVfsMountPendingUnits(
     [
       {
+        mountNodeId: "m1",
         mountId: "m1",
         name: "Docs",
         phase: "idle",
@@ -83,6 +87,7 @@ test("refreshVfsMountPendingUnits recalculates pending counts on demand", async 
         error: "",
       },
       {
+        mountNodeId: "m2",
         mountId: "m2",
         name: "Media",
         phase: "metadata",
@@ -95,6 +100,7 @@ test("refreshVfsMountPendingUnits recalculates pending counts on demand", async 
 
   expect(mounts).toEqual([
     {
+      mountNodeId: "m1",
       mountId: "m1",
       name: "Docs",
       phase: "idle",
@@ -102,6 +108,7 @@ test("refreshVfsMountPendingUnits recalculates pending counts on demand", async 
       error: "",
     },
     {
+      mountNodeId: "m2",
       mountId: "m2",
       name: "Media",
       phase: "metadata",
@@ -115,6 +122,7 @@ test("applyMountNodeChange updates mount name on rename", () => {
   const mounts = applyMountNodeChange(
     [
       {
+        mountNodeId: "m1",
         mountId: "m1",
         name: "Old Name",
         phase: "idle",
@@ -125,9 +133,12 @@ test("applyMountNodeChange updates mount name on rename", () => {
     {
       nodeId: "mount-node-1",
       mountId: "m1",
+      mountNodeId: "m1",
       parentId: null,
       name: "New Name",
       kind: "mount",
+      type: "mount",
+      origin: "managed",
       size: null,
       mtimeMs: null,
       sourceRef: "",
@@ -140,6 +151,7 @@ test("applyMountNodeChange updates mount name on rename", () => {
 
   expect(mounts).toEqual([
     {
+      mountNodeId: "m1",
       mountId: "m1",
       name: "New Name",
       phase: "idle",
@@ -153,6 +165,7 @@ test("applyMountNodeChange removes mount when mount node is deleted", () => {
   const mounts = applyMountNodeChange(
     [
       {
+        mountNodeId: "m1",
         mountId: "m1",
         name: "Docs",
         phase: "idle",
@@ -160,6 +173,7 @@ test("applyMountNodeChange removes mount when mount node is deleted", () => {
         error: "",
       },
       {
+        mountNodeId: "m2",
         mountId: "m2",
         name: "Media",
         phase: "metadata",
@@ -170,9 +184,12 @@ test("applyMountNodeChange removes mount when mount node is deleted", () => {
     {
       nodeId: "mount-node-1",
       mountId: "m1",
+      mountNodeId: "m1",
       parentId: null,
       name: "Docs",
       kind: "mount",
+      type: "mount",
+      origin: "managed",
       size: null,
       mtimeMs: null,
       sourceRef: "",
@@ -185,6 +202,7 @@ test("applyMountNodeChange removes mount when mount node is deleted", () => {
 
   expect(mounts).toEqual([
     {
+      mountNodeId: "m2",
       mountId: "m2",
       name: "Media",
       phase: "metadata",

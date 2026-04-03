@@ -13,6 +13,9 @@ describe("createPythonWorkerAppRuntime", () => {
         registerNodeEventHooks: () => offHooks,
       } as never,
       vfsRepository: {
+        listNodesByMountId: () => [],
+      } as never,
+      vfsMountRepository: {
         getNodeMountExtByMountId: (mountId: string) =>
           mountId === "mount-local"
             ? {
@@ -21,7 +24,6 @@ describe("createPythonWorkerAppRuntime", () => {
                 providerType: "local",
                 providerExtra: { directory: "/tmp/source" },
                 autoSync: true,
-                syncMetadata: true,
                 syncContent: false,
                 metadataTtlSec: 30,
                 reconcileIntervalMs: 60_000,
@@ -36,7 +38,6 @@ describe("createPythonWorkerAppRuntime", () => {
             providerType: "local",
             providerExtra: { directory: "/tmp/source" },
             autoSync: true,
-            syncMetadata: true,
             syncContent: false,
             metadataTtlSec: 30,
             reconcileIntervalMs: 60_000,
@@ -49,7 +50,6 @@ describe("createPythonWorkerAppRuntime", () => {
             providerType: "huggingface",
             providerExtra: { model: "org/repo" },
             autoSync: true,
-            syncMetadata: true,
             syncContent: false,
             metadataTtlSec: 30,
             reconcileIntervalMs: 60_000,
@@ -57,54 +57,6 @@ describe("createPythonWorkerAppRuntime", () => {
             updatedAtMs: 1,
           },
         ],
-        listNodesByMountId: (mountId: string) =>
-          mountId === "mount-local"
-            ? [
-                {
-                  nodeId: "file-1",
-                  mountId,
-                  parentId: "mount-node-1",
-                  name: "note.md",
-                  kind: "file",
-                  size: 1,
-                  mtimeMs: 1,
-                  sourceRef: "docs/note.md",
-                  providerVersion: "v1",
-                  deletedAtMs: null,
-                  createdAtMs: 1,
-                  updatedAtMs: 1,
-                },
-                {
-                  nodeId: "folder-1",
-                  mountId,
-                  parentId: "mount-node-1",
-                  name: "docs",
-                  kind: "folder",
-                  size: null,
-                  mtimeMs: null,
-                  sourceRef: "docs",
-                  providerVersion: null,
-                  deletedAtMs: null,
-                  createdAtMs: 1,
-                  updatedAtMs: 1,
-                },
-              ]
-            : [
-                {
-                  nodeId: "file-2",
-                  mountId,
-                  parentId: "mount-node-2",
-                  name: "remote.md",
-                  kind: "file",
-                  size: 1,
-                  mtimeMs: 1,
-                  sourceRef: "remote.md",
-                  providerVersion: "v1",
-                  deletedAtMs: null,
-                  createdAtMs: 1,
-                  updatedAtMs: 1,
-                },
-              ],
       } as never,
       logger: {
         error() {},

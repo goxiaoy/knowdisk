@@ -9,9 +9,12 @@ type MetadataEntry = {
 const LABELS: Record<keyof FileNodeMetadata, string> = {
   nodeId: "Node ID",
   mountId: "Mount ID",
+  mountNodeId: "Mount Node ID",
   parentId: "Parent ID",
   name: "Name",
   kind: "Kind",
+  type: "Type",
+  origin: "Origin",
   size: "Size",
   mtimeMs: "Modified",
   sourceRef: "Source Ref",

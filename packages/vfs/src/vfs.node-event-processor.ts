@@ -270,7 +270,7 @@ async function applyNodeEvent(input: {
     "syncer watch event received"
   );
   const now = input.nowMs();
-  const prev = input.repository.listNodesByMountIdAndSourceRef(
+  const prev = input.repository.getNodeByMountNodeIdAndSourceRef(
     input.mount.mountId,
     input.event.sourceRef
   );
@@ -389,7 +389,7 @@ async function applyDeleteEventWithoutMount(input: {
   emit?: (event: VfsSyncerEvent) => void;
   event: VfsNodeEventRow;
 }): Promise<void> {
-  const prev = input.repository.listNodesByMountIdAndSourceRef(input.event.mountId, input.event.sourceRef);
+  const prev = input.repository.getNodeByMountNodeIdAndSourceRef(input.event.mountId, input.event.sourceRef);
   if (!prev || prev.deletedAtMs !== null) {
     return;
   }
@@ -440,7 +440,7 @@ async function drainNodeEvents(input: {
     }
     for (const event of rows) {
       const mount = input.resolveMount(event.mountId);
-      const prevNode = input.repository.listNodesByMountIdAndSourceRef(event.mountId, event.sourceRef);
+      const prevNode = input.repository.getNodeByMountNodeIdAndSourceRef(event.mountId, event.sourceRef);
       const beforeHookName = toBeforeHookName(event.type);
       const afterHookName = toAfterHookName(event.type);
       try {
@@ -495,7 +495,7 @@ async function drainNodeEvents(input: {
             mount,
             event,
             prevNode,
-            nextNode: input.repository.listNodesByMountIdAndSourceRef(event.mountId, event.sourceRef),
+            nextNode: input.repository.getNodeByMountNodeIdAndSourceRef(event.mountId, event.sourceRef),
           } satisfies VfsNodeEventHookContext);
         } catch (error) {
           input.logger.warn(

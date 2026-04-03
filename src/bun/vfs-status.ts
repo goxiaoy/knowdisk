@@ -61,11 +61,11 @@ export function applyMountNodeChange(
     return mountsInput;
   }
   if (node.deletedAtMs !== null) {
-    return mountsInput.filter((mount) => mount.mountId !== node.mountId);
+    return mountsInput.filter((mount) => mount.mountNodeId !== node.mountNodeId);
   }
   let changed = false;
   const mounts = mountsInput.map((mount) => {
-    if (mount.mountId !== node.mountId) {
+    if (mount.mountNodeId !== node.mountNodeId) {
       return mount;
     }
     changed = true;
@@ -83,6 +83,7 @@ export function applyMountNodeChange(
   return [
     ...mountsInput,
     {
+      mountNodeId: node.mountNodeId,
       mountId: node.mountId,
       name: node.name,
       phase: "idle",
@@ -93,7 +94,7 @@ export function applyMountNodeChange(
 }
 
 export function recomputeVfsStatus(mountsInput: RendererVfsMountStatus[]): RendererVfsStatus {
-  const mounts = [...mountsInput].sort((a, b) => a.mountId.localeCompare(b.mountId));
+  const mounts = [...mountsInput].sort((a, b) => a.mountNodeId.localeCompare(b.mountNodeId));
   const syncing = mounts.filter((item) => item.phase === "metadata" || item.phase === "content");
   const failed = mounts.find((item) => item.phase === "error");
   const phase: RendererVfsStatus["phase"] = failed

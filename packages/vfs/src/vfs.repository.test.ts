@@ -160,7 +160,60 @@ describe("vfs repository", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("listNodesByMountIdAndSourceRef returns matched node", () => {
+  test("node queries expose node-first semantic aliases", () => {
+    const { dir, repo } = makeRepo();
+    repo.upsertNodes([
+      {
+        nodeId: "mount-node-1",
+        mountId: "m1",
+        mountNodeId: "m1",
+        parentId: null,
+        name: "Mounted",
+        kind: "mount",
+        type: "mount",
+        origin: "managed",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+      {
+        nodeId: "child-folder",
+        mountId: "m1",
+        mountNodeId: "m1",
+        parentId: "mount-node-1",
+        name: "docs",
+        kind: "folder",
+        type: "folder",
+        origin: "provider",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "docs",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      },
+    ]);
+
+    const mountNode = repo.getNodeById("mount-node-1");
+    const childNode = repo.getNodeById("child-folder");
+
+    expect(mountNode?.type).toBe("mount");
+    expect(mountNode?.origin).toBe("managed");
+    expect(mountNode?.mountNodeId).toBe("m1");
+    expect(childNode?.type).toBe("folder");
+    expect(childNode?.origin).toBe("provider");
+    expect(childNode?.mountNodeId).toBe("m1");
+
+    repo.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("node-first mount-node lookups return matched node", () => {
     const { dir, repo } = makeRepo();
     repo.upsertNodes([
       {
@@ -193,14 +246,13 @@ describe("vfs repository", () => {
       },
     ]);
 
-    expect(repo.listNodesByMountIdAndSourceRef("m1", "s1")?.nodeId).toBe("n1");
-    expect(repo.listNodesByMountIdAndSourceRef("m1", "missing")).toBeNull();
+    expect(repo.getNodeByMountNodeIdAndSourceRef("m1", "s1")?.nodeId).toBe("n1");
+    expect(repo.getNodeByMountNodeIdAndSourceRef("m1", "missing")).toBeNull();
+    expect(repo.listNodesByMountNodeId("m1").map((node) => node.nodeId)).toContain("n1");
 
     repo.close();
     rmSync(dir, { recursive: true, force: true });
   });
-
-
   test("insert/list/delete node events refreshes id on conflict and deletes by event rows", () => {
     const { dir, repo } = makeRepo();
     expect("listNodeEvents" in repo).toBe(true);
@@ -283,6 +335,7 @@ describe("vfs repository", () => {
     expect(events[2]).toEqual({
       id: events[2]!.id,
       sourceRef: "s1",
+      mountNodeId: "m1",
       mountId: "m1",
       parentId: "p1-new",
       type: "add",
@@ -332,6 +385,7 @@ describe("vfs repository", () => {
       {
         id: withDelete[1]!.id,
         sourceRef: "s1",
+        mountNodeId: "m1",
         mountId: "m1",
         parentId: "p3",
         type: "update_content",
@@ -341,6 +395,7 @@ describe("vfs repository", () => {
       {
         id: withDelete[3]!.id,
         sourceRef: "s1",
+        mountNodeId: "m1",
         mountId: "m1",
         parentId: "p1-new",
         type: "add",
@@ -463,9 +518,12 @@ describe("vfs repository", () => {
       {
         nodeId: "n1",
         mountId: "m1",
+        mountNodeId: "m1",
         parentId: "p1",
         name: "a.txt",
         kind: "file",
+        type: "file",
+        origin: "provider",
         size: 1,
         mtimeMs: 1,
         sourceRef: "s1",

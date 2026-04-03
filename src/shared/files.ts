@@ -1,10 +1,16 @@
 export type FileTreeNodeKind = "mount" | "folder" | "file";
+export type FileTreeNodeType = FileTreeNodeKind;
+export type FileTreeNodeOrigin = "managed" | "provider";
 
 export type FileTreeNode = {
   nodeId: string;
+  mountId: string;
+  mountNodeId: string;
   parentId: string | null;
   name: string;
   kind: FileTreeNodeKind;
+  type: FileTreeNodeType;
+  origin: FileTreeNodeOrigin;
 };
 
 export type ListFilesNodesRequest = {
@@ -125,9 +131,12 @@ export type DeleteFileNodeResponse =
 export type FileNodeMetadata = {
   nodeId: string;
   mountId: string;
+  mountNodeId: string;
   parentId: string | null;
   name: string;
   kind: FileTreeNodeKind;
+  type: FileTreeNodeType;
+  origin: FileTreeNodeOrigin;
   size: number | null;
   mtimeMs: number | null;
   sourceRef: string;

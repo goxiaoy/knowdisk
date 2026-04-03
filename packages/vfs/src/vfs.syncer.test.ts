@@ -10,11 +10,7 @@ import {
 } from "./vfs.node-event-processor";
 import { createVfsNodeId, decodeBase64UrlNodeIdToUuid } from "./vfs.node-id";
 import { createVfsRepository } from "./vfs.repository";
-import {
-  createVfsSyncer,
-  type VfsSyncerEvent,
-  type VfsSyncerHookRunner,
-} from "./vfs.syncer";
+import { createVfsSyncer, type VfsSyncerEvent, type VfsSyncerHookRunner } from "./vfs.syncer";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import type { VfsMount } from "./vfs.types";
 
@@ -251,7 +247,7 @@ describe("vfs syncer", () => {
       });
       off();
 
-      const all = repo.listNodesByMountId(mount.mountId);
+      const all = repo.listNodesByMountNodeId(mount.mountId);
       const a = all.find((n) => n.sourceRef === "a.txt");
       const b = all.find((n) => n.sourceRef === "b.txt");
       const legacy = all.find((n) => n.sourceRef === "legacy.txt");
@@ -434,7 +430,7 @@ describe("vfs syncer", () => {
           type: "update_content",
         }),
       ]);
-      expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
+      expect(repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
       expect(
         processorEvents.some(
           (event) =>
@@ -615,7 +611,7 @@ describe("vfs syncer", () => {
         includeContentUpdates: false,
       });
 
-      expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")).toBeNull();
+      expect(repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "f.txt")).toBeNull();
       expect(listQueuedEvents(repo, mount.mountId).map((event) => event.type)).toEqual([
         "add",
         "update_content",
@@ -703,7 +699,7 @@ describe("vfs syncer", () => {
         includeContentUpdates: false,
       });
 
-      expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
+      expect(repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "f.txt")?.size).toBe(3);
       expect(listQueuedEvents(repo, mount.mountId)).toEqual([
         expect.objectContaining({ sourceRef: "f.txt", type: "update_content" }),
       ]);
@@ -1184,7 +1180,7 @@ describe("vfs syncer", () => {
         allowContentSync: false,
         includeContentUpdates: false,
       });
-      const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+      const node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.mtimeMs).toBe(123);
     } finally {
       repo.close();
@@ -1294,7 +1290,7 @@ describe("vfs syncer", () => {
         metadataChanged: false,
       });
       const updated = await waitUntil(() => {
-        const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt");
+        const node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "f.txt");
         return node?.providerVersion === "v2";
       }, 2000);
 
@@ -1311,7 +1307,7 @@ describe("vfs syncer", () => {
         metadataChanged: null,
       });
       const deleted = await waitUntil(() => {
-        const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt");
+        const node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "f.txt");
         return (node?.deletedAtMs ?? null) !== null;
       }, 2000);
       expect(deleted).toBe(true);
@@ -1456,7 +1452,7 @@ describe("vfs syncer", () => {
         includeContentUpdates: false,
       });
 
-      const all = repo.listNodesByMountId(mount.mountId);
+      const all = repo.listNodesByMountNodeId(mount.mountId);
       const child = all.find((n) => n.sourceRef === "dir/file.txt");
       expect(child).toBeDefined();
       expect(child?.deletedAtMs).toBeNull();
@@ -1507,7 +1503,7 @@ describe("vfs syncer", () => {
       });
       await syncer.fullSync();
 
-      const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "");
+      const node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "");
       expect(node?.kind).toBe("mount");
       expect(node?.deletedAtMs).toBeNull();
     } finally {
@@ -1589,7 +1585,7 @@ describe("vfs syncer", () => {
         allowContentSync: false,
         includeContentUpdates: false,
       });
-      const next = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+      const next = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
       expect(next?.name).toBe("manual-display-name.txt");
       expect(next?.size).toBe(2);
     } finally {
@@ -1704,11 +1700,11 @@ describe("vfs syncer", () => {
         metadataChanged: false,
       });
       const updated = await waitUntil(() => {
-        const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+        const node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
         return node?.providerVersion === "v2";
       }, 2000);
       expect(updated).toBe(true);
-      const node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+      const node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.name).toBe("manual-display-name.txt");
       await syncer.stopWatching();
       processor.close();
@@ -1774,7 +1770,7 @@ describe("vfs syncer", () => {
         allowContentSync: false,
         includeContentUpdates: false,
       });
-      const before = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+      const before = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
       expect(before?.providerVersion).toEqual(expect.any(String));
 
       writeFileSync(filePath, "v2");
@@ -1783,7 +1779,7 @@ describe("vfs syncer", () => {
         allowContentSync: false,
         includeContentUpdates: false,
       });
-      const after = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+      const after = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
       expect(after?.providerVersion).toEqual(expect.any(String));
       expect(after?.providerVersion).not.toBe(before?.providerVersion ?? null);
     } finally {
@@ -1876,7 +1872,7 @@ describe("vfs syncer", () => {
         allowContentSync: false,
         includeContentUpdates: false,
       });
-      let node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+      let node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.providerVersion).toBe("pv1");
 
       providerVersion = "pv2";
@@ -1885,7 +1881,7 @@ describe("vfs syncer", () => {
         allowContentSync: false,
         includeContentUpdates: false,
       });
-      node = repo.listNodesByMountIdAndSourceRef(mount.mountId, "a.txt");
+      node = repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "a.txt");
       expect(node?.providerVersion).toBe("pv2");
     } finally {
       repo.close();

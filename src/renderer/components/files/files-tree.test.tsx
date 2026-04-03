@@ -6,9 +6,13 @@ import { FilesTree } from "./files-tree";
 const rootNodes: FileTreeNode[] = [
   {
     nodeId: "file-1",
+    mountId: "mount-1",
+    mountNodeId: "mount-1",
     parentId: null,
     name: "notes.md",
     kind: "file",
+    type: "file",
+    origin: "provider",
   },
 ];
 

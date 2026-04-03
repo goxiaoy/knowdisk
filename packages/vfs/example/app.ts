@@ -6,6 +6,7 @@ import { container as rootContainer } from "tsyringe";
 import { createExampleLogger } from "./logger";
 import {
   createVfsProviderRegistry,
+  createVfsMountRepository,
   createVfsRepository,
   createVfsService,
   type VfsMount,
@@ -68,6 +69,7 @@ export async function createVfsExampleApp(input?: {
   const logger = createExampleLogger();
 
   const repository = createVfsRepository({ dbPath });
+  const mountRepository = createVfsMountRepository({ dbPath });
   const exampleContainer = rootContainer.createChildContainer();
   exampleContainer.register("LoggerService", { useValue: logger });
   const registry = createVfsProviderRegistry(exampleContainer);
@@ -78,6 +80,7 @@ export async function createVfsExampleApp(input?: {
   }
   const vfs = createVfsService({
     repository,
+    mountRepository,
     registry,
     contentRootParent: contentDir,
     logger,
@@ -104,7 +107,7 @@ export async function createVfsExampleApp(input?: {
   > =>
     repository.listNodeMountExts().flatMap((ext) => {
       const mountNode = repository
-        .listNodesByMountId(ext.mountId)
+        .listNodesByMountNodeId(ext.mountId)
         .find(
           (node) => node.kind === "mount" && node.sourceRef === "" && node.deletedAtMs === null
         );
@@ -235,7 +238,7 @@ export async function createVfsExampleApp(input?: {
           return Response.json({ error: "node not found" }, { status: 404 });
         }
 
-        let metadata = node;
+        const metadata = node;
         if (node.kind !== "mount") {
           const ext = repository.getNodeMountExtByMountId(node.mountId);
           if (ext) {
@@ -363,6 +366,7 @@ export async function createVfsExampleApp(input?: {
       stopNodeChangesSub();
       await vfs.close();
       repository.close();
+      mountRepository.close();
       server.stop(true);
       if (shouldCleanupRoot) {
         rmSync(rootDir, { recursive: true, force: true });

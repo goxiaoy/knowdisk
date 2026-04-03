@@ -1,6 +1,8 @@
 export const VFS_TYPES_READY = true;
 
 export type VfsNodeKind = "mount" | "file" | "folder";
+export type VfsNodeType = VfsNodeKind;
+export type VfsNodeOrigin = "managed" | "provider";
 export type VfsNodeRequiredField = "size" | "providerVersion" | "mtimeMs";
 export const MetadataAllField: VfsNodeRequiredField[] = ["size", "providerVersion", "mtimeMs"];
 
@@ -21,9 +23,12 @@ export type VfsMount = VfsMountConfig & {
 export type VfsNode = {
   nodeId: string;
   mountId: string;
+  mountNodeId: string;
   parentId: string | null;
   name: string;
   kind: VfsNodeKind;
+  type: VfsNodeType;
+  origin: VfsNodeOrigin;
   size: number | null;
   mtimeMs: number | null;
   sourceRef: string;

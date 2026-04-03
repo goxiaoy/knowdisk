@@ -145,6 +145,7 @@ const pythonWorkerAppRuntime = createPythonWorkerAppRuntime({
   request: (method, params) => pythonWorkerTransport.request(method, params),
   vfs: app.vfs,
   vfsRepository: app.vfsRepository,
+  vfsMountRepository: app.vfsMountRepository,
   logger: app.logger,
 });
 
@@ -163,10 +164,11 @@ async function hydrateMountedVfsStatus(): Promise<void> {
       cursor,
     });
     for (const node of page.items) {
-      if (node.kind !== "mount" || vfsMountStatus.has(node.mountId)) {
+      if (node.kind !== "mount" || vfsMountStatus.has(node.mountNodeId)) {
         continue;
       }
-      vfsMountStatus.set(node.mountId, {
+      vfsMountStatus.set(node.mountNodeId, {
+        mountNodeId: node.mountNodeId,
         mountId: node.mountId,
         name: node.name,
         phase: "idle",
@@ -191,7 +193,7 @@ async function computeCurrentVfsStatus(): Promise<RendererVfsStatus> {
     app.vfs.getQueueProgressByMountId(mountId)
   );
   for (const mount of mounts) {
-    vfsMountStatus.set(mount.mountId, mount);
+    vfsMountStatus.set(mount.mountNodeId, mount);
   }
   vfsStatus = buildRendererVfsStatus(mounts);
   return vfsStatus;
@@ -212,9 +214,13 @@ function mapIndexStatus(): RendererIndexStatus {
 function mapNode(node: VfsNode): FileTreeNode {
   return {
     nodeId: node.nodeId,
+    mountId: node.mountId,
+    mountNodeId: node.mountNodeId,
     parentId: node.parentId,
     name: node.name,
     kind: node.kind,
+    type: node.type,
+    origin: node.origin,
   };
 }
 
@@ -288,20 +294,23 @@ async function mountLocalDirectory(
 
     const normalizedDir = directory.replace(/[\\/]+$/, "");
     const mountName = basename(normalizedDir) || normalizedDir;
-    const mount = await app.vfs.mount({
+    const mount = await app.vfs.createNode({
+      parentId: null,
+      type: "mount",
       name: mountName,
-      providerType: "local",
-      providerExtra: { directory },
-      autoSync: true,
-      syncMetadata: true,
-      syncContent: false,
-      metadataTtlSec: 30,
-      reconcileIntervalMs: 600_000,
+      ext: {
+        providerType: "local",
+        providerExtra: { directory },
+        autoSync: true,
+        syncContent: false,
+        metadataTtlSec: 30,
+        reconcileIntervalMs: 600_000,
+      },
     });
 
     return {
       ok: true,
-      mountId: mount.mountId,
+      mountId: "mountId" in mount ? mount.mountId : "",
     };
   } catch (error) {
     return {
@@ -313,7 +322,7 @@ async function mountLocalDirectory(
 
 async function getFileMarkdown(input: GetFileMarkdownRequest): Promise<GetFileMarkdownResponse> {
   try {
-    const node = await app.vfs.getMetadata({ id: input.nodeId });
+    const node = await app.vfs.getNode({ id: input.nodeId });
     if (!node) {
       return {
         ok: false,
@@ -355,7 +364,7 @@ async function getFileNodeMetadata(
   input: GetFileNodeMetadataRequest
 ): Promise<GetFileNodeMetadataResponse> {
   try {
-    const node = await app.vfs.getMetadata({ id: input.nodeId });
+    const node = await app.vfs.getNode({ id: input.nodeId });
     if (!node) {
       return {
         ok: false,
@@ -368,9 +377,12 @@ async function getFileNodeMetadata(
       metadata: {
         nodeId: node.nodeId,
         mountId: node.mountId,
+        mountNodeId: node.mountNodeId,
         parentId: node.parentId,
         name: node.name,
         kind: node.kind,
+        type: node.type,
+        origin: node.origin,
         size: node.size,
         mtimeMs: node.mtimeMs,
         sourceRef: node.sourceRef,
@@ -390,7 +402,7 @@ async function getFileNodeMetadata(
 
 async function deleteFileNode(input: DeleteFileNodeRequest): Promise<DeleteFileNodeResponse> {
   try {
-    await app.vfs.delete({ id: input.nodeId });
+    await app.vfs.deleteNode({ id: input.nodeId });
     return { ok: true };
   } catch (error) {
     return {
@@ -409,7 +421,7 @@ async function renameFileNode(input: RenameFileNodeRequest): Promise<RenameFileN
     };
   }
   try {
-    const renamed = await app.vfs.rename({
+    const renamed = await app.vfs.renameNode({
       id: input.nodeId,
       name: nextName,
     });
@@ -437,7 +449,7 @@ async function search(input: SearchRequest): Promise<SearchResponse> {
       query,
       titleOnly: Boolean(input.titleOnly),
       finalResults: buildRecentFileSearchResults({
-        nodesByMount: app.vfsRepository
+        nodesByMount: app.vfsMountRepository
           .listNodeMountExts()
           .map((mount) => app.vfsRepository.listNodesByMountId(mount.mountId)),
       }),
@@ -599,7 +611,7 @@ const stopVfsNodeChangesSubscription = app.vfs.subscribeNodeChanges((node) => {
   }
   vfsMountStatus.clear();
   for (const mount of nextMounts) {
-    vfsMountStatus.set(mount.mountId, mount);
+    vfsMountStatus.set(mount.mountNodeId, mount);
   }
   vfsStatus = recomputeVfsStatus();
   rendererRpcSender.send(

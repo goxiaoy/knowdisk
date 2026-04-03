@@ -1,6 +1,7 @@
 export type VfsMountPhase = "idle" | "metadata" | "content" | "error";
 
 export type RendererVfsMountStatus = {
+  mountNodeId: string;
   mountId: string;
   name: string;
   phase: VfsMountPhase;

@@ -25,6 +25,7 @@ describe("createAppContainer", () => {
     const calls: Record<string, unknown> = {};
     const logger = { error() {}, info() {} };
     const vfsRepository = { close() {} };
+    const vfsMountRepository = { close() {} };
     const vfsRegistry = {};
     const vfsService = { registerNodeEventHooks: () => () => {} };
     const deps: AppContainerDeps = {
@@ -33,12 +34,17 @@ describe("createAppContainer", () => {
         calls.vfsDbPath = input.dbPath;
         return vfsRepository as never;
       },
+      createVfsMountRepository: (input) => {
+        calls.vfsMountDbPath = input.dbPath;
+        return vfsMountRepository as never;
+      },
       createVfsProviderRegistry: (container) => {
         calls.vfsRegistryContainer = container;
         return vfsRegistry as never;
       },
       createVfsService: (input) => {
         calls.vfsContentRootParent = input.contentRootParent;
+        calls.vfsMountRepository = input.mountRepository;
         return vfsService as never;
       },
     };
@@ -54,11 +60,14 @@ describe("createAppContainer", () => {
       resolveRepoPythonProjectDirFromModule(import.meta.url)
     );
     expect(calls.vfsDbPath).toBe(join(basePath, "vfs", "vfs.db"));
+    expect(calls.vfsMountDbPath).toBe(join(basePath, "vfs", "vfs.db"));
     expect(calls.vfsContentRootParent).toBe(join(basePath, "vfs", "content"));
+    expect(calls.vfsMountRepository).toBe(vfsMountRepository);
 
     expect(app.container.resolve("CoreConfig")).toBe(config);
     expect(app.container.resolve("VfsService")).toBe(vfsService);
     expect(app.vfsRepository).toBe(vfsRepository);
+    expect(app.vfsMountRepository).toBe(vfsMountRepository);
   });
 
   it("builds the python worker command from app paths", () => {
@@ -92,6 +101,12 @@ describe("createAppContainer", () => {
               closed.push("vfsRepository");
             },
           }) as never,
+        createVfsMountRepository: () =>
+          ({
+            close() {
+              closed.push("vfsMountRepository");
+            },
+          }) as never,
         createVfsProviderRegistry: () => ({} as never),
         createVfsService: () =>
           ({
@@ -105,7 +120,7 @@ describe("createAppContainer", () => {
 
     await app.close();
 
-    expect(closed).toEqual(["vfs", "vfsRepository"]);
+    expect(closed).toEqual(["vfs", "vfsRepository", "vfsMountRepository"]);
   });
 });
 

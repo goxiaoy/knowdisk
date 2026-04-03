@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { container as rootContainer } from "tsyringe";
+import { createVfsMountRepository } from "./vfs.mount.repository";
 import { createVfsProviderRegistry } from "./vfs.provider.registry";
 import type { VfsProviderAdapter } from "./vfs.provider.types";
 import { createVfsRepository } from "./vfs.repository";
@@ -12,9 +13,11 @@ import { createVfsService } from "./vfs.service";
 function setup() {
   const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-runtime-"));
   const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+  const mountRepo = createVfsMountRepository({ dbPath: join(dir, "vfs.db") });
   const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
   const service = createVfsService({
     repository: repo,
+    mountRepository: mountRepo,
     registry,
     nowMs: () => 1_000,
     contentRootParent: join(dir, "content"),
@@ -22,10 +25,12 @@ function setup() {
   return {
     dir,
     repo,
+    mountRepo,
     registry,
     service,
     cleanup() {
       repo.close();
+      mountRepo.close();
       rmSync(dir, { recursive: true, force: true });
     },
   };
@@ -299,9 +304,11 @@ describe("vfs service runtime", () => {
   test("queued delete events still run after restart when mount config is gone", async () => {
     const dir = mkdtempSync(join(tmpdir(), "knowdisk-vfs-runtime-unmount-restart-"));
     const repo = createVfsRepository({ dbPath: join(dir, "vfs.db") });
+    const mountRepo = createVfsMountRepository({ dbPath: join(dir, "vfs.db") });
     const registry = createVfsProviderRegistry(rootContainer.createChildContainer());
     const service = createVfsService({
       repository: repo,
+      mountRepository: mountRepo,
       registry,
       nowMs: () => 1_000,
       contentRootParent: join(dir, "content"),
@@ -367,12 +374,12 @@ describe("vfs service runtime", () => {
     await service.start();
     await service.triggerReconcile(mount.mountId);
     const indexed = await waitUntil(
-      () => repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.deletedAtMs === null,
+      () => repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "f.txt")?.deletedAtMs === null,
       500
     );
 
     expect(indexed).toBe(true);
-    expect(repo.listNodesByMountIdAndSourceRef(mount.mountId, "f.txt")?.deletedAtMs).toBeNull();
+    expect(repo.getNodeByMountNodeIdAndSourceRef(mount.mountId, "f.txt")?.deletedAtMs).toBeNull();
 
     await service.close();
     repo.insertNodeEvents([
@@ -385,10 +392,11 @@ describe("vfs service runtime", () => {
         createdAtMs: 1_001,
       },
     ]);
-    repo.deleteNodeMountExtByMountId(mount.mountId);
+    mountRepo.deleteNodeMountExtByMountId(mount.mountId);
 
     const restarted = createVfsService({
       repository: repo,
+      mountRepository: mountRepo,
       registry,
       nowMs: () => 1_000,
       contentRootParent: join(dir, "content"),
@@ -411,6 +419,7 @@ describe("vfs service runtime", () => {
 
     await restarted.close();
     repo.close();
+    mountRepo.close();
     rmSync(dir, { recursive: true, force: true });
   });
 

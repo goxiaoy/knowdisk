@@ -5,7 +5,18 @@ import { FilesPanel } from "./files-panel";
 function createApi() {
   return {
     listFilesNodes: mock(async () => ({
-      items: [{ nodeId: "n1", parentId: null, name: "x.md", kind: "file" as const }],
+      items: [
+        {
+          nodeId: "n1",
+          mountId: "mount-1",
+          mountNodeId: "mount-1",
+          parentId: null,
+          name: "x.md",
+          kind: "file" as const,
+          type: "file" as const,
+          origin: "provider" as const,
+        },
+      ],
     })),
     pickLocalDirectory: mock(async () => ({ ok: true as const, cancelled: false as const, directory: "/tmp/demo" })),
     mountLocalDirectory: mock(async () => ({ ok: true as const, mountId: "mount-1" })),
@@ -15,9 +26,12 @@ function createApi() {
       metadata: {
         nodeId: "n1",
         mountId: "mount-1",
+        mountNodeId: "mount-1",
         parentId: null,
         name: "x",
         kind: "file" as const,
+        type: "file" as const,
+        origin: "provider" as const,
         size: 1,
         mtimeMs: 1,
         sourceRef: "docs/x",
@@ -28,7 +42,19 @@ function createApi() {
       },
     })),
     deleteFileNode: mock(async () => ({ ok: true as const })),
-    renameFileNode: mock(async () => ({ ok: true as const, node: { nodeId: "n1", parentId: null, name: "x", kind: "file" as const } })),
+    renameFileNode: mock(async () => ({
+      ok: true as const,
+      node: {
+        nodeId: "n1",
+        mountId: "mount-1",
+        mountNodeId: "mount-1",
+        parentId: null,
+        name: "x",
+        kind: "file" as const,
+        type: "file" as const,
+        origin: "provider" as const,
+      },
+    })),
   };
 }
 

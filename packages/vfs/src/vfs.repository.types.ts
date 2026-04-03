@@ -1,11 +1,5 @@
-import type { VfsMountConfig, VfsNode } from "./vfs.types";
-
-export type VfsNodeMountExtRow = VfsMountConfig & {
-  nodeId: string;
-  mountId: string;
-  createdAtMs: number;
-  updatedAtMs: number;
-};
+import type { VfsNode } from "./vfs.types";
+import type { VfsNodeMountExtRow } from "./vfs.mount.repository.types";
 
 export type LocalPageCursor = {
   lastName: string;
@@ -13,7 +7,7 @@ export type LocalPageCursor = {
 };
 
 export type ListChildrenPageLocalInput = {
-  mountId?: string;
+  mountNodeId?: string;
   parentId: string | null;
   limit: number;
   cursor?: LocalPageCursor;
@@ -27,6 +21,7 @@ export type ListChildrenPageLocalOutput = {
 export type VfsNodeEventRow = {
   id: string;
   sourceRef: string;
+  mountNodeId?: string;
   mountId: string;
   parentId: string | null;
   type: "add" | "update_metadata" | "update_content" | "delete";
@@ -39,19 +34,14 @@ export type ListNodeEventsInput = {
   types?: VfsNodeEventRow["type"][];
 };
 
-export type VfsRepository = {
+export type VfsNodeRepository = {
   close: () => void;
   subscribeNodeChanges: (listener: (row: VfsNode) => void) => () => void;
   subscribeNodeEventsChanged: (listener: (mountId: string) => void) => () => void;
 
-  upsertNodeMountExt: (row: VfsNodeMountExtRow) => void;
-  listNodeMountExts: () => VfsNodeMountExtRow[];
-  deleteNodeMountExtByMountId: (mountId: string) => void;
-  getNodeMountExtByMountId: (mountId: string) => VfsNodeMountExtRow | null;
-
   upsertNodes: (rows: VfsNode[]) => void;
-  listNodesByMountId: (mountId: string) => VfsNode[];
-  listNodesByMountIdAndSourceRef: (mountId: string, sourceRef: string) => VfsNode | null;
+  listNodesByMountNodeId: (mountNodeId: string) => VfsNode[];
+  getNodeByMountNodeIdAndSourceRef: (mountNodeId: string, sourceRef: string) => VfsNode | null;
   getNodeById: (nodeId: string) => VfsNode | null;
   listChildrenPageLocal: (input: ListChildrenPageLocalInput) => ListChildrenPageLocalOutput;
 
@@ -61,4 +51,11 @@ export type VfsRepository = {
     pendingUnits: number;
   };
   deleteNodeEvents: (rows: Array<Pick<VfsNodeEventRow, "id" | "mountId">>) => void;
+};
+
+export type VfsRepository = VfsNodeRepository & {
+  upsertNodeMountExt: (row: VfsNodeMountExtRow) => void;
+  listNodeMountExts: () => VfsNodeMountExtRow[];
+  deleteNodeMountExtByMountId: (mountId: string) => void;
+  getNodeMountExtByMountId: (mountId: string) => VfsNodeMountExtRow | null;
 };

@@ -10,8 +10,9 @@ import {
   createVfsMetadataNodeEventsProcessor,
 } from "./vfs.node-event-processor";
 import { createVfsNodeId } from "./vfs.node-id";
+import type { VfsMountRepository } from "./vfs.mount.repository.types";
 import type { VfsProviderRegistry } from "./vfs.provider.registry";
-import type { VfsRepository } from "./vfs.repository.types";
+import type { VfsNodeRepository } from "./vfs.repository.types";
 import {
   createVfsSyncer,
   type VfsSyncer,
@@ -28,7 +29,8 @@ import type {
 } from "./vfs.types";
 
 export function createVfsService(deps: {
-  repository: VfsRepository;
+  repository: VfsNodeRepository;
+  mountRepository: VfsMountRepository;
   registry: VfsProviderRegistry;
   contentRootParent?: string;
   nowMs?: () => number;
@@ -43,7 +45,7 @@ export function createVfsService(deps: {
   const syncers = new Map<string, { mount: VfsMount; syncer: VfsSyncer; stopSub: () => void }>();
   let nextHookRegistrationId = 1;
 
-  const mountFromExt = (ext: ReturnType<VfsRepository["getNodeMountExtByMountId"]>): VfsMount => {
+  const mountFromExt = (ext: ReturnType<VfsMountRepository["getNodeMountExtByMountId"]>): VfsMount => {
     if (!ext) {
       throw new Error("mount config not found");
     }
@@ -71,7 +73,7 @@ export function createVfsService(deps: {
     if (active) {
       return active.mount;
     }
-    const ext = deps.repository.getNodeMountExtByMountId(mountId);
+    const ext = deps.mountRepository.getNodeMountExtByMountId(mountId);
     if (ext) {
       return mountFromExt(ext);
     }
@@ -201,7 +203,7 @@ export function createVfsService(deps: {
       if (!deps.contentRootParent) {
         return;
       }
-      const ext = deps.repository.getNodeMountExtByMountId(mountId);
+      const ext = deps.mountRepository.getNodeMountExtByMountId(mountId);
       if (!ext) {
         return;
       }
@@ -220,6 +222,104 @@ export function createVfsService(deps: {
     } finally {
       reconcileRunning.delete(mountId);
     }
+  };
+
+  const createMountNode = async (input: {
+    mountId: string;
+    parentNodeId: string | null;
+    config: VfsMountConfig;
+  }): Promise<VfsMount> => {
+    const mountName = input.config.name?.trim() || input.mountId;
+    const mount: VfsMount = {
+      mountId: input.mountId,
+      ...input.config,
+      autoSync: input.config.autoSync !== false,
+    };
+    const now = nowMs();
+    const mountNodeId = createVfsNodeId({
+      mountId: mount.mountId,
+      sourceRef: "",
+    });
+    deps.repository.upsertNodes([
+      {
+        nodeId: mountNodeId,
+        mountId: mount.mountId,
+        mountNodeId: mount.mountId,
+        parentId: input.parentNodeId,
+        name: mountName,
+        kind: "mount",
+        type: "mount",
+        origin: "managed",
+        size: null,
+        mtimeMs: null,
+        sourceRef: "",
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      },
+    ]);
+    deps.mountRepository.upsertNodeMountExt({
+      nodeId: mountNodeId,
+      mountId: mount.mountId,
+      providerType: mount.providerType,
+      providerExtra: mount.providerExtra,
+      autoSync: mount.autoSync !== false,
+      syncContent: mount.syncContent ?? false,
+      metadataTtlSec: mount.metadataTtlSec,
+      reconcileIntervalMs: mount.reconcileIntervalMs,
+      createdAtMs: now,
+      updatedAtMs: now,
+    });
+    if (started) {
+      if (isAutoSyncEnabled(mount)) {
+        try {
+          await startSyncer(mount);
+        } catch {
+          // keep runtime alive; reconcile timer will retry
+        }
+        scheduleReconcile(mount);
+      } else {
+        clearReconcileTimer(mount.mountId);
+        await stopSyncer(mount.mountId);
+      }
+    }
+    return mount;
+  };
+
+  const listAllChildren = (parentId: string): VfsNode[] => {
+    const items: VfsNode[] = [];
+    let cursor: { lastName: string; lastNodeId: string } | undefined;
+    while (true) {
+      const page = deps.repository.listChildrenPageLocal({
+        parentId,
+        limit: 500,
+        cursor,
+      });
+      items.push(...page.items);
+      if (!page.nextCursor) {
+        break;
+      }
+      cursor = page.nextCursor;
+    }
+    return items;
+  };
+
+  const collectSubtree = (rootNodeId: string): VfsNode[] => {
+    const collected: VfsNode[] = [];
+    const queue = [rootNodeId];
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const currentNode = deps.repository.getNodeById(current);
+      if (!currentNode || currentNode.deletedAtMs !== null) {
+        continue;
+      }
+      collected.push(currentNode);
+      for (const child of listAllChildren(currentNode.nodeId)) {
+        queue.push(child.nodeId);
+      }
+    }
+    return collected;
   };
 
   return {
@@ -251,7 +351,7 @@ export function createVfsService(deps: {
       }
       started = true;
       ensureNodeEventsProcessorsStarted();
-      const mounts = deps.repository.listNodeMountExts().map((ext) => mountFromExt(ext));
+      const mounts = deps.mountRepository.listNodeMountExts().map((ext) => mountFromExt(ext));
       for (const mount of mounts) {
         if (!isAutoSyncEnabled(mount)) {
           clearReconcileTimer(mount.mountId);
@@ -279,64 +379,88 @@ export function createVfsService(deps: {
       started = false;
     },
 
+    async createNode(input) {
+      if (input.type === "mount") {
+        return createMountNode({
+          mountId: input.mountId ?? randomUUID(),
+          parentNodeId: input.parentId,
+          config: {
+            ...input.ext,
+            name: input.name ?? input.ext.name,
+          },
+        });
+      }
+      const parentNode = input.parentId ? deps.repository.getNodeById(input.parentId) : null;
+      if (input.parentId && !parentNode) {
+        throw new Error(`Parent node not found: ${input.parentId}`);
+      }
+      if (parentNode?.kind === "file") {
+        throw new Error(`Cannot create child under file: ${input.parentId}`);
+      }
+      if (parentNode?.kind === "mount") {
+        throw new Error(`Cannot create managed child under mount: ${input.parentId}`);
+      }
+      const now = nowMs();
+      const nodeId = randomUUID();
+      const mountId = parentNode?.mountId ?? nodeId;
+      const mountNodeId = parentNode?.mountNodeId ?? nodeId;
+      const node: VfsNode = {
+        nodeId,
+        mountId,
+        mountNodeId,
+        parentId: input.parentId,
+        name: input.name.trim(),
+        kind: "folder",
+        type: "folder",
+        origin: "managed",
+        size: null,
+        mtimeMs: null,
+        sourceRef: `managed:${nodeId}`,
+        providerVersion: null,
+        deletedAtMs: null,
+        createdAtMs: now,
+        updatedAtMs: now,
+      };
+      deps.repository.upsertNodes([node]);
+      return deps.repository.getNodeById(nodeId) ?? node;
+    },
+
+    async getNode(input) {
+      return this.getMetadata({ id: input.id });
+    },
+
+    async renameNode(input) {
+      if (!this.rename) {
+        throw new Error("rename is not supported");
+      }
+      return this.rename(input);
+    },
+
+    async deleteNode(input) {
+      if (!this.delete) {
+        throw new Error("delete is not supported");
+      }
+      await this.delete(input);
+    },
+
+    async listNodeChildren(input) {
+      return this.walkChildren(input);
+    },
+
     async mount(config: VfsMountConfig) {
-      return this.mountInternal(randomUUID(), config);
+      return createMountNode({
+        mountId: randomUUID(),
+        parentNodeId: null,
+        config,
+      });
     },
 
     async mountInternal(mountId: string, config: VfsMountConfig) {
-      const mountName = config.name?.trim() || mountId;
-      const mount: VfsMount = {
+      return createMountNode({
         mountId,
-        ...config,
-        autoSync: config.autoSync !== false,
-      };
-      const now = nowMs();
-      const mountNodeId = createVfsNodeId({
-        mountId: mount.mountId,
-        sourceRef: "",
+        parentNodeId: null,
+        config,
       });
-      deps.repository.upsertNodes([
-        {
-          nodeId: mountNodeId,
-          mountId: mount.mountId,
-          parentId: null,
-          name: mountName,
-          kind: "mount",
-          size: null,
-          mtimeMs: null,
-          sourceRef: "",
-          providerVersion: null,
-          deletedAtMs: null,
-          createdAtMs: now,
-          updatedAtMs: now,
-        },
-      ]);
-      deps.repository.upsertNodeMountExt({
-        nodeId: mountNodeId,
-        mountId: mount.mountId,
-        providerType: mount.providerType,
-        providerExtra: mount.providerExtra,
-        autoSync: mount.autoSync !== false,
-        syncContent: mount.syncContent ?? false,
-        metadataTtlSec: mount.metadataTtlSec,
-        reconcileIntervalMs: mount.reconcileIntervalMs,
-        createdAtMs: now,
-        updatedAtMs: now,
-      });
-      if (started) {
-        if (isAutoSyncEnabled(mount)) {
-          try {
-            await startSyncer(mount);
-          } catch {
-            // keep runtime alive; reconcile timer will retry
-          }
-          scheduleReconcile(mount);
-        } else {
-          clearReconcileTimer(mount.mountId);
-          await stopSyncer(mount.mountId);
-        }
-      }
-      return mount;
     },
 
     async unmount(mountId: string) {
@@ -345,7 +469,7 @@ export function createVfsService(deps: {
       await stopSyncer(mountId);
       const now = nowMs();
       const rows = deps.repository
-        .listNodesByMountId(mountId)
+        .listNodesByMountNodeId(mountId)
         .filter((node) => node.deletedAtMs === null)
         .map((node) => ({
           ...node,
@@ -365,7 +489,7 @@ export function createVfsService(deps: {
           }))
         );
       }
-      deps.repository.deleteNodeMountExtByMountId(mountId);
+      deps.mountRepository.deleteNodeMountExtByMountId(mountId);
     },
 
     async listChildren(input) {
@@ -376,7 +500,7 @@ export function createVfsService(deps: {
       if (!parentNode) {
         throw new Error(`Parent node not found: ${input.parentId}`);
       }
-      const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
+      const ext = deps.mountRepository.getNodeMountExtByMountId(parentNode.mountId);
       if (!ext) {
         throw new Error(`Mount config not found: ${parentNode.mountId}`);
       }
@@ -400,7 +524,7 @@ export function createVfsService(deps: {
       if (node.kind !== "file") {
         throw new Error(`Node is not a file: ${input.id}`);
       }
-      const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
+      const ext = deps.mountRepository.getNodeMountExtByMountId(node.mountId);
       if (!ext) {
         throw new Error(`Mount config not found: ${node.mountId}`);
       }
@@ -448,7 +572,7 @@ export function createVfsService(deps: {
       if (parentNode.kind === "file") {
         throw new Error(`Cannot create child under file: ${input.parentId}`);
       }
-      const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
+      const ext = deps.mountRepository.getNodeMountExtByMountId(parentNode.mountId);
       if (!ext) {
         throw new Error(`Mount config not found: ${parentNode.mountId}`);
       }
@@ -487,7 +611,7 @@ export function createVfsService(deps: {
       if (!nextName) {
         throw new Error("name is required");
       }
-      if (node.kind === "mount") {
+      if (node.origin === "managed" || node.kind === "mount") {
         const now = nowMs();
         deps.repository.upsertNodes([
           {
@@ -498,7 +622,7 @@ export function createVfsService(deps: {
         ]);
         return deps.repository.getNodeById(node.nodeId) ?? { ...node, name: nextName, updatedAtMs: now };
       }
-      const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
+      const ext = deps.mountRepository.getNodeMountExtByMountId(node.mountId);
       if (!ext) {
         throw new Error(`Mount config not found: ${node.mountId}`);
       }
@@ -535,11 +659,31 @@ export function createVfsService(deps: {
       if (!node) {
         throw new Error(`Node not found: ${input.id}`);
       }
+      if (node.origin === "managed") {
+        const now = nowMs();
+        const subtree = collectSubtree(node.nodeId);
+        const mountIds = new Set(subtree.filter((row) => row.kind === "mount").map((row) => row.mountId));
+        for (const mountId of mountIds) {
+          clearReconcileTimer(mountId);
+          await stopSyncer(mountId);
+          deps.mountRepository.deleteNodeMountExtByMountId(mountId);
+        }
+        if (subtree.length > 0) {
+          deps.repository.upsertNodes(
+            subtree.map((row) => ({
+              ...row,
+              deletedAtMs: now,
+              updatedAtMs: now,
+            }))
+          );
+        }
+        return;
+      }
       if (node.kind === "mount") {
         await this.unmount(node.mountId);
         return;
       }
-      const ext = deps.repository.getNodeMountExtByMountId(node.mountId);
+      const ext = deps.mountRepository.getNodeMountExtByMountId(node.mountId);
       if (!ext) {
         throw new Error(`Mount config not found: ${node.mountId}`);
       }
@@ -553,7 +697,7 @@ export function createVfsService(deps: {
       });
       const now = nowMs();
       const toDelete = deps.repository
-        .listNodesByMountId(node.mountId)
+        .listNodesByMountNodeId(node.mountNodeId)
         .filter(
           (row) =>
             row.deletedAtMs === null &&
@@ -583,22 +727,8 @@ export function createVfsService(deps: {
       if (!parentNode) {
         throw new Error(`Parent node not found: ${input.parentNodeId}`);
       }
-      const ext = deps.repository.getNodeMountExtByMountId(parentNode.mountId);
-      if (!ext) {
-        throw new Error(`Mount config not found: ${parentNode.mountId}`);
-      }
-      const resolvedMount: VfsMount = {
-        mountId: ext.mountId,
-        providerType: ext.providerType,
-        providerExtra: ext.providerExtra,
-        autoSync: ext.autoSync !== false,
-        syncContent: ext.syncContent,
-        metadataTtlSec: ext.metadataTtlSec,
-        reconcileIntervalMs: ext.reconcileIntervalMs,
-      };
       return walkLocalChildren({
         repository: deps.repository,
-        mountId: resolvedMount.mountId,
         parentNodeId: parentNode.nodeId,
         limit: input.limit,
         cursorToken: input.cursor?.token,
@@ -612,15 +742,13 @@ export function createVfsService(deps: {
 }
 
 function walkLocalChildren(input: {
-  repository: VfsRepository;
-  mountId?: string;
+  repository: VfsNodeRepository;
   parentNodeId?: string | null;
   limit: number;
   cursorToken?: string;
 }): WalkChildrenOutput {
   const localCursor = decodeLocalCursor(input.cursorToken);
   const page = input.repository.listChildrenPageLocal({
-    mountId: input.mountId,
     parentId: input.parentNodeId ?? null,
     limit: input.limit,
     cursor: localCursor ?? undefined,
@@ -668,12 +796,15 @@ function toRepositoryNode(input: { mountId: string; item: VfsNode; now: number }
       sourceRef: normalizedSourceRef,
     }),
     mountId: input.mountId,
+    mountNodeId: input.mountId,
     parentId: createVfsNodeId({
       mountId: input.mountId,
       sourceRef: parentSourceRef,
     }),
     name: input.item.name,
     kind: input.item.kind,
+    type: input.item.kind,
+    origin: normalizedSourceRef === "" ? "managed" : "provider",
     size: input.item.size ?? null,
     mtimeMs: input.item.mtimeMs ?? null,
     sourceRef: normalizedSourceRef,

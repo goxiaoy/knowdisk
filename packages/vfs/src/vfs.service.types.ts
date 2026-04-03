@@ -64,6 +64,20 @@ export type VfsNodeEventHooks = {
   afterDelete?: (ctx: VfsNodeEventHookContext) => Promise<void> | void;
 };
 
+export type CreateVfsNodeInput =
+  | {
+      parentId: string | null;
+      type: "mount";
+      name?: string;
+      ext: VfsMountConfig;
+      mountId?: string;
+    }
+  | {
+      parentId: string | null;
+      type: "folder";
+      name: string;
+    };
+
 export type VfsService = VfsOperationCore & {
   subscribeNodeChanges: (listener: (row: VfsNode) => void) => () => void;
   getQueueProgressByMountId: (mountId: string) => { pendingUnits: number };
@@ -73,6 +87,11 @@ export type VfsService = VfsOperationCore & {
   registerNodeEventHooks: (hooks: VfsNodeEventHooks) => () => void;
   start: () => Promise<void>;
   close: () => Promise<void>;
+  createNode: (input: CreateVfsNodeInput) => Promise<VfsNode | VfsMount>;
+  getNode: (input: { id: string }) => Promise<VfsNode | null>;
+  renameNode: (input: { id: string; name: string }) => Promise<VfsNode>;
+  deleteNode: (input: { id: string }) => Promise<void>;
+  listNodeChildren: (input: WalkChildrenInput) => Promise<WalkChildrenOutput>;
   mount: (config: VfsMountConfig) => Promise<VfsMount>;
   mountInternal: (mountId: string, config: VfsMountConfig) => Promise<VfsMount>;
   unmount: (mountId: string) => Promise<void>;
